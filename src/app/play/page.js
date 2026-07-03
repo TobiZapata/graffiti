@@ -8,8 +8,12 @@ import TeamSelection from "@/components/play/TeamSelection";
 import TeamDetails from "@/components/play/TeamDetails";
 import SquadPanel from "@/components/play/SquadPanel";
 import RoleSelectionModal from "@/components/play/RoleSelectionModal";
+import { useRouter } from "next/navigation";
+import { useTournament } from "@/context/TournamentContext";
 
 export default function PlayPage() {
+  const router = useRouter();
+  const { initTournament } = useTournament();
   const [rolledTeams, setRolledTeams] =
     useState([]);
 
@@ -71,12 +75,15 @@ export default function PlayPage() {
         <section className="flex-1">
           {draftCompleted ?
             <div className="flex h-150 items-center justify-center">
-              <Link
-                href="/simulation"
+              <button
+                onClick={() => {
+                  initTournament(squad);
+                  router.push("/simulation");
+                }}
                 className="rounded-xl bg-green-600 px-12 py-6 text-3xl font-bold hover:bg-green-700"
               >
                 START MAJOR
-              </Link>
+              </button>
             </div>
           : rolledTeams.length === 0 ?
             <SpinScreen onSpin={spin} />

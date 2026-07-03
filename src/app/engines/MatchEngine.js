@@ -303,7 +303,9 @@ export function simulateMatch(
   return {
     events: allEvents,
     finalScore,
-    rounds, // ─── CAMBIO 5: devolver el array ────────────────────────────
+    rounds,
+    scoreTeam1: team1.roundsWon,
+    scoreTeam2: team2.roundsWon,
   };
 }
 
