@@ -1,0 +1,198 @@
+[
+  {
+    "id": 1,
+    "name": "fnatic",
+    "major": "EMS One Katowice 2014",
+    "position": 1,
+    "icon": "/logos/fnatic.png",
+    "players": [
+      {
+        "id": 1,
+        "name": "JW",
+        "rating": 95,
+        "rol1": "awper",
+        "rol2": "entry",
+        "flex": true
+      },
+      {
+        "id": 2,
+        "name": "flusha",
+        "rating": 92,
+        "rol1": "rifler",
+        "rol2": "support",
+        "flex": true
+      },
+      {
+        "id": 3,
+        "name": "pronax",
+        "rating": 78,
+        "rol1": "igl",
+        "rol2": "support",
+        "flex": false
+      },
+      {
+        "id": 4,
+        "name": "Devilwalk",
+        "rating": 76,
+        "rol1": "support",
+        "rol2": "igl",
+        "flex": false
+      },
+      {
+        "id": 5,
+        "name": "znajder",
+        "rating": 91,
+        "rol1": "entry",
+        "rol2": "rifler",
+        "flex": true
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "name": "NiP",
+    "major": "EMS One Katowice 2014",
+    "position": 2,
+    "icon": "/logos/nip.png",
+    "players": [
+      {
+        "id": 6,
+        "name": "f0rest",
+        "rating": 91,
+        "rol1": "rifler",
+        "rol2": "awper",
+        "flex": true
+      },
+      {
+        "id": 7,
+        "name": "GeT_RiGhT",
+        "rating": 91,
+        "rol1": "rifler",
+        "rol2": "support",
+        "flex": true
+      },
+      {
+        "id": 8,
+        "name": "friberg",
+        "rating": 88,
+        "rol1": "entry",
+        "rol2": "rifler",
+        "flex": false
+      },
+      {
+        "id": 9,
+        "name": "Xizt",
+        "rating": 82,
+        "rol1": "igl",
+        "rol2": "rifler",
+        "flex": false
+      },
+      {
+        "id": 10,
+        "name": "Fifflaren",
+        "rating": 75,
+        "rol1": "support",
+        "rol2": "igl",
+        "flex": false
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "name": "CPH Wolves",
+    "major": "EMS One Katowice 2014",
+    "position": 5,
+    "icon": "/logos/cph.png",
+    "players": [
+      {
+        "id": 11,
+        "name": "device",
+        "rating": 88,
+        "rol1": "awper",
+        "rol2": "rifler",
+        "flex": true
+      },
+      {
+        "id": 12,
+        "name": "dupreeh",
+        "rating": 86,
+        "rol1": "entry",
+        "rol2": "rifler",
+        "flex": true
+      },
+      {
+        "id": 13,
+        "name": "Xyp9x",
+        "rating": 89,
+        "rol1": "support",
+        "rol2": "rifler",
+        "flex": true
+      },
+      {
+        "id": 14,
+        "name": "FeTiSh",
+        "rating": 74,
+        "rol1": "igl",
+        "rol2": "support",
+        "flex": false
+      },
+      {
+        "id": 15,
+        "name": "Nico",
+        "rating": 85,
+        "rol1": "rifler",
+        "rol2": null,
+        "flex": false
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "name": "FaZe",
+    "major": "ELEAGUE Boston 2018",
+    "position": 2,
+    "icon": "/logos/faze.png",
+    "players": [
+      {
+        "id": 16,
+        "name": "NiKo",
+        "rating": 97,
+        "rol1": "rifler",
+        "rol2": "entry",
+        "flex": true
+      },
+      {
+        "id": 17,
+        "name": "rain",
+        "rating": 90,
+        "rol1": "entry",
+        "rol2": "rifler",
+        "flex": false
+      },
+      {
+        "id": 18,
+        "name": "GuardiaN",
+        "rating": 93,
+        "rol1": "awper",
+        "rol2": null,
+        "flex": false
+      },
+      {
+        "id": 19,
+        "name": "olofmeister",
+        "rating": 91,
+        "rol1": "rifler",
+        "rol2": "entry",
+        "flex": true
+      },
+      {
+        "id": 20,
+        "name": "karrigan",
+        "rating": 84,
+        "rol1": "igl",
+        "rol2": "support",
+        "flex": false
+      }
+    ]
+  }
+]
