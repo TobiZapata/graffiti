@@ -14,6 +14,7 @@ export class Player {
 
     this.kills = 0;
     this.deaths = 0;
+    this.assists = 0;
 
     this.money = 800;
     this.weapon = "KNIFE";

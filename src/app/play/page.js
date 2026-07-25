@@ -96,6 +96,7 @@ export default function PlayPage() {
             />
           : <TeamDetails
               team={selectedTeam}
+              squad={squad}
               onSelectPlayer={
                 setSelectedPlayer
               }

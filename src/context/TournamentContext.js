@@ -43,7 +43,8 @@ export function TournamentProvider({ children }) {
 
   const generateSwissMatchups = (currentStandings, round) => {
     // Basic Swiss pairing: sort by score, pair adjacent
-    const sorted = [...currentStandings].sort((a, b) => b.wins - a.wins || a.losses - b.losses);
+    const active = currentStandings.filter(t => t.wins < 3 && t.losses < 3);
+    const sorted = [...active].sort((a, b) => b.wins - a.wins || a.losses - b.losses);
     const newMatches = [];
     for (let i = 0; i < sorted.length; i += 2) {
       if (i + 1 < sorted.length) {
@@ -64,55 +65,242 @@ export function TournamentProvider({ children }) {
   const completeMatch = (matchId, result) => {
     setMatches(prev => prev.map(m => m.id === matchId ? { ...m, result, completed: true } : m));
     
-    // Update standings
-    setStandings(prev => {
-      const newStandings = [...prev];
-      const teamAIdx = newStandings.findIndex(t => t.id === result.teamA.id);
-      const teamBIdx = newStandings.findIndex(t => t.id === result.teamB.id);
-      
-      if (result.winner === result.teamA.id) {
-        newStandings[teamAIdx].wins += 1;
-        newStandings[teamBIdx].losses += 1;
-      } else {
-        newStandings[teamBIdx].wins += 1;
-        newStandings[teamAIdx].losses += 1;
-      }
-      return newStandings;
-    });
+    if (stage === "swiss") {
+      // Update standings
+      setStandings(prev => {
+        const newStandings = [...prev];
+        const teamAIdx = newStandings.findIndex(t => t.id === result.teamA.id);
+        const teamBIdx = newStandings.findIndex(t => t.id === result.teamB.id);
+        
+        newStandings[teamAIdx] = { ...newStandings[teamAIdx] };
+        newStandings[teamBIdx] = { ...newStandings[teamBIdx] };
+
+        if (result.winner === result.teamA.id) {
+          newStandings[teamAIdx].wins += 1;
+          newStandings[teamBIdx].losses += 1;
+        } else {
+          newStandings[teamBIdx].wins += 1;
+          newStandings[teamAIdx].losses += 1;
+        }
+        return newStandings;
+      });
+    }
   };
 
   const advanceRound = () => {
-    // Check if player eliminated or advanced
-    const playerTeam = standings.find(t => t.isPlayer);
+    // First, auto-resolve non-player matches for the current round if not completed
+    const currentRoundMatches = matches.filter(m => m.round === swissRound);
+    let updatedStandings = [...standings].map(t => ({...t}));
+    let newCompletedMatches = [];
+
+    currentRoundMatches.forEach(m => {
+      if (!m.completed && !m.isPlayerMatch) {
+        // simulate basic win
+        const winner = Math.random() > 0.5 ? m.teamA : m.teamB;
+        const result = { teamA: m.teamA, teamB: m.teamB, winner: winner.id, scoreA: 13, scoreB: 10 };
+        newCompletedMatches.push({ id: m.id, result });
+        
+        const teamAIdx = updatedStandings.findIndex(t => t.id === m.teamA.id);
+        const teamBIdx = updatedStandings.findIndex(t => t.id === m.teamB.id);
+        if (winner.id === m.teamA.id) {
+          updatedStandings[teamAIdx].wins += 1;
+          updatedStandings[teamBIdx].losses += 1;
+        } else {
+          updatedStandings[teamBIdx].wins += 1;
+          updatedStandings[teamAIdx].losses += 1;
+        }
+      }
+    });
+
+    let updatedMatches = matches;
+    if (newCompletedMatches.length > 0) {
+      updatedMatches = matches.map(m => {
+        const found = newCompletedMatches.find(n => n.id === m.id);
+        if (found) return { ...m, result: found.result, completed: true };
+        return m;
+      });
+      setMatches(updatedMatches);
+      setStandings(updatedStandings);
+    }
+
+    // Now check if player is eliminated or qualified
+    const playerTeam = updatedStandings.find(t => t.isPlayer);
     if (playerTeam.losses === 3) {
       setStage("eliminated");
       return;
     }
     if (playerTeam.wins === 3) {
+      // Player qualified — but we need to finish the entire Swiss stage for remaining teams
+      // Simulate remaining Swiss rounds for non-player teams until all teams have 3 wins or 3 losses
+      let simStandings = updatedStandings.map(t => ({...t}));
+      let simMatches = [...updatedMatches];
+      let simRound = swissRound + 1;
+
+      const swissComplete = (s) => s.every(t => t.wins >= 3 || t.losses >= 3);
+
+      while (!swissComplete(simStandings)) {
+        // Filter active teams (not yet 3 wins or 3 losses), excluding the player
+        const active = simStandings
+          .filter(t => t.wins < 3 && t.losses < 3 && !t.isPlayer)
+          .sort((a, b) => b.wins - a.wins || a.losses - b.losses);
+        
+        if (active.length < 2) break; // safety: can't pair
+
+        for (let i = 0; i < active.length; i += 2) {
+          if (i + 1 >= active.length) break;
+          const tA = active[i];
+          const tB = active[i + 1];
+          const winner = Math.random() > 0.5 ? tA : tB;
+          const result = { teamA: tA, teamB: tB, winner: winner.id, scoreA: 13, scoreB: 10 };
+          
+          const matchEntry = {
+            id: `R${simRound}_M${i/2}`,
+            round: simRound,
+            teamA: tA,
+            teamB: tB,
+            result,
+            isPlayerMatch: false,
+            completed: true,
+          };
+          simMatches.push(matchEntry);
+          
+          const teamAIdx = simStandings.findIndex(t => t.id === tA.id);
+          const teamBIdx = simStandings.findIndex(t => t.id === tB.id);
+          if (winner.id === tA.id) {
+            simStandings[teamAIdx].wins += 1;
+            simStandings[teamBIdx].losses += 1;
+          } else {
+            simStandings[teamBIdx].wins += 1;
+            simStandings[teamAIdx].losses += 1;
+          }
+        }
+        simRound++;
+        if (simRound > 20) break; // safety limit
+      }
+
+      setMatches(simMatches);
+      setStandings(simStandings);
       setStage("playoffs");
-      // TODO: initialize playoffs
+      initPlayoffs(simStandings);
       return;
     }
     
-    // Auto-resolve non-player matches for the current round if not completed
-    const currentRoundMatches = matches.filter(m => m.round === swissRound);
-    currentRoundMatches.forEach(m => {
-      if (!m.completed && !m.isPlayerMatch) {
-        // simulate basic win
+    const nextRound = swissRound + 1;
+    setSwissRound(nextRound);
+    generateSwissMatchups(updatedStandings, nextRound);
+  };
+
+  const advancePlayoffs = () => {
+    const playoffRounds = ['Quarterfinals', 'Semifinals', 'Final'];
+    
+    // Simulate incomplete non-player playoff matches
+    let newCompletedMatches = [];
+    matches.forEach(m => {
+      if (!m.completed && !m.isPlayerMatch && playoffRounds.includes(m.round)) {
         const winner = Math.random() > 0.5 ? m.teamA : m.teamB;
-        completeMatch(m.id, { teamA: m.teamA, teamB: m.teamB, winner: winner.id, scoreA: 13, scoreB: 10 }); // Dummy score
+        const result = { teamA: m.teamA, teamB: m.teamB, winner: winner.id, scoreA: 13, scoreB: 10 };
+        newCompletedMatches.push({ id: m.id, result });
       }
     });
 
-    const nextRound = swissRound + 1;
-    setSwissRound(nextRound);
-    generateSwissMatchups(standings, nextRound);
+    let updatedMatches = [...matches];
+    if (newCompletedMatches.length > 0) {
+      updatedMatches = matches.map(m => {
+        const found = newCompletedMatches.find(n => n.id === m.id);
+        if (found) return { ...m, result: found.result, completed: true };
+        return m;
+      });
+      setMatches(updatedMatches);
+    }
+
+    // FIRST: Check if player lost any playoff match → eliminate immediately
+    const playerLostMatch = updatedMatches.find(m => 
+      m.isPlayerMatch && m.completed && playoffRounds.includes(m.round) && m.result.winner !== 'player_team'
+    );
+    if (playerLostMatch) {
+      setStage('eliminated');
+      return;
+    }
+
+    // Check current playoff state
+    const qfMatches = updatedMatches.filter(m => m.round === 'Quarterfinals');
+    const sfMatches = updatedMatches.filter(m => m.round === 'Semifinals');
+    const finalMatch = updatedMatches.find(m => m.round === 'Final');
+
+    // Check if player won the tournament
+    if (finalMatch && finalMatch.completed && finalMatch.result.winner === 'player_team') {
+      setStage('won');
+      return;
+    }
+
+    // Generate next round
+    if (qfMatches.length === 4 && qfMatches.every(m => m.completed) && sfMatches.length === 0) {
+      const getWinner = (match) => match.result.winner === match.teamA.id ? match.teamA : match.teamB;
+      const sf = [
+        { id: 'SF_M0', round: 'Semifinals', teamA: getWinner(qfMatches[0]), teamB: getWinner(qfMatches[1]), result: null, completed: false },
+        { id: 'SF_M1', round: 'Semifinals', teamA: getWinner(qfMatches[2]), teamB: getWinner(qfMatches[3]), result: null, completed: false }
+      ];
+      sf[0].isPlayerMatch = sf[0].teamA.isPlayer || sf[0].teamB.isPlayer;
+      sf[1].isPlayerMatch = sf[1].teamA.isPlayer || sf[1].teamB.isPlayer;
+      setMatches(prev => [...prev, ...sf]);
+      return;
+    }
+    
+    if (sfMatches.length === 2 && sfMatches.every(m => m.completed) && !finalMatch) {
+      const getWinner = (match) => match.result.winner === match.teamA.id ? match.teamA : match.teamB;
+      const fin = {
+        id: 'F_M0', round: 'Final', teamA: getWinner(sfMatches[0]), teamB: getWinner(sfMatches[1]), result: null, completed: false
+      };
+      fin.isPlayerMatch = fin.teamA.isPlayer || fin.teamB.isPlayer;
+      setMatches(prev => [...prev, fin]);
+      return;
+    }
+  };
+
+  const advanceStage = () => {
+    if (stage === "swiss") advanceRound();
+    else if (stage === "playoffs") advancePlayoffs();
+  };
+
+  const initPlayoffs = (finalStandings) => {
+    // Top 8 teams advance — those with 3 wins
+    let qualified = finalStandings
+      .filter(t => t.wins >= 3)
+      .sort((a, b) => a.losses - b.losses);
+    
+    // Safety: if fewer than 8 qualified, fill with best remaining teams
+    if (qualified.length < 8) {
+      const qualifiedIds = new Set(qualified.map(t => t.id));
+      const remaining = finalStandings
+        .filter(t => !qualifiedIds.has(t.id))
+        .sort((a, b) => b.wins - a.wins || a.losses - b.losses);
+      qualified = [...qualified, ...remaining].slice(0, 8);
+    }
+
+    // Matches will be generated for quarterfinals
+    const qfMatches = [];
+    // 1st vs 8th, 2nd vs 7th, 3rd vs 6th, 4th vs 5th
+    for (let i = 0; i < 4; i++) {
+      const teamA = qualified[i];
+      const teamB = qualified[7 - i];
+      if (!teamA || !teamB) continue; // extra safety
+      qfMatches.push({
+        id: `QF_M${i}`,
+        round: 'Quarterfinals',
+        teamA,
+        teamB,
+        result: null,
+        isPlayerMatch: teamA.isPlayer || teamB.isPlayer,
+        completed: false,
+      });
+    }
+    setMatches(prev => [...prev, ...qfMatches]);
   };
 
   return (
     <TournamentContext.Provider value={{
       mySquad, stage, swissRound, standings, matches,
-      initTournament, completeMatch, advanceRound
+      initTournament, completeMatch, advanceRound: advanceStage
     }}>
       {children}
     </TournamentContext.Provider>

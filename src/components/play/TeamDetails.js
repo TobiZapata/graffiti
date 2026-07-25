@@ -2,6 +2,7 @@ import PlayerCard from "./PlayerCard";
 
 export default function TeamDetails({
   team,
+  squad,
   onSelectPlayer,
 }) {
   return (
@@ -21,13 +22,17 @@ export default function TeamDetails({
       </div>
 
       <div className="space-y-3">
-        {team.players.map((player) => (
-          <PlayerCard
-            key={player.id}
-            player={player}
-            onSelect={onSelectPlayer}
-          />
-        ))}
+        {team.players.map((player) => {
+          const isPicked = squad?.some(s => s.player.name.toLowerCase() === player.name.toLowerCase());
+          return (
+            <PlayerCard
+              key={player.id}
+              player={player}
+              disabled={isPicked}
+              onSelect={onSelectPlayer}
+            />
+          );
+        })}
       </div>
     </div>
   );

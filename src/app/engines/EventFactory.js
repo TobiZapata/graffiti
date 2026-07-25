@@ -150,7 +150,7 @@ export function rollAssist(
       "FLASH"
     : "DAMAGE";
 
-  return { name: assister.name, type };
+  return { name: assister.name, uid: assister.uid, type };
 }
 
 function buildKillText({
@@ -241,12 +241,13 @@ export function killEvent(
     killerBlind,
     killer: {
       name: killer.name,
+      uid: killer.uid,
       weapon: weaponId,
     },
     assist,
     airborne,
     modifiers,
-    victim: { name: victim.name },
+    victim: { name: victim.name, uid: victim.uid },
     text,
   };
 }
@@ -254,7 +255,7 @@ export function killEvent(
 export function plantEvent(player) {
   return {
     type: "PLANT",
-    player: { name: player.name },
+    player: { name: player.name, uid: player.uid },
     text: `${player.name} planta la bomba`,
   };
 }
@@ -265,7 +266,7 @@ export function defuseEvent(
 ) {
   return {
     type: "DEFUSE",
-    player: { name: player.name },
+    player: { name: player.name, uid: player.uid },
     withOpposition,
     text:
       withOpposition ?
@@ -277,7 +278,7 @@ export function defuseEvent(
 export function saveEvent(player) {
   return {
     type: "SAVE",
-    player: { name: player.name },
+    player: { name: player.name, uid: player.uid },
     text: `${player.name} decide guardar`,
   };
 }
@@ -292,7 +293,7 @@ export function weaponPickupEvent(
 ) {
   return {
     type: "WEAPON_PICKUP",
-    player: { name: player.name },
+    player: { name: player.name, uid: player.uid },
     weapon: weaponId,
     text: null, // no aparece en el feed, solo actualiza el estado visual
   };
@@ -300,13 +301,13 @@ export function weaponPickupEvent(
 export function suicideEvent(victim) {
   return {
     type: "SUICIDE",
-    victim: { name: victim.name },
+    victim: { name: victim.name, uid: victim.uid },
   };
 }
 
 export function bombKillEvent(victim) {
   return {
     type: "BOMB_KILL",
-    victim: { name: victim.name },
+    victim: { name: victim.name, uid: victim.uid },
   };
 }

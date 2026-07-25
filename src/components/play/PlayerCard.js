@@ -1,11 +1,13 @@
 export default function PlayerCard({
   player,
+  disabled,
   onSelect,
 }) {
   return (
     <button
+      disabled={disabled}
       onClick={() => onSelect(player)}
-      className="w-full rounded-xl border border-neutral-700 bg-neutral-900 p-4 text-left transition hover:border-orange-500"
+      className={`w-full rounded-xl border border-neutral-700 p-4 text-left transition ${disabled ? 'opacity-50 cursor-not-allowed bg-neutral-800' : 'bg-neutral-900 hover:border-orange-500'}`}
     >
       <div className="flex justify-between">
         <span className="font-bold">

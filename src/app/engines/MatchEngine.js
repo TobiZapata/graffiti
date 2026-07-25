@@ -30,7 +30,11 @@ function resetLossBonusForHalf(team) {
 function buildTeam(teamConfig) {
   const players =
     teamConfig.players.map(
-      (data) => new Player(data),
+      (data) => {
+        const p = new Player(data);
+        p.uid = `${teamConfig.id}_${p.name}`;
+        return p;
+      }
     );
   return new Team(
     teamConfig.name,
@@ -105,12 +109,14 @@ function playRound(
   const tSnap = tTeam.players.map(
     (p) => ({
       name: p.name,
+      uid: p.uid,
       weapon: p.weapon,
     }),
   );
   const ctSnap = ctTeam.players.map(
     (p) => ({
       name: p.name,
+      uid: p.uid,
       weapon: p.weapon,
     }),
   );
@@ -168,10 +174,12 @@ function playRound(
     finalPlayers: [
       ...tTeam.players.map((p) => ({
         name: p.name,
+        uid: p.uid,
         weapon: p.weapon,
       })),
       ...ctTeam.players.map((p) => ({
         name: p.name,
+        uid: p.uid,
         weapon: p.weapon,
       })),
     ],
@@ -300,12 +308,23 @@ export function simulateMatch(
   const finalScore = `${team1.name} ${team1.roundsWon} - ${team2.roundsWon} ${team2.name} | Gana ${winner.name}`;
   allEvents.push(textEvent(finalScore));
 
+  const playerStats = [...team1.players, ...team2.players].map(p => ({
+    name: p.name,
+    uid: p.uid,
+    role: p.role,
+    kills: p.kills,
+    deaths: p.deaths,
+    assists: p.assists,
+    team: team1.players.includes(p) ? team1Config.name : team2Config.name,
+  }));
+
   return {
     events: allEvents,
     finalScore,
     rounds,
     scoreTeam1: team1.roundsWon,
     scoreTeam2: team2.roundsWon,
+    playerStats,
   };
 }
 

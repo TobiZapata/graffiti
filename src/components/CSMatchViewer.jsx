@@ -105,6 +105,7 @@ function PlayerCard({
   weapon,
   alive,
   side,
+  kda,
 }) {
   const isRight = side === "CT";
   const dotColor =
@@ -171,6 +172,18 @@ function PlayerCard({
       >
         {name}
       </span>
+
+      {kda && (
+        <span style={{
+          fontSize: 10,
+          color: 'var(--text-muted)',
+          fontFamily: 'var(--font-mono)',
+          flexShrink: 0,
+          whiteSpace: 'nowrap',
+        }}>
+          {kda.k}/{kda.d}/{kda.a}
+        </span>
+      )}
 
       {/* Reemplazo del texto short(weapon) por el Icono */}
       {alive && weaponSrc ?
@@ -414,6 +427,7 @@ function KillFeedEntry({
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 export default function CSMatchViewer({
   rounds,
+  matchSummary,
 }) {
   const [roundIdx, setRoundIdx] =
     useState(0);
@@ -423,6 +437,7 @@ export default function CSMatchViewer({
     playerStates,
     setPlayerStates,
   ] = useState({});
+  const [playerKDA, setPlayerKDA] = useState({});
   const [feed, setFeed] = useState([]);
   const [playing, setPlaying] =
     useState(false);
@@ -446,20 +461,47 @@ export default function CSMatchViewer({
       const rd = rounds[ri];
       const ps = {};
       rd.tPlayers.forEach((p) => {
-        ps[p.name] = {
+        ps[p.uid] = {
           alive: true,
           weapon: p.weapon,
           side: "T",
         };
       });
       rd.ctPlayers.forEach((p) => {
-        ps[p.name] = {
+        ps[p.uid] = {
           alive: true,
           weapon: p.weapon,
           side: "CT",
         };
       });
       setPlayerStates(ps);
+
+      // Compute cumulative KDA from all KILL events in rounds 0..ri-1
+      const pkda = {};
+      // Initialize all players
+      rd.tPlayers.forEach((p) => { pkda[p.uid] = {k:0, d:0, a:0}; });
+      rd.ctPlayers.forEach((p) => { pkda[p.uid] = {k:0, d:0, a:0}; });
+      // Scan all previous rounds
+      for (let i = 0; i < ri; i++) {
+        for (const ev of rounds[i].events) {
+          if (ev.type === "KILL") {
+            if (ev.killer?.uid) {
+              if (!pkda[ev.killer.uid]) pkda[ev.killer.uid] = {k:0, d:0, a:0};
+              pkda[ev.killer.uid].k += 1;
+            }
+            if (ev.victim?.uid) {
+              if (!pkda[ev.victim.uid]) pkda[ev.victim.uid] = {k:0, d:0, a:0};
+              pkda[ev.victim.uid].d += 1;
+            }
+            if (ev.assist?.uid) {
+              if (!pkda[ev.assist.uid]) pkda[ev.assist.uid] = {k:0, d:0, a:0};
+              pkda[ev.assist.uid].a += 1;
+            }
+          }
+        }
+      }
+      setPlayerKDA(pkda);
+
       setFeed([]);
       setEventIdx(-1);
       setScoreT(
@@ -488,7 +530,7 @@ export default function CSMatchViewer({
           ...ev,
           killerSide:
             playerStates[
-              ev.killer?.name
+              ev.killer?.uid
             ]?.side ?? "T",
         };
         setFeed((prev) =>
@@ -498,18 +540,32 @@ export default function CSMatchViewer({
           ),
         );
 
+        setPlayerKDA((prev) => {
+          const n = { ...prev };
+          if (ev.killer?.uid) {
+            n[ev.killer.uid] = { ...n[ev.killer.uid], k: (n[ev.killer.uid]?.k || 0) + 1 };
+          }
+          if (ev.victim?.uid) {
+            n[ev.victim.uid] = { ...n[ev.victim.uid], d: (n[ev.victim.uid]?.d || 0) + 1 };
+          }
+          if (ev.assist?.uid) {
+            n[ev.assist.uid] = { ...n[ev.assist.uid], a: (n[ev.assist.uid]?.a || 0) + 1 };
+          }
+          return n;
+        });
+
         setPlayerStates((prev) => {
           const n = { ...prev };
 
-          if (n[ev.victim?.name])
-            n[ev.victim.name] = {
-              ...n[ev.victim.name],
+          if (n[ev.victim?.uid])
+            n[ev.victim.uid] = {
+              ...n[ev.victim.uid],
               alive: false,
               weapon: "KNIFE",
             };
 
           if (
-            n[ev.killer?.name] &&
+            n[ev.killer?.uid] &&
             ev.killer.weapon &&
             !UTILITY.has(
               ev.killer.weapon,
@@ -517,15 +573,15 @@ export default function CSMatchViewer({
           ) {
             const curPow =
               WEAPON_POWER[
-                n[ev.killer.name].weapon
+                n[ev.killer.uid].weapon
               ] ?? 0;
             const newPow =
               WEAPON_POWER[
                 ev.killer.weapon
               ] ?? 0;
             if (newPow >= curPow)
-              n[ev.killer.name] = {
-                ...n[ev.killer.name],
+              n[ev.killer.uid] = {
+                ...n[ev.killer.uid],
                 weapon:
                   ev.killer.weapon,
               };
@@ -538,9 +594,9 @@ export default function CSMatchViewer({
       if (ev.type === "WEAPON_PICKUP") {
         setPlayerStates((prev) => {
           const n = { ...prev };
-          if (n[ev.player?.name])
-            n[ev.player.name] = {
-              ...n[ev.player.name],
+          if (n[ev.player?.uid])
+            n[ev.player.uid] = {
+              ...n[ev.player.uid],
               weapon: ev.weapon,
             };
           return n;
@@ -562,9 +618,9 @@ export default function CSMatchViewer({
             const n = { ...prev };
             rd.finalPlayers.forEach(
               (p) => {
-                if (n[p.name])
-                  n[p.name] = {
-                    ...n[p.name],
+                if (n[p.uid])
+                  n[p.uid] = {
+                    ...n[p.uid],
                     weapon: p.weapon,
                   };
               },
@@ -857,17 +913,18 @@ export default function CSMatchViewer({
         <div>
           {r.tPlayers.map((p) => (
             <PlayerCard
-              key={p.name}
+              key={p.uid}
               name={p.name}
               side="T"
               alive={
-                playerStates[p.name]
+                playerStates[p.uid]
                   ?.alive ?? true
               }
               weapon={
-                playerStates[p.name]
+                playerStates[p.uid]
                   ?.weapon ?? p.weapon
               }
+              kda={playerKDA[p.uid]}
             />
           ))}
         </div>
@@ -913,17 +970,18 @@ export default function CSMatchViewer({
         <div>
           {r.ctPlayers.map((p) => (
             <PlayerCard
-              key={p.name}
+              key={p.uid}
               name={p.name}
               side="CT"
               alive={
-                playerStates[p.name]
+                playerStates[p.uid]
                   ?.alive ?? true
               }
               weapon={
-                playerStates[p.name]
+                playerStates[p.uid]
                   ?.weapon ?? p.weapon
               }
+              kda={playerKDA[p.uid]}
             />
           ))}
         </div>
@@ -1007,6 +1065,52 @@ export default function CSMatchViewer({
           Ronda →
         </button>
       </div>
+
+      {roundIdx === rounds.length - 1 && finished && matchSummary && (
+        <div style={{ marginTop: 20, background: 'var(--surface-1)', padding: 16, borderRadius: 12 }}>
+          <h3 style={{ marginBottom: 12, textAlign: 'center' }}>Match Summary</h3>
+          {(() => {
+            const totalRounds = rounds.length;
+            const enhancedStats = matchSummary.map(p => {
+              const kpr = p.kills / totalRounds;
+              const dpr = p.deaths / totalRounds;
+              const apr = p.assists / totalRounds;
+              let rating = (kpr * 0.75 + apr * 0.19 - dpr * 0.42 + 0.85);
+              rating = Math.max(0.0, Math.min(2.0, rating));
+              return { ...p, rating };
+            }).sort((a, b) => b.rating - a.rating);
+
+            const teams = [...new Set(enhancedStats.map(p => p.team))];
+            
+            return teams.map(teamName => {
+              const teamPlayers = enhancedStats.filter(p => p.team === teamName);
+              return (
+                <div key={teamName} style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 8, color: 'var(--text-accent)' }}>{teamName}</div>
+                  <table style={{ width: '100%', fontSize: 13, textAlign: 'left', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                        <th style={{ padding: '4px 0' }}>Player</th>
+                        <th>K/D/A</th>
+                        <th>Rating 3.0</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {teamPlayers.map(p => (
+                        <tr key={p.uid} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                          <td style={{ padding: '4px 0' }}>{p.name}</td>
+                          <td>{p.kills}/{p.deaths}/{p.assists}</td>
+                          <td>{p.rating.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            });
+          })()}
+        </div>
+      )}
     </div>
   );
 }

@@ -287,6 +287,8 @@ function processKill(
   subtype,
 ) {
   rewardKill(winner);
+  winner.kills += 1;
+  loser.deaths += 1;
 
   if (loserTeamAlive === state.aliveA)
     state.tKillsCount += 1;
@@ -303,13 +305,19 @@ function processKill(
       (p) => p !== winner,
     );
 
-  state.events.push(
-    killEvent(winner, loser, {
-      subtype,
-      weaponOverride,
-      teammates,
-    }),
-  );
+  const ev = killEvent(winner, loser, {
+    subtype,
+    weaponOverride,
+    teammates,
+  });
+  state.events.push(ev);
+
+  if (ev.assist) {
+    const assisterUid = ev.assist.uid;
+    const allPlayers = [...state.teamA.players, ...state.teamB.players];
+    const assisterPlayer = allPlayers.find(p => p.uid === assisterUid);
+    if (assisterPlayer) assisterPlayer.assists += 1;
+  }
 
   // el arma cae al suelo
   state.groundWeapons.push(

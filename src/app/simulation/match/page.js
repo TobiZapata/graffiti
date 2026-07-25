@@ -25,8 +25,8 @@ function MatchContent() {
     }
 
     // Run simulation
-    const { rounds, scoreTeam1, scoreTeam2 } = simulateMatch(currentMatch.teamA, currentMatch.teamB);
-    setMatchData({ match: currentMatch, rounds, scoreTeam1, scoreTeam2 });
+    const { rounds, scoreTeam1, scoreTeam2, playerStats } = simulateMatch(currentMatch.teamA, currentMatch.teamB);
+    setMatchData({ match: currentMatch, rounds, scoreTeam1, scoreTeam2, playerStats });
   }, [matches, matchId, router]);
 
   if (!matchData) {
@@ -60,6 +60,7 @@ function MatchContent() {
       
       <CSMatchViewer 
         rounds={matchData.rounds} 
+        matchSummary={matchData.playerStats}
         onSimulationComplete={() => setSimulationDone(true)}
       />
     </div>
