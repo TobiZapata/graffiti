@@ -64,7 +64,7 @@ export default function PlayPage() {
     squad.length >= 5;
 
   return (
-    <main className="min-h-screen bg-neutral-950 p-8 text-white">
+    <main className="min-h-screen p-8 text-white">
       <h1 className="mb-8 text-center text-4xl font-bold">
         ROUND{" "}
         {Math.min(squad.length + 1, 5)}{" "}

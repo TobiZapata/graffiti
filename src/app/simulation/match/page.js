@@ -48,7 +48,7 @@ function MatchContent() {
   };
 
   return (
-    <div className="relative min-h-screen bg-neutral-950">
+    <div className="relative min-h-screen">
       <div className="absolute top-4 right-4 z-50">
         <button
           onClick={handleFinishMatch}
