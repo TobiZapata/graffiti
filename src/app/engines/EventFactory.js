@@ -116,7 +116,7 @@ export function rollAssist(
     (p) => p !== killer,
   );
   if (pool.length === 0) return null;
-  if (Math.random() > 0.18) return null;
+  if (Math.random() > 0.25) return null;
 
   const weights = pool.map((p) =>
     p.role === "SUPPORT" ? 2 : 1,
@@ -143,8 +143,8 @@ export function rollAssist(
 
   const flashChance =
     assister.role === "SUPPORT" ?
-      0.6
-    : 0.35;
+      0.45
+    : 0.25;
   const type =
     Math.random() < flashChance ?
       "FLASH"

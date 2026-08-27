@@ -7,19 +7,50 @@ import { formatTeamForSimulation } from "@/app/utils/playerExpansion";
 
 const TournamentContext = createContext();
 
+// Genera scores realistas de CS2 para matches NPC
+function generateScore() {
+  const roll = Math.random();
+  let winnerScore, loserScore;
+
+  if (roll < 0.20) {
+    // ~20% overtime (MR12 → empate 12-12, luego OT de 3 rondas)
+    const otRounds = Math.random() < 0.7 ? 1 : 2; // 1 o 2 tiempos extra
+    winnerScore = 13 + otRounds * 3;
+    loserScore = winnerScore - 2; // OT siempre se gana por 2 (16-14, 19-17)
+  } else if (roll < 0.45) {
+    // ~25% partida cerrada (13-10, 13-11, 13-12)
+    winnerScore = 13;
+    loserScore = 10 + Math.floor(Math.random() * 3); // 10, 11, o 12
+  } else if (roll < 0.75) {
+    // ~30% partida normal (13-6 a 13-9)
+    winnerScore = 13;
+    loserScore = 6 + Math.floor(Math.random() * 4); // 6, 7, 8, o 9
+  } else {
+    // ~25% dominio claro (13-2 a 13-5)
+    winnerScore = 13;
+    loserScore = 2 + Math.floor(Math.random() * 4); // 2, 3, 4, o 5
+  }
+
+  return { winnerScore, loserScore };
+}
+
 export function TournamentProvider({ children }) {
   const [mySquad, setMySquad] = useState([]);
-  const [stage, setStage] = useState("swiss"); // "swiss", "playoffs", "eliminated", "won"
+  const [teamName, setTeamName] = useState("My Team");
+  const [stage, setStage] = useState("swiss"); // "swiss", "swiss_complete", "playoffs", "results_pending", "eliminated", "won"
+  const [pendingResult, setPendingResult] = useState(null); // "eliminated" or "won"
   const [swissRound, setSwissRound] = useState(1);
   const [standings, setStandings] = useState([]); // [{ teamId, wins, losses }]
   const [matches, setMatches] = useState([]); // [{ round, teamA, teamB, result, isPlayerMatch, completed }]
 
   // Initialize tournament
-  const initTournament = (squad) => {
+  const initTournament = (squad, name = "My Team") => {
     setMySquad(squad);
+    setTeamName(name);
     setStage("swiss");
     setSwissRound(1);
     setMatches([]);
+    setPendingResult(null);
     
     // Pick random teams from DB to fill the 15 spots
     let otherTeams = [...teamsData].sort(() => Math.random() - 0.5);
@@ -32,7 +63,7 @@ export function TournamentProvider({ children }) {
     otherTeams = otherTeams.slice(0, 15);
     
     const initialStandings = [
-      { id: "player_team", ...formatTeamForSimulation({ name: "My Team", isPlayer: true, icon: "/logos/faze.png" }, squad), isPlayer: true, wins: 0, losses: 0 },
+      { id: "player_team", ...formatTeamForSimulation({ name, isPlayer: true, icon: "/logos/faze.png" }, squad), isPlayer: true, wins: 0, losses: 0 },
       ...otherTeams.map((t, i) => ({ id: `${t.id}_${i}`, ...formatTeamForSimulation(t), isPlayer: false, wins: 0, losses: 0 }))
     ];
     setStandings(initialStandings);
@@ -97,7 +128,8 @@ export function TournamentProvider({ children }) {
       if (!m.completed && !m.isPlayerMatch) {
         // simulate basic win
         const winner = Math.random() > 0.5 ? m.teamA : m.teamB;
-        const result = { teamA: m.teamA, teamB: m.teamB, winner: winner.id, scoreA: 13, scoreB: 10 };
+        const { winnerScore, loserScore } = generateScore();
+        const result = { teamA: m.teamA, teamB: m.teamB, winner: winner.id, scoreA: winner.id === m.teamA.id ? winnerScore : loserScore, scoreB: winner.id === m.teamA.id ? loserScore : winnerScore };
         newCompletedMatches.push({ id: m.id, result });
         
         const teamAIdx = updatedStandings.findIndex(t => t.id === m.teamA.id);
@@ -126,7 +158,9 @@ export function TournamentProvider({ children }) {
     // Now check if player is eliminated or qualified
     const playerTeam = updatedStandings.find(t => t.isPlayer);
     if (playerTeam.losses === 3) {
-      setStage("eliminated");
+      // Pausar en results_pending para mostrar los resultados antes del modal
+      setPendingResult("eliminated");
+      setStage("results_pending");
       return;
     }
     if (playerTeam.wins === 3) {
@@ -151,7 +185,8 @@ export function TournamentProvider({ children }) {
           const tA = active[i];
           const tB = active[i + 1];
           const winner = Math.random() > 0.5 ? tA : tB;
-          const result = { teamA: tA, teamB: tB, winner: winner.id, scoreA: 13, scoreB: 10 };
+          const { winnerScore: ws, loserScore: ls } = generateScore();
+          const result = { teamA: tA, teamB: tB, winner: winner.id, scoreA: winner.id === tA.id ? ws : ls, scoreB: winner.id === tA.id ? ls : ws };
           
           const matchEntry = {
             id: `R${simRound}_M${i/2}`,
@@ -180,8 +215,8 @@ export function TournamentProvider({ children }) {
 
       setMatches(simMatches);
       setStandings(simStandings);
-      setStage("playoffs");
-      initPlayoffs(simStandings);
+      // Pausar en swiss_complete para mostrar el cuadro Swiss final
+      setStage("swiss_complete");
       return;
     }
     
@@ -198,7 +233,8 @@ export function TournamentProvider({ children }) {
     matches.forEach(m => {
       if (!m.completed && !m.isPlayerMatch && playoffRounds.includes(m.round)) {
         const winner = Math.random() > 0.5 ? m.teamA : m.teamB;
-        const result = { teamA: m.teamA, teamB: m.teamB, winner: winner.id, scoreA: 13, scoreB: 10 };
+        const { winnerScore: pws, loserScore: pls } = generateScore();
+        const result = { teamA: m.teamA, teamB: m.teamB, winner: winner.id, scoreA: winner.id === m.teamA.id ? pws : pls, scoreB: winner.id === m.teamA.id ? pls : pws };
         newCompletedMatches.push({ id: m.id, result });
       }
     });
@@ -218,7 +254,8 @@ export function TournamentProvider({ children }) {
       m.isPlayerMatch && m.completed && playoffRounds.includes(m.round) && m.result.winner !== 'player_team'
     );
     if (playerLostMatch) {
-      setStage('eliminated');
+      setPendingResult("eliminated");
+      setStage("results_pending");
       return;
     }
 
@@ -229,7 +266,8 @@ export function TournamentProvider({ children }) {
 
     // Check if player won the tournament
     if (finalMatch && finalMatch.completed && finalMatch.result.winner === 'player_team') {
-      setStage('won');
+      setPendingResult("won");
+      setStage("results_pending");
       return;
     }
 
@@ -260,6 +298,20 @@ export function TournamentProvider({ children }) {
   const advanceStage = () => {
     if (stage === "swiss") advanceRound();
     else if (stage === "playoffs") advancePlayoffs();
+  };
+
+  // Continuar de swiss_complete a playoffs
+  const continueToPlayoffs = () => {
+    setStage("playoffs");
+    initPlayoffs(standings);
+  };
+
+  // Mostrar resultado final (desde results_pending)
+  const showFinalResult = () => {
+    if (pendingResult) {
+      setStage(pendingResult);
+      setPendingResult(null);
+    }
   };
 
   const initPlayoffs = (finalStandings) => {
@@ -299,8 +351,9 @@ export function TournamentProvider({ children }) {
 
   return (
     <TournamentContext.Provider value={{
-      mySquad, stage, swissRound, standings, matches,
-      initTournament, completeMatch, advanceRound: advanceStage
+      mySquad, teamName, stage, swissRound, standings, matches, pendingResult,
+      initTournament, completeMatch, advanceRound: advanceStage,
+      continueToPlayoffs, showFinalResult
     }}>
       {children}
     </TournamentContext.Provider>

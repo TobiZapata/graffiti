@@ -27,7 +27,7 @@ const SWISS_STRUCTURE = [
 ];
 
 export default function SimulationPage() {
-  const { stage, swissRound, standings, matches, advanceRound, mySquad } = useTournament();
+  const { stage, swissRound, standings, matches, advanceRound, mySquad, teamName, continueToPlayoffs, showFinalResult, pendingResult } = useTournament();
   const router = useRouter();
 
   if (!standings || standings.length === 0) {
@@ -97,7 +97,11 @@ export default function SimulationPage() {
         {/* Header */}
         <header className="mb-6 flex items-center justify-between">
           <h1 className="text-3xl md:text-4xl font-black tracking-tight text-amber-500">
-            {stage === "swiss" ? `SWISS STAGE — ROUND ${swissRound}` : stage === "won" ? "🏆 MAJOR CHAMPIONS" : stage === "playoffs" ? "PLAYOFFS" : stage.toUpperCase()}
+            {stage === "swiss" ? `SWISS STAGE — ROUND ${swissRound}` 
+            : stage === "swiss_complete" ? "SWISS STAGE — COMPLETE"
+            : stage === "won" ? "🏆 MAJOR CHAMPIONS" 
+            : stage === "playoffs" || stage === "results_pending" ? "PLAYOFFS" 
+            : stage.toUpperCase()}
           </h1>
 
           {["swiss", "playoffs"].includes(stage) && playerMatch && !playerMatch.completed && (
@@ -111,8 +115,9 @@ export default function SimulationPage() {
         </header>
 
         {/* SWISS STAGE VIEW */}
-        {stage === "swiss" && (
-          <div className="overflow-x-auto pb-4">
+        {(stage === "swiss" || stage === "swiss_complete" || (stage === "results_pending" && !matches.some(m => typeof m.round === "string"))) && (
+          <>
+            <div className="overflow-x-auto pb-4">
             <div className="flex gap-2 min-w-[1200px]">
               {SWISS_STRUCTURE.map((col, colIdx) => {
                 const isCurrentOrPast = col.round <= swissRound;
@@ -204,10 +209,51 @@ export default function SimulationPage() {
               })}
             </div>
           </div>
+
+            {/* Botón continuar a playoffs desde swiss_complete */}
+            {stage === "swiss_complete" && (
+              <div className="flex justify-center mt-6">
+                <button
+                  onClick={continueToPlayoffs}
+                  className="rounded-lg bg-green-600 px-8 py-4 font-black text-lg uppercase tracking-wider hover:bg-green-500 transition-all hover:scale-105 shadow-lg shadow-green-600/30"
+                >
+                  CONTINUE TO PLAYOFFS →
+                </button>
+              </div>
+            )}
+
+            {/* Botón ver resultado final desde results_pending (eliminado en swiss) */}
+            {stage === "results_pending" && (
+              <div className="flex justify-center mt-6">
+                <button
+                  onClick={showFinalResult}
+                  className="rounded-lg bg-amber-600 px-8 py-4 font-black text-lg uppercase tracking-wider hover:bg-amber-500 transition-all hover:scale-105 shadow-lg shadow-amber-600/30"
+                >
+                  VIEW FINAL RESULT
+                </button>
+              </div>
+            )}
+          </>
         )}
 
         {/* PLAYOFFS BRACKET VIEW */}
-        {stage === "playoffs" && <PlayoffBracket matches={matches} />}
+        {(stage === "playoffs" || (stage === "results_pending" && matches.some(m => typeof m.round === "string"))) && (
+          <>
+            <PlayoffBracket matches={matches} />
+
+            {/* Botón ver resultado final desde results_pending (playoffs) */}
+            {stage === "results_pending" && (
+              <div className="flex justify-center mt-6">
+                <button
+                  onClick={showFinalResult}
+                  className="rounded-lg bg-amber-600 px-8 py-4 font-black text-lg uppercase tracking-wider hover:bg-amber-500 transition-all hover:scale-105 shadow-lg shadow-amber-600/30"
+                >
+                  VIEW FINAL RESULT
+                </button>
+              </div>
+            )}
+          </>
+        )}
 
         {/* STANDINGS TABLE */}
         <section className="mt-8 rounded-xl border border-neutral-800 bg-neutral-900/80 backdrop-blur-sm p-6">

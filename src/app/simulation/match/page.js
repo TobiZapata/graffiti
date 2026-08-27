@@ -48,13 +48,13 @@ function MatchContent() {
   };
 
   return (
-    <div className="relative min-h-screen">
+    <div className="relative min-h-screen pt-20">
       <div className="absolute top-4 right-4 z-50">
         <button
           onClick={handleFinishMatch}
-          className="rounded bg-amber-600 px-6 py-2 font-bold text-white hover:bg-amber-500"
+          className="rounded bg-amber-600 px-6 py-2 font-bold text-white hover:bg-amber-500 shadow-md"
         >
-          {simulationDone ? "RETURN TO TOURNAMENT" : "SKIP MATCH"}
+          {simulationDone ? "VIEW RESULTS" : "SKIP MATCH"}
         </button>
       </div>
       

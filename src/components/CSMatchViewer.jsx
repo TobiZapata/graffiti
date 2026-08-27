@@ -99,6 +99,194 @@ const PlayerName = ({
     {name}
   </span>
 );
+
+// ─── TIMELINE ───────────────────────────────────────────────────────────────
+function MatchTimeline({ rounds, currentRoundIdx, isCurrentRoundFinished }) {
+  if (!rounds || rounds.length === 0) return null;
+  const team1Name = rounds[0].tTeam;
+  const team2Name = rounds[0].ctTeam;
+
+  const getIcon = (type) => {
+    switch (type) {
+      case "KILL": return "/modifiers/kill.svg";
+      case "TIME": return "/modifiers/clock.svg";
+      case "BOMB": return "/weapons/planted_c4.svg";
+      case "DEFUSE": return "/weapons/defuser.svg";
+      default: return null;
+    }
+  };
+
+  let score1 = 0;
+  let score2 = 0;
+  for (let i = 0; i < rounds.length; i++) {
+    const isRevealed = i < currentRoundIdx || (i === currentRoundIdx && isCurrentRoundFinished);
+    if (isRevealed && rounds[i]) {
+      if (rounds[i].winnerName === team1Name) score1++;
+      else score2++;
+    }
+  }
+  const nextRoundIndex = isCurrentRoundFinished ? currentRoundIdx + 1 : currentRoundIdx;
+  const visibleRoundNum = nextRoundIndex + 1;
+  const totalSlots = visibleRoundNum <= 24 ? 24 : Math.ceil((visibleRoundNum - 24) / 6) * 6 + 24;
+  
+  const timelineSlots = Array.from({ length: totalSlots }, (_, i) => rounds[i] || null);
+
+  let targetScore = 13;
+  if (Math.max(score1, score2) >= 12 && totalSlots > 24) {
+      targetScore = 13 + Math.floor((Math.max(score1, score2) - 12) / 3) * 3 + 3; 
+  }
+  const roundsNeeded = targetScore - Math.max(score1, score2);
+  const trophyIdx = roundsNeeded > 0 ? (isCurrentRoundFinished ? currentRoundIdx + 1 : currentRoundIdx) + roundsNeeded - 1 : -1;
+
+  const MaskIcon = ({ src, color, size }) => (
+    <div style={{
+      width: size, height: size,
+      backgroundColor: color,
+      WebkitMaskImage: `url(${src})`,
+      WebkitMaskSize: "contain",
+      WebkitMaskRepeat: "no-repeat",
+      WebkitMaskPosition: "center"
+    }} />
+  );
+
+  const halves = [];
+  let currentHalf = [];
+  timelineSlots.forEach((rd, i) => {
+    currentHalf.push(rd);
+    if ((i + 1) === 12 || (i + 1) === 24 || ((i + 1) > 24 && (i + 1 - 24) % 3 === 0)) {
+      halves.push(currentHalf);
+      currentHalf = [];
+    }
+  });
+  if (currentHalf.length > 0) halves.push(currentHalf);
+
+  return (
+    <div style={{ 
+      display: "flex", 
+      alignItems: "center", 
+      justifyContent: "center",
+      marginBottom: 10, 
+      marginTop: 10,
+      padding: "10px 16px",
+      position: "relative",
+      overflowX: "auto",
+      background: "var(--surface-1)",
+      borderRadius: 12,
+      border: "0.5px solid var(--border)"
+    }}>
+      {halves.map((half, hIdx) => {
+        let halfStartIdx = 0;
+        for (let k = 0; k < hIdx; k++) halfStartIdx += halves[k].length;
+
+        return (
+          <div key={hIdx} style={{ display: "flex", gap: 2, marginRight: hIdx < halves.length - 1 ? 12 : 0, position: "relative" }}>
+            {/* Halftime vertical separator line */}
+            {hIdx > 0 && (
+              <div style={{ position: "absolute", left: -7, top: "25%", height: "50%", width: 1, background: "var(--border)" }} />
+            )}
+            
+            {half.map((rd, localIdx) => {
+              const i = halfStartIdx + localIdx;
+              const isRevealed = i < currentRoundIdx || (i === currentRoundIdx && isCurrentRoundFinished);
+              const isCurrent = i === currentRoundIdx && !isCurrentRoundFinished;
+              const isWinnerT1 = rd && rd.winnerName === team1Name;
+              
+              let tickColor = "rgba(255, 255, 255, 0.25)";
+              if (isCurrent) tickColor = "#ffffff";
+              else if (isRevealed && rd) {
+                tickColor = rd.winnerSide === "T" ? "#dfbf63" : "#86a4d7";
+              }
+              
+              if (!isRevealed && !isCurrent) {
+                if (trophyIdx !== -1 && i > trophyIdx) {
+                  tickColor = "rgba(255, 255, 255, 0.05)";
+                }
+              }
+              
+              const showNumber = (i + 1) % 5 === 0;
+
+              return (
+                <div key={i} style={{
+                  position: "relative",
+                  width: 20,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  zIndex: 1,
+                }}>
+                  {/* Top Area (Team 1) */}
+                  <div style={{ height: 26, width: "100%", position: "relative" }}>
+                    {isRevealed && isWinnerT1 && rd && rd.winType && (
+                      <>
+                        <div style={{ position: "absolute", bottom: 0, left: 0, width: "100%", height: 16, background: `linear-gradient(to top, ${tickColor}A0, transparent)` }} />
+                        <div style={{ position: "absolute", bottom: 6, left: "50%", transform: "translateX(-50%)" }}>
+                          <MaskIcon src={getIcon(rd.winType)} color={tickColor} size={14} />
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* The Horizontal Dash */}
+                  <div style={{ 
+                    position: "relative", 
+                    height: 4, 
+                    width: 18, 
+                    background: tickColor, 
+                    boxShadow: isCurrent ? "0 0 6px #ffffff" : "none",
+                    borderRadius: 2
+                  }}>
+                    {/* Superimposed Round Number */}
+                    {showNumber && (
+                      <div style={{
+                        position: "absolute",
+                        top: "50%", left: "50%",
+                        transform: "translate(-50%, -50%)",
+                        fontSize: 10,
+                        color: "#ffffff",
+                        fontWeight: "bold",
+                        fontFamily: "var(--font-mono)",
+                        textShadow: "0px 0px 2px #000, 0px 0px 4px #000",
+                        zIndex: 2
+                      }}>
+                        {i + 1}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Bottom Area (Team 2) */}
+                  <div style={{ height: 26, width: "100%", position: "relative" }}>
+                    {isRevealed && !isWinnerT1 && rd && rd.winType && (
+                      <>
+                        <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: 16, background: `linear-gradient(to bottom, ${tickColor}A0, transparent)` }} />
+                        <div style={{ position: "absolute", top: 6, left: "50%", transform: "translateX(-50%)" }}>
+                          <MaskIcon src={getIcon(rd.winType)} color={tickColor} size={14} />
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Trophy */}
+                  {i === trophyIdx && (
+                    <div style={{ 
+                      position: "absolute", 
+                      top: 32, 
+                      left: "50%", 
+                      transform: "translateX(-50%)", 
+                      zIndex: 10,
+                    }}>
+                      <MaskIcon src="/modifiers/trophy.svg" color="#ffffff" size={14} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── PLAYER CARD ────────────────────────────────────────────────────────────
 function PlayerCard({
   name,
@@ -227,10 +415,16 @@ function feedStyle(ev) {
   }
   if (ev.type === "TEXT") {
     weight = 500;
-    color =
-      ev.text?.includes("explosión") ?
-        "var(--text-warning)"
-      : "var(--text-accent)";
+    if (ev.winnerSide) {
+      // Colorear con el color del side ganador (CT azul / T dorado)
+      color = ev.winnerSide === "T" ? "#dfbf63" : "#86a4d7";
+      weight = 700;
+    } else {
+      color =
+        ev.text?.includes("explosión") ?
+          "var(--text-warning)"
+        : "var(--text-accent)";
+    }
   }
   return { color, fontWeight: weight };
 }
@@ -274,7 +468,16 @@ function KillFeedEntry({
       </>
     );
   }
-  // 2. Caso: Otros eventos de texto (Fin de ronda, etc.)
+  // 2. Caso: Muerte por C4
+  else if (ev.type === "BOMB_KILL") {
+    content = (
+      <>
+        <Icon src="/weapons/planted_c4.svg" alt="Explosión C4" size={24} />
+        <PlayerName name={ev.victim?.name} side={ev.victimSide ?? "CT"} size={14} />
+      </>
+    );
+  }
+  // 3. Caso: Otros eventos de texto (Fin de ronda, etc.)
   else if (ev.type !== "KILL") {
     const { color, fontWeight } =
       feedStyle(ev);
@@ -428,6 +631,7 @@ function KillFeedEntry({
 export default function CSMatchViewer({
   rounds,
   matchSummary,
+  onSimulationComplete,
 }) {
   const [roundIdx, setRoundIdx] =
     useState(0);
@@ -644,9 +848,10 @@ export default function CSMatchViewer({
 
       // Los KILL ya se manejan arriba; evitamos duplicarlos en el feed
       if (
-        ev.type !== "KILL" &&
-        ev.type !== "SAVE" &&
-        ev.text !== null
+        (ev.type !== "KILL" &&
+          ev.type !== "SAVE" &&
+          ev.text !== null) ||
+        ev.type === "BOMB_KILL"
       ) {
         setFeed((prev) =>
           [ev, ...prev].slice(0, 9),
@@ -682,6 +887,7 @@ export default function CSMatchViewer({
           setPlaying(true); // Forzamos que siga en true por si las dudas
         } else {
           setPlaying(false); // Si era la última ronda de la partida, se detiene
+          if (onSimulationComplete) onSimulationComplete();
         }
       }, 2000); // 1 segundo de entretiempo entre rondas para ver el feed limpio antes de la otra
 
@@ -720,6 +926,85 @@ export default function CSMatchViewer({
         fontFamily: "var(--font-sans)",
       }}
     >
+      {/* ── Controls ── */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+          marginBottom: 14,
+          paddingBottom: 12,
+          borderBottom:
+            "0.5px solid var(--border)",
+        }}
+      >
+        <button
+          onClick={() =>
+            setRoundIdx((i) =>
+              Math.max(0, i - 1),
+            )
+          }
+          disabled={roundIdx === 0}
+          style={{ fontSize: 13 }}
+        >
+          ← Ronda
+        </button>
+
+        {!finished ?
+          <button
+            onClick={() =>
+              setPlaying((p) => !p)
+            }
+            style={{
+              fontSize: 13,
+              minWidth: 80,
+            }}
+          >
+            {playing ?
+              "⏸ Pausa"
+            : "▶ Play"}
+          </button>
+        : <button
+            onClick={() =>
+              reset(roundIdx)
+            }
+            style={{
+              fontSize: 13,
+              minWidth: 80,
+            }}
+          >
+            ↺ Repetir
+          </button>
+        }
+
+        <button
+          onClick={step}
+          disabled={playing || finished}
+          style={{ fontSize: 13 }}
+        >
+          Evento →
+        </button>
+
+        <button
+          onClick={() =>
+            setRoundIdx((i) =>
+              Math.min(
+                rounds.length - 1,
+                i + 1,
+              ),
+            )
+          }
+          disabled={
+            roundIdx ===
+            rounds.length - 1
+          }
+          style={{ fontSize: 13 }}
+        >
+          Ronda →
+        </button>
+      </div>
+
       {/* ── Scoreboard ── */}
       <div
         style={{
@@ -900,6 +1185,8 @@ export default function CSMatchViewer({
         </div>
       </div>
 
+      <MatchTimeline rounds={rounds} currentRoundIdx={roundIdx} isCurrentRoundFinished={finished} />
+
       {/* ── Main 3-column layout ── */}
       <div
         style={{
@@ -987,84 +1274,7 @@ export default function CSMatchViewer({
         </div>
       </div>
 
-      {/* ── Controls ── */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 8,
-          marginTop: 14,
-          paddingTop: 12,
-          borderTop:
-            "0.5px solid var(--border)",
-        }}
-      >
-        <button
-          onClick={() =>
-            setRoundIdx((i) =>
-              Math.max(0, i - 1),
-            )
-          }
-          disabled={roundIdx === 0}
-          style={{ fontSize: 13 }}
-        >
-          ← Ronda
-        </button>
 
-        {!finished ?
-          <button
-            onClick={() =>
-              setPlaying((p) => !p)
-            }
-            style={{
-              fontSize: 13,
-              minWidth: 80,
-            }}
-          >
-            {playing ?
-              "⏸ Pausa"
-            : "▶ Play"}
-          </button>
-        : <button
-            onClick={() =>
-              reset(roundIdx)
-            }
-            style={{
-              fontSize: 13,
-              minWidth: 80,
-            }}
-          >
-            ↺ Repetir
-          </button>
-        }
-
-        <button
-          onClick={step}
-          disabled={playing || finished}
-          style={{ fontSize: 13 }}
-        >
-          Evento →
-        </button>
-
-        <button
-          onClick={() =>
-            setRoundIdx((i) =>
-              Math.min(
-                rounds.length - 1,
-                i + 1,
-              ),
-            )
-          }
-          disabled={
-            roundIdx ===
-            rounds.length - 1
-          }
-          style={{ fontSize: 13 }}
-        >
-          Ronda →
-        </button>
-      </div>
 
       {roundIdx === rounds.length - 1 && finished && matchSummary && (
         <div style={{ marginTop: 20, background: 'var(--surface-1)', padding: 16, borderRadius: 12 }}>

@@ -12,6 +12,7 @@ import {
   saveEvent,
   textEvent,
   weaponPickupEvent,
+  bombKillEvent,
 } from "./EventFactory";
 import {
   isUpgrade,
@@ -73,8 +74,17 @@ function selectBestCandidate(
 }
 
 // ─── pickup mid-ronda: compañero (55%) o enemigo (45%) ──────────────────────
-const AWP_MID_ROUND_MIN_POWER = 63; // necesitás rifle para usar AWP mid-ronda
 const MID_ROUND_PICKUP_CHANCE = 0.35;
+
+function getDynamicPower(weaponId, aliveTeamMembers) {
+  const basePower = weaponPower(weaponId);
+  if (weaponId === "AWP") {
+    const awpCount = aliveTeamMembers.filter(m => m.weapon === "AWP").length;
+    if (awpCount >= 2) return 0;
+    if (awpCount === 1) return 62; // Menor que M4 (63) y AK (68)
+  }
+  return basePower;
+}
 
 function attemptMidRoundPickup(
   state,
@@ -94,28 +104,19 @@ function attemptMidRoundPickup(
   )
     return;
 
-  const isAWP =
-    droppedWeaponId === "AWP";
-
-  const eligible = (p) => {
+  const eligible = (p, teamAlive) => {
     if (p === loser) return false; // el muerto no recoge su propia arma
-    if (isAWP) {
-      return (
-        p.weapon !== "AWP" &&
-        weaponPower(p.weapon) <
-          AWP_MID_ROUND_MIN_POWER
-      );
-    }
-    return isUpgrade(
-      p.weapon,
-      droppedWeaponId,
-    );
+    if (droppedWeaponId === "AWP" && p.weapon === "AWP") return false;
+    
+    const currentPower = getDynamicPower(p.weapon, teamAlive);
+    const dropPower = getDynamicPower(droppedWeaponId, teamAlive);
+    return dropPower > currentPower;
   };
 
   const winnerPool =
-    winnerAlive.filter(eligible);
+    winnerAlive.filter(p => eligible(p, winnerAlive));
   const loserPool =
-    loserAlive.filter(eligible);
+    loserAlive.filter(p => eligible(p, loserAlive));
 
   if (
     winnerPool.length === 0 &&
@@ -180,58 +181,67 @@ function distributeEndOfRoundWeapons(
   )
     return;
 
-  // distribuir de mayor a menor firepower
-  const sorted = [
-    ...state.groundWeapons,
-  ].sort(
-    (a, b) =>
-      weaponPower(b) - weaponPower(a),
-  );
-
-  for (const weaponId of sorted) {
-    if (
-      !weaponId ||
-      weaponId === "KNIFE"
-    )
-      continue;
-
-    const isAWP = weaponId === "AWP";
-
-    const candidates = survivors.filter(
-      (p) =>
-        isAWP ?
-          p.weapon !== "AWP" &&
-          isUpgrade(p.weapon, weaponId)
-        : isUpgrade(p.weapon, weaponId),
+  let weaponPicked = true;
+  while (weaponPicked && state.groundWeapons.length > 0) {
+    weaponPicked = false;
+    
+    // distribuir de mayor a menor firepower dinámico (recalculado en cada pick)
+    const sorted = [
+      ...state.groundWeapons,
+    ].sort(
+      (a, b) =>
+        getDynamicPower(b, survivors) - getDynamicPower(a, survivors),
     );
 
-    if (candidates.length === 0)
-      continue;
+    for (let i = 0; i < sorted.length; i++) {
+      const weaponId = sorted[i];
+      if (
+        !weaponId ||
+        weaponId === "KNIFE"
+      )
+        continue;
+      
+      const dropPower = getDynamicPower(weaponId, survivors);
+      if (dropPower === 0) continue;
 
-    const chosen = selectBestCandidate(
-      candidates,
-      weaponId,
-    );
-    if (!chosen) continue;
-
-    chosen.weapon = weaponId;
-
-    const idx =
-      state.groundWeapons.indexOf(
-        weaponId,
-      );
-    if (idx !== -1)
-      state.groundWeapons.splice(
-        idx,
-        1,
+      const candidates = survivors.filter(
+        (p) => {
+          if (weaponId === "AWP" && p.weapon === "AWP") return false;
+          return dropPower > getDynamicPower(p.weapon, survivors);
+        }
       );
 
-    state.events.push(
-      weaponPickupEvent(
-        chosen,
+      if (candidates.length === 0)
+        continue;
+
+      const chosen = selectBestCandidate(
+        candidates,
         weaponId,
-      ),
-    );
+      );
+      if (!chosen) continue;
+
+      chosen.weapon = weaponId;
+
+      const idx =
+        state.groundWeapons.indexOf(
+          weaponId,
+        );
+      if (idx !== -1)
+        state.groundWeapons.splice(
+          idx,
+          1,
+        );
+
+      state.events.push(
+        weaponPickupEvent(
+          chosen,
+          weaponId,
+        ),
+      );
+      
+      weaponPicked = true;
+      break; // Reiniciamos el while para recalcular prioridades
+    }
   }
 }
 
@@ -493,22 +503,20 @@ function tradeKill(state) {
   }
 }
 
-function resolvePostPlant(state) {
+function resolvePostPlant(state, canSaveCT) {
   const aliveT = state.aliveA.length;
   const aliveCT = state.aliveB.length;
 
   // T eliminó a todos los CT: gana por eliminación aunque la bomba esté plantada.
   // No se muestra "por explosión" porque la ronda terminó antes de que explote.
-  if (aliveCT === 0) {
-    return "T";
-  }
+  if (state.aliveB.length === 0)
+    return "T"; // Si no quedan CTs (por ejemplo se murieron por la explosión)
 
-  // No quedan T: el CT desactiva sin presión
-  if (aliveT === 0) {
-    const defuser =
-      weightedRandomPlayer(
-        state.aliveB,
-      );
+  // CT defusea si no hay Ts y le da el tiempo
+  if (state.aliveA.length === 0) {
+    const defuser = weightedRandomPlayer(
+      state.aliveB,
+    );
     state.events.push(
       defuseEvent(defuser, false),
     );
@@ -528,8 +536,8 @@ function resolvePostPlant(state) {
     : 5;
 
   if (
-    Math.random() * 100 <
-    saveChance
+    Math.random() * 100 < saveChance &&
+    canSaveCT
   ) {
     const saver = state.aliveB[0];
     state.events.push(saveEvent(saver));
@@ -549,7 +557,9 @@ function resolvePostPlant(state) {
   );
   return "CT";
 }
-function checkCTSaves(state) {
+function checkCTSaves(state, canSaveCT) {
+  if (!canSaveCT) return;
+  
   const aliveT = state.aliveA.length;
   if (
     aliveT === 0 ||
@@ -596,6 +606,8 @@ function checkCTSaves(state) {
 export function simulateRound(
   teamA,
   teamB,
+  canSaveT = true,
+  canSaveCT = true,
 ) {
   const state = createRoundState(
     teamA,
@@ -624,7 +636,7 @@ export function simulateRound(
       state.aliveA.length > 0 &&
       state.aliveB.length > 0
     ) {
-      checkCTSaves(state);
+      checkCTSaves(state, canSaveCT);
       if (state.aliveB.length === 0)
         break;
       tradeKill(state);
@@ -641,6 +653,7 @@ export function simulateRound(
   }
 
   let winnerSide;
+  let winType;
 
   if (
     state.bombPlanted &&
@@ -653,9 +666,11 @@ export function simulateRound(
       ),
     );
     winnerSide = "T";
+    winType = "BOMB";
   } else if (state.bombPlanted) {
     winnerSide =
-      resolvePostPlant(state);
+      resolvePostPlant(state, canSaveCT);
+    winType = winnerSide === "T" ? "BOMB" : "DEFUSE";
   } else if (
     state.timeRemaining <= 0 &&
     state.aliveA.length > 0 &&
@@ -665,11 +680,13 @@ export function simulateRound(
       textEvent("Se acaba el tiempo"),
     );
     winnerSide = "CT";
+    winType = "TIME";
   } else {
     winnerSide =
       state.aliveA.length > 0 ?
         "T"
       : "CT";
+    winType = "KILL";
   }
 
   // los sobrevivientes recogen lo que queda en el suelo (100%)
@@ -679,17 +696,44 @@ export function simulateRound(
     winnerSide,
   );
 
-  state.events.push(
-    textEvent(
+  state.events.push({
+    ...textEvent(
       winnerSide === "T" ?
         `${teamA.name} gana la ronda`
       : `${teamB.name} gana la ronda`,
     ),
-  );
+    winnerSide,
+  });
+
+  // EXPLOSION DEATHS (solo si la ronda terminó por explosión del c4)
+  if (state.bombPlanted && winnerSide === "T") {
+    const explosionKillChance = 0.05; // 5% chance de morir por la bomba
+
+    state.aliveA.forEach((p) => {
+      if (Math.random() < explosionKillChance) {
+        state.events.push({ ...bombKillEvent(p), victimSide: "T" });
+        p.weapon = "KNIFE";
+        p.armorValue = 0;
+        p.utilityValue = 0;
+        p.deaths += 1;
+      }
+    });
+
+    state.aliveB.forEach((p) => {
+      if (Math.random() < explosionKillChance) {
+        state.events.push({ ...bombKillEvent(p), victimSide: "CT" });
+        p.weapon = "KNIFE";
+        p.armorValue = 0;
+        p.utilityValue = 0;
+        p.deaths += 1;
+      }
+    });
+  }
 
   return {
     events: state.events,
     winnerSide,
+    winType,
     bombPlanted: state.bombPlanted,
     droppedWeapons: state.groundWeapons, // solo las que nadie recogió
     tKillsCount: state.tKillsCount,

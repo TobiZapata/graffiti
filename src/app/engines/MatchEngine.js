@@ -82,6 +82,8 @@ function playRound(
   isOT,
   allEvents,
   rounds,
+  canSaveT = true,
+  canSaveCT = true,
 ) {
   const strategyT =
     isOT ? "FULL" : (
@@ -131,9 +133,10 @@ function playRound(
   const {
     events,
     winnerSide,
+    winType,
     droppedWeapons,
     tKillsCount,
-  } = simulateRound(tTeam, ctTeam);
+  } = simulateRound(tTeam, ctTeam, canSaveT, canSaveCT);
   allEvents.push(...events);
 
   const winnerTeam =
@@ -157,11 +160,15 @@ function playRound(
     ),
   );
 
+
   // ─── CAMBIO 3: pushear roundData al array ────────────────────────────────
   rounds.push({
     round: label,
     tTeam: tTeam.name,
     ctTeam: ctTeam.name,
+    winnerName: winnerTeam.name,
+    winnerSide,
+    winType,
     strategyT,
     strategyCT,
     equipT,
@@ -207,6 +214,14 @@ function playOTPeriod(
     const t = team1IsT ? team1 : team2;
     const ct = team1IsT ? team2 : team1;
 
+    const winThreshold = 13 + (periodNumber - 1) * 3;
+    const tMatchPoint = t.roundsWon >= winThreshold - 1;
+    const ctMatchPoint = ct.roundsWon >= winThreshold - 1;
+    const isLastRoundOfHalf = i === OT_ROUNDS_PER_SIDE || i === OT_PERIOD_ROUNDS;
+
+    const canSaveT = !ctMatchPoint && !isLastRoundOfHalf;
+    const canSaveCT = !tMatchPoint && !isLastRoundOfHalf;
+
     playRound(
       t,
       ct,
@@ -214,6 +229,8 @@ function playOTPeriod(
       true,
       allEvents,
       rounds,
+      canSaveT,
+      canSaveCT,
     );
 
     const remaining =
@@ -263,6 +280,13 @@ export function simulateMatch(
     const t = team1IsT ? team1 : team2;
     const ct = team1IsT ? team2 : team1;
 
+    const tMatchPoint = t.roundsWon >= WIN_THRESHOLD - 1;
+    const ctMatchPoint = ct.roundsWon >= WIN_THRESHOLD - 1;
+    const isLastRoundOfHalf = round === ROUNDS_PER_HALF || round === REGULATION_TOTAL;
+
+    const canSaveT = !ctMatchPoint && !isLastRoundOfHalf;
+    const canSaveCT = !tMatchPoint && !isLastRoundOfHalf;
+
     playRound(
       t,
       ct,
@@ -270,6 +294,8 @@ export function simulateMatch(
       false,
       allEvents,
       rounds,
+      canSaveT,
+      canSaveCT,
     ); // ← rounds pasado acá
 
     if (
