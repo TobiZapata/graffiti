@@ -660,17 +660,32 @@ export function simulateRound(
     state.aliveB.length === 0 &&
     state.aliveA.length === 0
   ) {
-    state.events.push(
-      textEvent(
-        `${teamA.name} gana por explosión`,
-      ),
-    );
-    winnerSide = "T";
-    winType = "BOMB";
+    const ctSaved = state.events.some((e) => e.type === "SAVE");
+    if (!ctSaved) {
+      winnerSide = "T";
+      winType = "KILL";
+    } else {
+      state.events.push(
+        textEvent(
+          `${teamA.name} gana por explosión`,
+        ),
+      );
+      winnerSide = "T";
+      winType = "BOMB";
+    }
   } else if (state.bombPlanted) {
     winnerSide =
       resolvePostPlant(state, canSaveCT);
-    winType = winnerSide === "T" ? "BOMB" : "DEFUSE";
+    if (winnerSide === "T") {
+      const ctSaved = state.events.some((e) => e.type === "SAVE");
+      if (state.aliveB.length === 0 && !ctSaved) {
+        winType = "KILL";
+      } else {
+        winType = "BOMB";
+      }
+    } else {
+      winType = "DEFUSE";
+    }
   } else if (
     state.timeRemaining <= 0 &&
     state.aliveA.length > 0 &&
