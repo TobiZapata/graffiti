@@ -549,39 +549,93 @@ function BracketConnectors({ count }) {
 
 function TeamSummary({ standings, mySquad }) {
   const playerRecord = standings.find(t => t.isPlayer);
-  const { stage, matches } = useTournament();
+  const { matches } = useTournament();
 
   let placement = "Swiss Stage";
-  if (stage === "eliminated") {
-    if (playerRecord?.wins === 3) {
-      const qfLost = matches.find(m => m.round === "Quarterfinals" && m.isPlayerMatch && m.completed && m.result.winner !== "player_team");
-      const sfLost = matches.find(m => m.round === "Semifinals" && m.isPlayerMatch && m.completed && m.result.winner !== "player_team");
-      const fLost = matches.find(m => m.round === "Final" && m.isPlayerMatch && m.completed && m.result.winner !== "player_team");
-      if (fLost) placement = "2nd Place";
-      else if (sfLost) placement = "3rd-4th Place";
-      else if (qfLost) placement = "5th-8th Place";
-    } else {
-      if (playerRecord?.wins === 0) placement = "15th-16th Place";
-      else if (playerRecord?.wins === 1) placement = "12th-14th Place";
-      else if (playerRecord?.wins === 2) placement = "9th-11th Place";
+  if (playerRecord?.wins === 3) {
+    const qfLost = matches.find(m => m.round === "Quarterfinals" && m.completed && (m.teamA.id === playerRecord.id || m.teamB.id === playerRecord.id) && m.result.winner !== playerRecord.id);
+    const sfLost = matches.find(m => m.round === "Semifinals" && m.completed && (m.teamA.id === playerRecord.id || m.teamB.id === playerRecord.id) && m.result.winner !== playerRecord.id);
+    const fLost = matches.find(m => m.round === "Final" && m.completed && (m.teamA.id === playerRecord.id || m.teamB.id === playerRecord.id) && m.result.winner !== playerRecord.id);
+    const fWon = matches.find(m => m.round === "Final" && m.completed && (m.teamA.id === playerRecord.id || m.teamB.id === playerRecord.id) && m.result.winner === playerRecord.id);
+    
+    if (fWon) placement = "1st Place (Champion)";
+    else if (fLost) placement = "2nd Place";
+    else if (sfLost) placement = "3rd-4th Place";
+    else if (qfLost) placement = "5th-8th Place";
+    else placement = "Playoffs";
+  } else {
+    if (playerRecord?.wins === 0) placement = "15th-16th Place";
+    else if (playerRecord?.wins === 1) placement = "12th-14th Place";
+    else if (playerRecord?.wins === 2) placement = "9th-11th Place";
+    else placement = "Eliminated";
+  }
+
+  let mvp = null;
+  const finalMatch = matches.find(m => m.round === "Final" && m.completed);
+  if (finalMatch) {
+    const finalists = [finalMatch.teamA, finalMatch.teamB];
+    let bestPlayer = null;
+    let bestRating = 0;
+    let mvpTeamName = "";
+    
+    const getPseudoRating = (p) => {
+      let hash = 0;
+      for (let i = 0; i < p.name.length; i++) hash += p.name.charCodeAt(i);
+      const baseStat = ((p.aim || 80) + (p.gamesense || 80)) / 2;
+      const boost = (hash % 40) / 100;
+      return (baseStat / 70) + boost;
+    };
+
+    finalists.forEach(team => {
+      team.players?.forEach(p => {
+        const rating = getPseudoRating(p);
+        if (rating > bestRating) {
+          bestRating = rating;
+          bestPlayer = p;
+          mvpTeamName = team.name;
+        }
+      });
+    });
+
+    if (bestPlayer) {
+      mvp = {
+        name: bestPlayer.name,
+        rating: bestRating.toFixed(2),
+        team: mvpTeamName
+      };
     }
-  } else if (stage === "won") {
-    placement = "1st Place (Champion)";
   }
 
   return (
-    <div className="mb-4 p-4 bg-neutral-800 rounded-lg">
-      <h3 className="text-xl font-bold mb-4 text-amber-500">My Team</h3>
-      <div className="flex justify-center items-center gap-4 flex-wrap mb-4">
-        {mySquad?.map(s => (
-          <div key={s.player.id} className="text-center bg-neutral-900 p-2 rounded border border-neutral-700 min-w-[100px]">
-            <span className="block font-bold text-sm">{s.player.name}</span>
-            <span className="text-xs text-neutral-400">{s.assignedRole}</span>
+    <div className="mb-4 p-4 bg-neutral-800 rounded-lg text-left">
+      <h3 className="text-xl font-bold mb-4 text-amber-500 border-b border-neutral-700 pb-2">My Team</h3>
+      <div className="flex flex-col gap-2 mb-6">
+        <div className="flex justify-between p-2 rounded bg-amber-600/20 border border-amber-500/50">
+          <div className="flex items-center gap-2">
+            {playerRecord.icon && <Image src={playerRecord.icon} alt="" width={20} height={20} className="rounded-sm" />}
+            <span className="font-bold text-amber-400">{playerRecord.name} (You)</span>
           </div>
-        ))}
+          <div className="text-sm font-mono text-neutral-400">
+            {placement} | {playerRecord.wins}-{playerRecord.losses}
+          </div>
+        </div>
       </div>
-      <p className="text-lg font-bold text-neutral-300">Final Placement: <span className="text-amber-500">{placement}</span></p>
-      <p className="text-sm text-neutral-500">Swiss Record: {playerRecord?.wins} - {playerRecord?.losses}</p>
+
+      {mvp && (
+        <>
+          <h3 className="text-xl font-bold mb-4 text-blue-400 border-b border-neutral-700 pb-2">Tournament MVP</h3>
+          <div className="bg-gradient-to-r from-blue-900/40 to-neutral-900 border border-blue-800/50 p-4 rounded-lg flex items-center justify-between">
+            <div>
+              <div className="text-2xl font-black text-white">{mvp.name}</div>
+              <div className="text-sm font-bold text-blue-400">{mvp.team}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-3xl font-black text-amber-400">{mvp.rating}</div>
+              <div className="text-[10px] text-neutral-500 font-bold tracking-widest">RATING 3.0</div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

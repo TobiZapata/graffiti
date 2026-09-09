@@ -1,7 +1,12 @@
 "use client";
 
 import { TournamentProvider } from "@/context/TournamentContext";
+import { AuthProvider } from "@/context/AuthContext";
 
 export function Providers({ children }) {
-  return <TournamentProvider>{children}</TournamentProvider>;
+  return (
+    <AuthProvider>
+      <TournamentProvider>{children}</TournamentProvider>
+    </AuthProvider>
+  );
 }

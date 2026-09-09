@@ -4,10 +4,19 @@ export default function TeamDetails({
   team,
   squad,
   onSelectPlayer,
+  onBack,
 }) {
   return (
     <div>
-      <div className="mb-8 text-center">
+      <div className="mb-8 text-center relative">
+        {onBack && (
+          <button 
+            onClick={onBack}
+            className="absolute left-0 top-0 mt-4 ml-4 text-neutral-400 hover:text-white transition-colors flex items-center gap-1"
+          >
+            ← Back
+          </button>
+        )}
         <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-xl bg-neutral-800">
           LOGO
         </div>

@@ -32,6 +32,7 @@ export default function PlayPage() {
   );
 
   const [teamName, setTeamName] = useState("");
+  const [rerollsLeft, setRerollsLeft] = useState(3);
 
   const spin = () => {
     const newTeams = [...teams]
@@ -40,6 +41,13 @@ export default function PlayPage() {
 
     setSelectedTeam(null);
     setRolledTeams(newTeams);
+  };
+
+  const reroll = () => {
+    if (rerollsLeft > 0) {
+      setRerollsLeft(prev => prev - 1);
+      spin();
+    }
   };
 
   const handleRoleSelection = (
@@ -106,6 +114,8 @@ export default function PlayPage() {
               onSelectTeam={
                 setSelectedTeam
               }
+              onReroll={rerollsLeft > 0 ? reroll : null}
+              rerollsLeft={rerollsLeft}
             />
           : <TeamDetails
               team={selectedTeam}
@@ -113,6 +123,7 @@ export default function PlayPage() {
               onSelectPlayer={
                 setSelectedPlayer
               }
+              onBack={() => setSelectedTeam(null)}
             />
           }
         </section>

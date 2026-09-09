@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useEffect } from "react";
 import teamsData from "@/data/teams.json";
 
 import { formatTeamForSimulation } from "@/app/utils/playerExpansion";
+import { generateSwissPairings } from "@/lib/tournamentService";
 
 const TournamentContext = createContext();
 
@@ -73,23 +74,8 @@ export function TournamentProvider({ children }) {
   };
 
   const generateSwissMatchups = (currentStandings, round) => {
-    // Basic Swiss pairing: sort by score, pair adjacent
     const active = currentStandings.filter(t => t.wins < 3 && t.losses < 3);
-    const sorted = [...active].sort((a, b) => b.wins - a.wins || a.losses - b.losses);
-    const newMatches = [];
-    for (let i = 0; i < sorted.length; i += 2) {
-      if (i + 1 < sorted.length) {
-        newMatches.push({
-          id: `R${round}_M${i/2}`,
-          round,
-          teamA: sorted[i],
-          teamB: sorted[i + 1],
-          result: null,
-          isPlayerMatch: sorted[i].isPlayer || sorted[i + 1].isPlayer,
-          completed: false,
-        });
-      }
-    }
+    const newMatches = generateSwissPairings(active, matches, round);
     setMatches(prev => [...prev, ...newMatches]);
   };
 
@@ -173,30 +159,20 @@ export function TournamentProvider({ children }) {
       const swissComplete = (s) => s.every(t => t.wins >= 3 || t.losses >= 3);
 
       while (!swissComplete(simStandings)) {
-        // Filter active teams (not yet 3 wins or 3 losses), excluding the player
-        const active = simStandings
-          .filter(t => t.wins < 3 && t.losses < 3 && !t.isPlayer)
-          .sort((a, b) => b.wins - a.wins || a.losses - b.losses);
+        const active = simStandings.filter(t => t.wins < 3 && t.losses < 3 && !t.isPlayer);
+        if (active.length < 2) break; // safety
         
-        if (active.length < 2) break; // safety: can't pair
-
-        for (let i = 0; i < active.length; i += 2) {
-          if (i + 1 >= active.length) break;
-          const tA = active[i];
-          const tB = active[i + 1];
+        const roundMatches = generateSwissPairings(active, simMatches, simRound);
+        
+        for (const matchEntry of roundMatches) {
+          const tA = matchEntry.teamA;
+          const tB = matchEntry.teamB;
           const winner = Math.random() > 0.5 ? tA : tB;
           const { winnerScore: ws, loserScore: ls } = generateScore();
           const result = { teamA: tA, teamB: tB, winner: winner.id, scoreA: winner.id === tA.id ? ws : ls, scoreB: winner.id === tA.id ? ls : ws };
           
-          const matchEntry = {
-            id: `R${simRound}_M${i/2}`,
-            round: simRound,
-            teamA: tA,
-            teamB: tB,
-            result,
-            isPlayerMatch: false,
-            completed: true,
-          };
+          matchEntry.result = result;
+          matchEntry.completed = true;
           simMatches.push(matchEntry);
           
           const teamAIdx = simStandings.findIndex(t => t.id === tA.id);
@@ -232,9 +208,20 @@ export function TournamentProvider({ children }) {
     let newCompletedMatches = [];
     matches.forEach(m => {
       if (!m.completed && !m.isPlayerMatch && playoffRounds.includes(m.round)) {
-        const winner = Math.random() > 0.5 ? m.teamA : m.teamB;
-        const { winnerScore: pws, loserScore: pls } = generateScore();
-        const result = { teamA: m.teamA, teamB: m.teamB, winner: winner.id, scoreA: winner.id === m.teamA.id ? pws : pls, scoreB: winner.id === m.teamA.id ? pls : pws };
+        const isFinal = m.round === 'Final';
+        const bestOf = isFinal ? 5 : 3;
+        const mapsToWin = Math.ceil(bestOf / 2);
+        
+        let winsA = 0, winsB = 0;
+        
+        while (winsA < mapsToWin && winsB < mapsToWin) {
+          const winnerMap = Math.random() > 0.5 ? 'A' : 'B';
+          if (winnerMap === 'A') winsA++;
+          else winsB++;
+        }
+        
+        const winnerId = winsA > winsB ? m.teamA.id : m.teamB.id;
+        const result = { teamA: m.teamA, teamB: m.teamB, winner: winnerId, scoreA: winsA, scoreB: winsB };
         newCompletedMatches.push({ id: m.id, result });
       }
     });

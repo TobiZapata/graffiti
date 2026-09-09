@@ -1,5 +1,6 @@
 import { Team } from "../simulator/models/Team";
 import { Player } from "../simulator/models/Player";
+import seedrandom from "seedrandom";
 import { simulateRound } from "./RoundEngine";
 import {
   decideTeamStrategy,
@@ -247,14 +248,26 @@ function playOTPeriod(
   }
 }
 
+
+
 export function simulateMatch(
   team1Config,
   team2Config,
+  seed = null
 ) {
-  const allEvents = [];
-  const rounds = []; // ─── CAMBIO 4: declarar el array ────────────────────
+  let restoreMathRandom = null;
+  if (seed) {
+    const originalMathRandom = Math.random;
+    const prng = seedrandom(seed);
+    Math.random = prng;
+    restoreMathRandom = () => { Math.random = originalMathRandom; };
+  }
 
-  const team1 = buildTeam(team1Config);
+  try {
+    const allEvents = [];
+    const rounds = []; // ─── CAMBIO 4: declarar el array ────────────────────
+
+    const team1 = buildTeam(team1Config);
   const team2 = buildTeam(team2Config);
 
   for (
@@ -344,14 +357,17 @@ export function simulateMatch(
     team: team1.players.includes(p) ? team1Config.name : team2Config.name,
   }));
 
-  return {
-    events: allEvents,
-    finalScore,
-    rounds,
-    scoreTeam1: team1.roundsWon,
-    scoreTeam2: team2.roundsWon,
-    playerStats,
-  };
+    return {
+      events: allEvents,
+      finalScore,
+      rounds,
+      scoreTeam1: team1.roundsWon,
+      scoreTeam2: team2.roundsWon,
+      playerStats,
+    };
+  } finally {
+    if (restoreMathRandom) restoreMathRandom();
+  }
 }
 
 function resetWeaponsForSideSwitch(

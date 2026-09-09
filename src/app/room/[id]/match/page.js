@@ -2,15 +2,15 @@
 
 import { useEffect, useState, use, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useTournament } from "@/context/TournamentContext";
+import { MultiplayerProvider, useMultiplayerTournament } from "@/context/MultiplayerContext";
 import { simulateMatch } from "@/app/engines/MatchEngine";
 import CSMatchViewer from "@/components/CSMatchViewer";
 
-function MatchContent() {
+function MatchContent({ roomId }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const matchId = searchParams.get("id");
-  const { matches, completeMatch } = useTournament();
+  const { matches, completeMatch } = useMultiplayerTournament();
   
   const [matchData, setMatchData] = useState(null);
   const [simulationDone, setSimulationDone] = useState(false);
@@ -18,11 +18,11 @@ function MatchContent() {
   const [viewerKey, setViewerKey] = useState(0);
 
   useEffect(() => {
-    if (!matches.length || !matchId || seriesState) return;
+    if (!matches || !matches.length || !matchId || seriesState) return;
 
     const currentMatch = matches.find(m => m.id === matchId);
     if (!currentMatch || currentMatch.completed) {
-      router.push("/simulation");
+      router.push(`/room/${roomId}/simulation`);
       return;
     }
 
@@ -37,11 +37,12 @@ function MatchContent() {
       winsB: 0,
       mapsToWin: Math.ceil(bestOf / 2)
     });
-  }, [matches, matchId, router, seriesState]);
+  }, [matches, matchId, router, seriesState, roomId]);
 
   useEffect(() => {
     if (seriesState && !matchData) {
-      const { rounds, scoreTeam1, scoreTeam2, playerStats } = simulateMatch(seriesState.match.teamA, seriesState.match.teamB);
+      const matchSeed = `${matchId}_map${seriesState.winsA + seriesState.winsB + 1}`;
+      const { rounds, scoreTeam1, scoreTeam2, playerStats } = simulateMatch(seriesState.match.teamA, seriesState.match.teamB, matchSeed);
       setMatchData({ rounds, scoreTeam1, scoreTeam2, playerStats });
       setViewerKey(prev => prev + 1);
     }
@@ -60,7 +61,6 @@ function MatchContent() {
     
     if (newWinsA === mapsToWin || newWinsB === mapsToWin) {
       const winner = newWinsA > newWinsB ? match.teamA.id : match.teamB.id;
-      // In BO1 (Swiss), we record rounds won (13-10). In BO3/5 (Playoffs), we record map score (2-0, 3-2).
       const finalScoreA = bestOf === 1 ? scoreTeam1 : newWinsA;
       const finalScoreB = bestOf === 1 ? scoreTeam2 : newWinsB;
 
@@ -71,7 +71,7 @@ function MatchContent() {
         scoreB: finalScoreB,
         winner
       });
-      router.push("/simulation");
+      router.push(`/room/${roomId}/simulation`);
     } else {
       setSeriesState({ ...seriesState, winsA: newWinsA, winsB: newWinsB });
       setMatchData(null);
@@ -114,10 +114,13 @@ function MatchContent() {
   );
 }
 
-export default function MatchPage() {
+export default function MatchPage({ params }) {
+  const roomId = use(params).id;
   return (
-    <Suspense fallback={<div className="p-8 text-white text-center">Loading...</div>}>
-      <MatchContent />
-    </Suspense>
+    <MultiplayerProvider roomId={roomId}>
+      <Suspense fallback={<div className="p-8 text-white text-center">Loading...</div>}>
+        <MatchContent roomId={roomId} />
+      </Suspense>
+    </MultiplayerProvider>
   );
 }
