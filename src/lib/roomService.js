@@ -70,7 +70,7 @@ export async function joinRoom(roomCode, uid, name) {
   return roomCode.toUpperCase();
 }
 
-export async function submitDraft(roomCode, uid, squad, teamName) {
+export async function submitDraft(roomCode, uid, squad, teamName, icon) {
   const roomRef = doc(db, "rooms", roomCode.toUpperCase());
   const roomSnap = await getDoc(roomRef);
   
@@ -79,10 +79,12 @@ export async function submitDraft(roomCode, uid, squad, teamName) {
   const roomData = roomSnap.data();
   const updatedPlayers = roomData.players.map(p => {
     if (p.uid === uid) {
-      return { ...p, squad, teamName, isReady: true };
+      return { ...p, squad, teamName, icon, isReady: true };
     }
     return p;
   });
 
-  await updateDoc(roomRef, { players: updatedPlayers });
+  await updateDoc(roomRef, {
+    players: updatedPlayers
+  });
 }

@@ -795,6 +795,28 @@ export default function CSMatchViewer({
         });
       }
 
+      if (ev.type === "BOMB_KILL") {
+        setPlayerKDA((prev) => {
+          const n = { ...prev };
+          if (ev.victim?.uid) {
+            n[ev.victim.uid] = { ...n[ev.victim.uid], d: (n[ev.victim.uid]?.d || 0) + 1 };
+          }
+          return n;
+        });
+
+        setPlayerStates((prev) => {
+          const n = { ...prev };
+          if (n[ev.victim?.uid]) {
+            n[ev.victim.uid] = {
+              ...n[ev.victim.uid],
+              alive: false,
+              weapon: "KNIFE",
+            };
+          }
+          return n;
+        });
+      }
+
       if (ev.type === "WEAPON_PICKUP") {
         setPlayerStates((prev) => {
           const n = { ...prev };
@@ -916,8 +938,32 @@ export default function CSMatchViewer({
     applyEv(r.events[next], r);
   };
 
-  const finished =
-    eventIdx >= r.events.length - 1;
+  const finished = eventIdx >= r.events.length - 1;
+
+  const team1Name = rounds[0].tTeam;
+  const isTeam1T = r.tTeam === team1Name;
+
+  const leftTeamName = isTeam1T ? r.tTeam : r.ctTeam;
+  const rightTeamName = isTeam1T ? r.ctTeam : r.tTeam;
+
+  const leftSide = isTeam1T ? "T" : "CT";
+  const rightSide = isTeam1T ? "CT" : "T";
+
+  const leftScore = isTeam1T ? scoreT : scoreCT;
+  const rightScore = isTeam1T ? scoreCT : scoreT;
+
+  const leftStrategy = isTeam1T ? r.strategyT : r.strategyCT;
+  const rightStrategy = isTeam1T ? r.strategyCT : r.strategyT;
+
+  const leftEquip = isTeam1T ? r.equipT : r.equipCT;
+  const rightEquip = isTeam1T ? r.equipCT : r.equipT;
+
+  const leftPlayers = isTeam1T ? r.tPlayers : r.ctPlayers;
+  const rightPlayers = isTeam1T ? r.ctPlayers : r.tPlayers;
+
+  const getSideLogo = (side) => side === "T" ? "/ui/t_logo.svg" : "/ui/ct_logo.svg";
+  const getSideBg = (side) => side === "T" ? "var(--bg-warning)" : "var(--bg-accent)";
+  const getSideColor = (side) => side === "T" ? "var(--text-warning)" : "var(--text-accent)";
 
   return (
     <div
@@ -1006,181 +1052,46 @@ export default function CSMatchViewer({
       </div>
 
       {/* ── Scoreboard ── */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent:
-            "space-between",
-          padding: "10px 16px",
-          background:
-            "var(--surface-1)",
-          borderRadius: 12,
-          border:
-            "0.5px solid var(--border)",
-          marginBottom: 10,
-        }}
-      >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        {/* Left Team */}
         <div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              marginBottom: 3,
-            }}
-          >
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 500,
-                padding: "2px 6px",
-                borderRadius: 4,
-                background:
-                  "var(--bg-warning)",
-                color:
-                  "var(--text-warning)",
-              }}
-            >
-              T
-            </span>
-            <span
-              style={{
-                fontSize: 15,
-                fontWeight: 500,
-                color:
-                  "var(--text-primary)",
-              }}
-            >
-              {r.tTeam}
-            </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "4px 8px", borderRadius: 6, background: getSideBg(leftSide), color: getSideColor(leftSide) }}>
+              <img src={getSideLogo(leftSide)} alt={leftSide} width={20} height={20} />
+            </div>
+            <span style={{ fontSize: 15, fontWeight: 500, color: "var(--text-primary)" }}>{leftTeamName}</span>
           </div>
-          <span
-            style={{
-              fontSize: 11,
-              color:
-                "var(--text-muted)",
-              fontFamily:
-                "var(--font-mono)",
-            }}
-          >
-            {r.strategyT} · ${" "}
-            {fmt(r.equipT)}
+          <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+            {leftStrategy} · ${fmt(leftEquip)}
           </span>
         </div>
 
-        <div
-          style={{
-            textAlign: "center",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 14,
-            }}
-          >
-            <span
-              style={{
-                fontSize: 30,
-                fontWeight: 500,
-                color:
-                  "var(--text-primary)",
-                minWidth: 36,
-                textAlign: "right",
-              }}
-            >
-              {scoreT}
+        {/* Center Score */}
+        <div style={{ textAlign: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <span style={{ fontSize: 30, fontWeight: 500, color: "var(--text-primary)", minWidth: 36, textAlign: "right" }}>
+              {leftScore}
             </span>
             <div>
-              <div
-                style={{
-                  fontSize: 10,
-                  color:
-                    "var(--text-muted)",
-                  letterSpacing:
-                    "0.06em",
-                  marginBottom: 2,
-                }}
-              >
-                RONDA
-              </div>
-              <div
-                style={{
-                  fontSize: 14,
-                  fontWeight: 500,
-                  color:
-                    "var(--text-secondary)",
-                }}
-              >
-                {r.round} / 24
-              </div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 2 }}>RONDA</div>
+              <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text-secondary)" }}>{r.round} / 24</div>
             </div>
-            <span
-              style={{
-                fontSize: 30,
-                fontWeight: 500,
-                color:
-                  "var(--text-primary)",
-                minWidth: 36,
-                textAlign: "left",
-              }}
-            >
-              {scoreCT}
+            <span style={{ fontSize: 30, fontWeight: 500, color: "var(--text-primary)", minWidth: 36, textAlign: "left" }}>
+              {rightScore}
             </span>
           </div>
         </div>
 
-        <div
-          style={{ textAlign: "right" }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              marginBottom: 3,
-              justifyContent:
-                "flex-end",
-            }}
-          >
-            <span
-              style={{
-                fontSize: 15,
-                fontWeight: 500,
-                color:
-                  "var(--text-primary)",
-              }}
-            >
-              {r.ctTeam}
-            </span>
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 500,
-                padding: "2px 6px",
-                borderRadius: 4,
-                background:
-                  "var(--bg-accent)",
-                color:
-                  "var(--text-accent)",
-              }}
-            >
-              CT
-            </span>
+        {/* Right Team */}
+        <div style={{ textAlign: "right" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3, justifyContent: "flex-end" }}>
+            <span style={{ fontSize: 15, fontWeight: 500, color: "var(--text-primary)" }}>{rightTeamName}</span>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "4px 8px", borderRadius: 6, background: getSideBg(rightSide), color: getSideColor(rightSide) }}>
+              <img src={getSideLogo(rightSide)} alt={rightSide} width={20} height={20} />
+            </div>
           </div>
-          <span
-            style={{
-              fontSize: 11,
-              color:
-                "var(--text-muted)",
-              fontFamily:
-                "var(--font-mono)",
-            }}
-          >
-            ${fmt(r.equipCT)} ·{" "}
-            {r.strategyCT}
+          <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+            ${fmt(rightEquip)} · {rightStrategy}
           </span>
         </div>
       </div>
@@ -1196,13 +1107,13 @@ export default function CSMatchViewer({
           gap: 10,
         }}
       >
-        {/* T players */}
+        {/* Left players */}
         <div>
-          {r.tPlayers.map((p) => (
+          {leftPlayers.map((p) => (
             <PlayerCard
               key={p.uid}
               name={p.name}
-              side="T"
+              side={leftSide}
               alive={
                 playerStates[p.uid]
                   ?.alive ?? true
@@ -1253,13 +1164,13 @@ export default function CSMatchViewer({
           }
         </div>
 
-        {/* CT players */}
+        {/* Right players */}
         <div>
-          {r.ctPlayers.map((p) => (
+          {rightPlayers.map((p) => (
             <PlayerCard
               key={p.uid}
               name={p.name}
-              side="CT"
+              side={rightSide}
               alive={
                 playerStates[p.uid]
                   ?.alive ?? true

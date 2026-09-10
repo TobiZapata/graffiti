@@ -35,7 +35,7 @@ export async function initializeMultiplayerTournament(roomPlayers) {
     playerName: p.name,
     wins: 0,
     losses: 0,
-    ...formatTeamForSimulation({ name: p.teamName || p.name, isPlayer: true, icon: "/logos/faze.png" }, p.squad)
+    ...formatTeamForSimulation({ name: p.teamName || p.name, isPlayer: true, icon: p.icon || "/logos/faze.png" }, p.squad)
   }));
 
   // Fill remaining slots with NPCs to reach 16 teams

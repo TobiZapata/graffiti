@@ -45,7 +45,7 @@ export function TournamentProvider({ children }) {
   const [matches, setMatches] = useState([]); // [{ round, teamA, teamB, result, isPlayerMatch, completed }]
 
   // Initialize tournament
-  const initTournament = (squad, name = "My Team") => {
+  const initTournament = (squad, name = "My Team", icon = "/logos/faze.png") => {
     setMySquad(squad);
     setTeamName(name);
     setStage("swiss");
@@ -64,7 +64,7 @@ export function TournamentProvider({ children }) {
     otherTeams = otherTeams.slice(0, 15);
     
     const initialStandings = [
-      { id: "player_team", ...formatTeamForSimulation({ name, isPlayer: true, icon: "/logos/faze.png" }, squad), isPlayer: true, wins: 0, losses: 0 },
+      { id: "player_team", ...formatTeamForSimulation({ name, isPlayer: true, icon: icon }, squad), isPlayer: true, wins: 0, losses: 0 },
       ...otherTeams.map((t, i) => ({ id: `${t.id}_${i}`, ...formatTeamForSimulation(t), isPlayer: false, wins: 0, losses: 0 }))
     ];
     setStandings(initialStandings);

@@ -3,7 +3,6 @@
 import { useEffect } from "react";
 import { useMultiplayerTournament } from "@/context/MultiplayerContext";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 
 // Definición de la estructura del Swiss (pools por ronda)
 const SWISS_STRUCTURE = [
@@ -671,7 +670,7 @@ export default function SimulationUI() {
                         </td>
                         <td className="p-3 flex items-center gap-2">
                           {t.icon && (
-                            <Image
+                            <img
                               src={
                                 t.icon
                               }
@@ -682,14 +681,25 @@ export default function SimulationUI() {
                               height={
                                 20
                               }
-                              className="rounded-sm"
+                              className="rounded-sm shrink-0"
                             />
                           )}
-                          <span
-                            className={`font-semibold text-sm ${t.isPlayer ? "text-amber-400" : ""}`}
-                          >
-                            {t.name}
-                          </span>
+                          <div className="flex flex-col min-w-0">
+                            <span
+                              className={`font-semibold text-sm truncate ${t.isPlayer ? "text-amber-400" : ""}`}
+                            >
+                              {t.name}{" "}
+                              {t.isPlayer &&
+                                "(You)"}
+                            </span>
+                            {t.major && (
+                              <span className="text-[10px] text-neutral-500/70 -mt-0.5 truncate">
+                                {
+                                  t.major
+                                }
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="p-3 text-center font-bold text-green-500">
                           {t.wins}
@@ -797,45 +807,45 @@ function SwissMatchRow({ m }) {
 
   return (
     <div
-      className={`flex items-center gap-1 px-2 py-1.5 text-xs ${m.isPlayerMatch ? "bg-amber-500/10 border-l-2 border-l-amber-500" : ""}`}
+      className={`flex items-center justify-between px-3 py-2 ${m.isPlayerMatch ? "bg-amber-500/10 border-l-2 border-l-amber-500" : ""}`}
     >
       {/* Team A */}
-      <div className="flex items-center gap-1 flex-1 min-w-0">
-        {m.teamA.icon && (
-          <Image
+      <div
+        className={`flex items-center justify-center w-10 h-10 bg-neutral-800 rounded-md transition-all shrink-0 ${
+          isWinnerA ?
+            "ring-2 ring-white"
+          : m.completed ?
+            "opacity-40 grayscale"
+          : ""
+        }`}
+        title={`${m.teamA.name}${m.teamA.major ? ` - ${m.teamA.major}` : ""}`}
+      >
+        {m.teamA.icon ?
+          <img
             src={m.teamA.icon}
             alt={m.teamA.name}
-            width={16}
-            height={16}
-            className="rounded-sm shrink-0"
+            className="w-8 h-8 object-contain"
           />
-        )}
-        <span
-          className={`truncate font-semibold ${
-            isWinnerA ? "text-white"
-            : m.completed ?
-              "text-neutral-600"
-            : "text-neutral-300"
-          }`}
-        >
-          {m.teamA.name}
-        </span>
+        : <span className="text-[10px] font-bold text-neutral-500 uppercase">
+            {m.teamA.name.slice(0, 3)}
+          </span>
+        }
       </div>
 
       {/* Score */}
-      <div className="flex items-center gap-1 shrink-0 font-mono">
+      <div className="flex items-center justify-center gap-2 font-mono flex-1">
         {m.completed ?
           <>
             <span
-              className={`text-xs font-bold ${isWinnerA ? "text-green-400" : "text-neutral-600"}`}
+              className={`text-sm font-bold ${isWinnerA ? "text-green-400" : "text-neutral-500"}`}
             >
               {m.result.scoreA}
             </span>
             <span className="text-neutral-700">
-              :
+              -
             </span>
             <span
-              className={`text-xs font-bold ${isWinnerB ? "text-green-400" : "text-neutral-600"}`}
+              className={`text-sm font-bold ${isWinnerB ? "text-green-400" : "text-neutral-500"}`}
             >
               {m.result.scoreB}
             </span>
@@ -847,26 +857,26 @@ function SwissMatchRow({ m }) {
       </div>
 
       {/* Team B */}
-      <div className="flex items-center gap-1 flex-1 min-w-0 justify-end">
-        <span
-          className={`truncate font-semibold text-right ${
-            isWinnerB ? "text-white"
-            : m.completed ?
-              "text-neutral-600"
-            : "text-neutral-300"
-          }`}
-        >
-          {m.teamB.name}
-        </span>
-        {m.teamB.icon && (
-          <Image
+      <div
+        className={`flex items-center justify-center w-10 h-10 bg-neutral-800 rounded-md transition-all shrink-0 ${
+          isWinnerB ?
+            "ring-2 ring-white"
+          : m.completed ?
+            "opacity-40 grayscale"
+          : ""
+        }`}
+        title={`${m.teamB.name}${m.teamB.major ? ` - ${m.teamB.major}` : ""}`}
+      >
+        {m.teamB.icon ?
+          <img
             src={m.teamB.icon}
             alt={m.teamB.name}
-            width={16}
-            height={16}
-            className="rounded-sm shrink-0"
+            className="w-8 h-8 object-contain"
           />
-        )}
+        : <span className="text-[10px] font-bold text-neutral-500 uppercase">
+            {m.teamB.name.slice(0, 3)}
+          </span>
+        }
       </div>
     </div>
   );
@@ -994,7 +1004,7 @@ function PlayoffBracket({ matches }) {
           {champion ?
             <div className="border-2 border-amber-500 rounded-xl p-4 bg-amber-500/10 text-center shadow-lg shadow-amber-500/20">
               {champion.icon && (
-                <Image
+                <img
                   src={champion.icon}
                   alt={champion.name}
                   width={48}
@@ -1005,6 +1015,11 @@ function PlayoffBracket({ matches }) {
               <div className="text-amber-400 font-black text-sm">
                 {champion.name}
               </div>
+              {champion.major && (
+                <div className="text-[10px] text-amber-500/70 -mt-0.5 mb-2">
+                  {champion.major}
+                </div>
+              )}
               <div className="text-[10px] text-amber-600 font-bold tracking-wider mt-1">
                 🏆 CHAMPION
               </div>
@@ -1065,7 +1080,7 @@ function BracketMatchCard({ m }) {
         }`}
       >
         {m.teamA.icon && (
-          <Image
+          <img
             src={m.teamA.icon}
             alt={m.teamA.name}
             width={20}
@@ -1073,16 +1088,23 @@ function BracketMatchCard({ m }) {
             className="rounded-sm shrink-0"
           />
         )}
-        <span
-          className={`flex-1 text-xs font-bold truncate ${
-            isWinnerA ? "text-white"
-            : m.completed ?
-              "text-neutral-500"
-            : "text-neutral-300"
-          }`}
-        >
-          {m.teamA.name}
-        </span>
+        <div className="flex flex-col flex-1 min-w-0">
+          <span
+            className={`text-xs font-bold truncate ${
+              isWinnerA ? "text-white"
+              : m.completed ?
+                "text-neutral-500"
+              : "text-neutral-300"
+            }`}
+          >
+            {m.teamA.name}
+          </span>
+          {m.teamA.major && (
+            <span className="truncate text-[9px] text-neutral-500/70 -mt-0.5">
+              {m.teamA.major}
+            </span>
+          )}
+        </div>
         <span
           className={`text-sm font-black font-mono ${
             isWinnerA ? "text-green-400"
@@ -1108,7 +1130,7 @@ function BracketMatchCard({ m }) {
         }`}
       >
         {m.teamB.icon && (
-          <Image
+          <img
             src={m.teamB.icon}
             alt={m.teamB.name}
             width={20}
@@ -1116,16 +1138,23 @@ function BracketMatchCard({ m }) {
             className="rounded-sm shrink-0"
           />
         )}
-        <span
-          className={`flex-1 text-xs font-bold truncate ${
-            isWinnerB ? "text-white"
-            : m.completed ?
-              "text-neutral-500"
-            : "text-neutral-300"
-          }`}
-        >
-          {m.teamB.name}
-        </span>
+        <div className="flex flex-col flex-1 min-w-0">
+          <span
+            className={`text-xs font-bold truncate ${
+              isWinnerB ? "text-white"
+              : m.completed ?
+                "text-neutral-500"
+              : "text-neutral-300"
+            }`}
+          >
+            {m.teamB.name}
+          </span>
+          {m.teamB.major && (
+            <span className="truncate text-[9px] text-neutral-500/70 -mt-0.5">
+              {m.teamB.major}
+            </span>
+          )}
+        </div>
         <span
           className={`text-sm font-black font-mono ${
             isWinnerB ? "text-green-400"
@@ -1235,9 +1264,6 @@ function TeamSummary({
   userUid,
 }) {
   // 1. Calcular placements para todos los humanos
-  const humanTeams = standings.filter(
-    (t) => t.isPlayer,
-  );
   const getPlacement = (team) => {
     if (team.wins === 3) {
       const qfLost = matches.find(
@@ -1274,23 +1300,63 @@ function TeamSummary({
       );
 
       if (fWon)
-        return "1st Place (Champion)";
-      if (fLost) return "2nd Place";
+        return {
+          text: "1st Place (Champion)",
+          weight: 1,
+        };
+      if (fLost)
+        return {
+          text: "2nd Place",
+          weight: 2,
+        };
       if (sfLost)
-        return "3rd-4th Place";
+        return {
+          text: "3rd-4th Place",
+          weight: 3,
+        };
       if (qfLost)
-        return "5th-8th Place";
-      return "Playoffs"; // Fallback
+        return {
+          text: "5th-8th Place",
+          weight: 5,
+        };
+      return {
+        text: "Playoffs",
+        weight: 8,
+      };
     } else {
       if (team.wins === 0)
-        return "15th-16th Place";
+        return {
+          text: "15th-16th Place",
+          weight: 15,
+        };
       if (team.wins === 1)
-        return "12th-14th Place";
+        return {
+          text: "12th-14th Place",
+          weight: 12,
+        };
       if (team.wins === 2)
-        return "9th-11th Place";
-      return "Eliminated";
+        return {
+          text: "9th-11th Place",
+          weight: 9,
+        };
+      return {
+        text: "Eliminated",
+        weight: 16,
+      };
     }
   };
+
+  const humanTeams = standings
+    .filter((t) => t.isPlayer)
+    .map((t) => ({
+      ...t,
+      placement: getPlacement(t),
+    }))
+    .sort(
+      (a, b) =>
+        a.placement.weight -
+        b.placement.weight,
+    );
 
   // 2. Calcular el MVP del torneo (jugador de uno de los finalistas)
   let mvp = null;
@@ -1355,33 +1421,42 @@ function TeamSummary({
         {humanTeams.map((t) => {
           const isMe =
             t.uid === userUid;
-          const placement =
-            getPlacement(t);
           return (
             <div
               key={t.id}
-              className={`flex justify-between p-2 rounded ${isMe ? "bg-amber-600/20 border border-amber-500/50" : "bg-neutral-900 border border-neutral-700"}`}
+              className={`flex justify-between p-2 rounded items-center ${
+                isMe ?
+                  "bg-amber-600/20 border border-amber-500/50"
+                : "bg-neutral-900 border border-neutral-700"
+              }`}
             >
               <div className="flex items-center gap-2">
                 {t.icon && (
-                  <Image
+                  <img
                     src={t.icon}
                     alt=""
                     width={20}
                     height={20}
-                    className="rounded-sm"
+                    className="rounded-sm shrink-0"
                   />
                 )}
-                <span
-                  className={`font-bold ${isMe ? "text-amber-400" : "text-neutral-300"}`}
-                >
-                  {t.name}{" "}
-                  {isMe && "(You)"}
-                </span>
+                <div className="flex flex-col">
+                  <span
+                    className={`font-bold ${isMe ? "text-amber-400" : "text-neutral-300"}`}
+                  >
+                    {t.name}{" "}
+                    {isMe && "(You)"}
+                  </span>
+                  {t.major && (
+                    <span className="text-[9px] text-neutral-500/70 -mt-0.5">
+                      {t.major}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="text-sm font-mono text-neutral-400">
-                {placement} | {t.wins}-
-                {t.losses}
+              <div className="text-sm font-mono text-neutral-400 shrink-0 ml-4">
+                {t.placement.text} |{" "}
+                {t.wins}-{t.losses}
               </div>
             </div>
           );

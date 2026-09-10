@@ -43,6 +43,7 @@ export function formatTeamForSimulation(team, squad = null) {
   return {
     name: team.name,
     icon: team.icon,
+    major: team.major,
     players: team.players.map(p => expandPlayerStats(p))
   };
 }

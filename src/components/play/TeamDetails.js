@@ -17,8 +17,12 @@ export default function TeamDetails({
             ← Back
           </button>
         )}
-        <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-xl bg-neutral-800">
-          LOGO
+        <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-xl bg-neutral-800 overflow-hidden">
+          {team.icon ? (
+            <img src={team.icon} alt={team.name} className="h-full w-full object-contain p-3" />
+          ) : (
+            <span className="text-sm text-neutral-500">LOGO</span>
+          )}
         </div>
 
         <h2 className="text-3xl font-bold">
