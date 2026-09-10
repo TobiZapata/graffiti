@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import { useMultiplayerTournament } from "@/context/MultiplayerContext";
 import { useRouter } from "next/navigation";
+import TeamRosterModal from "@/components/TeamRosterModal";
+import { useState } from "react";
 
 // Definición de la estructura del Swiss (pools por ronda)
 const SWISS_STRUCTURE = [
@@ -85,6 +87,7 @@ const SWISS_STRUCTURE = [
 ];
 
 export default function SimulationUI() {
+  const [rosterModalTeam, setRosterModalTeam] = useState(null);
   const {
     stage,
     swissRound,
@@ -313,7 +316,7 @@ export default function SimulationUI() {
             ))) && (
           <>
             <div className="overflow-x-auto pb-4">
-              <div className="flex gap-2 min-w-[1200px]">
+              <div className="flex items-center gap-2 min-w-[1200px]">
                 {SWISS_STRUCTURE.map(
                   (col, colIdx) => {
                     const isCurrentOrPast =
@@ -390,16 +393,7 @@ export default function SimulationUI() {
                                             (
                                               t,
                                             ) => (
-                                              <span
-                                                key={
-                                                  t.id
-                                                }
-                                                className="text-[10px] font-bold text-green-400 bg-green-950/50 px-1.5 py-0.5 rounded"
-                                              >
-                                                {
-                                                  t.name
-                                                }
-                                              </span>
+                                              <div key={t.id} className="w-6 h-6 rounded bg-neutral-900 border border-green-500 shrink-0 flex items-center justify-center overflow-hidden cursor-pointer hover:scale-110 transition-transform" onClick={() => typeof setRosterModalTeam !== "undefined" && setRosterModalTeam(t)} title={`${t.name}${t.major ? ` - ${t.major}` : ""}\n${t.players?.map(p => p.name).join(", ")}`}>{t.icon ? <img src={t.icon} alt={t.name} className="w-5 h-5 object-contain" /> : <span className="text-[8px] font-bold text-green-500 uppercase">{t.name.slice(0,2)}</span>}</div>
                                             ),
                                           )
                                         : <span className="text-[10px] text-neutral-600">
@@ -453,7 +447,7 @@ export default function SimulationUI() {
                                           (
                                             m,
                                           ) => (
-                                            <SwissMatchRow
+                                            <SwissMatchRow onTeamClick={setRosterModalTeam}
                                               key={
                                                 m.id
                                               }
@@ -511,16 +505,7 @@ export default function SimulationUI() {
                                             (
                                               t,
                                             ) => (
-                                              <span
-                                                key={
-                                                  t.id
-                                                }
-                                                className="text-[10px] font-bold text-red-400 bg-red-950/50 px-1.5 py-0.5 rounded"
-                                              >
-                                                {
-                                                  t.name
-                                                }
-                                              </span>
+                                              <div key={t.id} className="w-6 h-6 rounded bg-neutral-900 border border-red-500 shrink-0 flex items-center justify-center overflow-hidden grayscale opacity-80 cursor-pointer hover:scale-110 transition-transform" onClick={() => typeof setRosterModalTeam !== "undefined" && setRosterModalTeam(t)} title={`${t.name}${t.major ? ` - ${t.major}` : ""}\n${t.players?.map(p => p.name).join(", ")}`}>{t.icon ? <img src={t.icon} alt={t.name} className="w-5 h-5 object-contain" /> : <span className="text-[8px] font-bold text-red-500 uppercase">{t.name.slice(0,2)}</span>}</div>
                                             ),
                                           )
                                         : <span className="text-[10px] text-neutral-600">
@@ -598,9 +583,7 @@ export default function SimulationUI() {
                 "string",
             ))) && (
           <>
-            <PlayoffBracket
-              matches={matches}
-            />
+            <PlayoffBracket matches={matches} onTeamClick={setRosterModalTeam} />
 
             {/* Botón ver resultado final desde results_pending (playoffs) */}
             {stage ===
@@ -663,7 +646,7 @@ export default function SimulationUI() {
                     return (
                       <tr
                         key={t.id}
-                        className={`transition-colors ${t.isPlayer ? "bg-amber-900/20 text-amber-400" : "hover:bg-neutral-800/50"}`}
+                        className={`transition-colors cursor-pointer ${t.isPlayer ? "bg-amber-900/20 text-amber-400 hover:bg-amber-900/40" : "hover:bg-neutral-800"}`} onClick={() => setRosterModalTeam(t)}
                       >
                         <td className="p-3 text-neutral-500 text-xs font-mono">
                           {idx + 1}
@@ -735,6 +718,7 @@ export default function SimulationUI() {
         </section>
 
         {/* MODALS */}
+        <TeamRosterModal team={rosterModalTeam} onClose={() => setRosterModalTeam(null)} />
         {stage === "eliminated" && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
             <div className="text-center bg-neutral-900 border border-neutral-700 p-8 rounded-xl max-w-2xl w-full mx-4 shadow-2xl">
@@ -797,7 +781,7 @@ export default function SimulationUI() {
 /* COMPONENTES SWISS         */
 /* ========================= */
 
-function SwissMatchRow({ m }) {
+function SwissMatchRow({ m, onTeamClick }) {
   const isWinnerA =
     m.completed &&
     m.result?.winner === m.teamA.id;
@@ -902,7 +886,7 @@ function ChevronArrows({ direction }) {
 /* COMPONENTE PLAYOFF BRACKET */
 /* ========================= */
 
-function PlayoffBracket({ matches }) {
+function PlayoffBracket({ matches, onTeamClick }) {
   const qf = matches
     .filter(
       (m) =>
@@ -941,8 +925,8 @@ function PlayoffBracket({ matches }) {
         {/* Quarterfinals */}
         <div className="flex flex-col justify-around h-[500px] w-[240px]">
           {qf.map((m, i) => (
-            <BracketMatchCard
-              key={m.id}
+            <BracketMatchCard onTeamClick={onTeamClick}
+                                                key={m.id}
               m={m}
             />
           ))}
@@ -953,8 +937,8 @@ function PlayoffBracket({ matches }) {
               4 - qf.length,
             ),
           }).map((_, i) => (
-            <BracketMatchCard
-              key={`qf-tbd-${i}`}
+            <BracketMatchCard onTeamClick={onTeamClick}
+                                                key={`qf-tbd-${i}`}
               m={null}
             />
           ))}
@@ -966,8 +950,8 @@ function PlayoffBracket({ matches }) {
         {/* Semifinals */}
         <div className="flex flex-col justify-around h-[500px] w-[240px]">
           {sf.map((m) => (
-            <BracketMatchCard
-              key={m.id}
+            <BracketMatchCard onTeamClick={onTeamClick}
+                                                key={m.id}
               m={m}
             />
           ))}
@@ -977,8 +961,8 @@ function PlayoffBracket({ matches }) {
               2 - sf.length,
             ),
           }).map((_, i) => (
-            <BracketMatchCard
-              key={`sf-tbd-${i}`}
+            <BracketMatchCard onTeamClick={onTeamClick}
+                                                key={`sf-tbd-${i}`}
               m={null}
             />
           ))}
@@ -989,9 +973,7 @@ function PlayoffBracket({ matches }) {
 
         {/* Final */}
         <div className="flex flex-col justify-center h-[500px] w-[240px]">
-          <BracketMatchCard
-            m={final || null}
-          />
+          <BracketMatchCard m={final || null} onTeamClick={onTeamClick} />
         </div>
 
         {/* Conector Final → Champion */}
@@ -1039,7 +1021,7 @@ function PlayoffBracket({ matches }) {
   );
 }
 
-function BracketMatchCard({ m }) {
+function BracketMatchCard({ m, onTeamClick }) {
   if (!m) {
     return (
       <div className="border border-dashed border-neutral-700 rounded-lg p-3 bg-neutral-900/50">

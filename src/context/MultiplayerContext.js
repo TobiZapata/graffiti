@@ -14,6 +14,9 @@ export function MultiplayerProvider({ children, roomId }) {
   const [room, setRoom] = useState(null);
   const [pendingResult, setPendingResult] = useState(null);
 
+  const [localStageOverride, setLocalStageOverride] = useState(null);
+  const [lastSeenStage, setLastSeenStage] = useState(null);
+
   useEffect(() => {
     if (loading || !user || !roomId) return;
 
@@ -27,12 +30,25 @@ export function MultiplayerProvider({ children, roomId }) {
     return () => unsubscribe();
   }, [roomId, user, loading]);
 
+  const currentStage = room?.tournament?.stage;
+
+  useEffect(() => {
+    if (currentStage && currentStage !== lastSeenStage) {
+      if (lastSeenStage === "playoffs" && currentStage === "won") {
+         setLocalStageOverride("results_pending");
+      }
+      setLastSeenStage(currentStage);
+    }
+  }, [currentStage, lastSeenStage]);
+
   if (!room || !room.tournament) {
     return <div className="p-8 text-white text-center">Loading Multiplayer Tournament...</div>;
   }
 
   const { stage, swissRound, standings, matches } = room.tournament;
   const isHost = room.hostId === user?.uid;
+
+  const effectiveStage = localStageOverride || stage;
 
   const myPlayerObj = room.players?.find(p => p.uid === user?.uid);
   const mySquad = myPlayerObj?.squad || [];
@@ -248,7 +264,10 @@ export function MultiplayerProvider({ children, roomId }) {
     });
   };
 
-  const showFinalResult = () => setPendingResult(null);
+  const showFinalResult = () => {
+    setPendingResult(null);
+    setLocalStageOverride(null);
+  };
 
   const contextValue = {
     isMultiplayer: true,
@@ -257,7 +276,7 @@ export function MultiplayerProvider({ children, roomId }) {
     userUid: user?.uid,
     mySquad,
     teamName,
-    stage,
+    stage: effectiveStage,
     swissRound,
     standings,
     matches,

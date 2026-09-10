@@ -294,8 +294,8 @@ function PlayerCard({
   alive,
   side,
   kda,
+  isRight
 }) {
-  const isRight = side === "CT";
   const dotColor =
     alive ?
       side === "T" ?
@@ -628,11 +628,7 @@ function KillFeedEntry({
 }
 
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
-export default function CSMatchViewer({
-  rounds,
-  matchSummary,
-  onSimulationComplete,
-}) {
+export default function CSMatchViewer({ rounds, matchSummary, onSimulationComplete, teamA, teamB, seriesState }) {
   const [roundIdx, setRoundIdx] =
     useState(0);
   const [eventIdx, setEventIdx] =
@@ -946,6 +942,9 @@ export default function CSMatchViewer({
   const leftTeamName = isTeam1T ? r.tTeam : r.ctTeam;
   const rightTeamName = isTeam1T ? r.ctTeam : r.tTeam;
 
+  const leftTeamObj = (teamA && teamA.name === leftTeamName) ? teamA : (teamB && teamB.name === leftTeamName) ? teamB : null;
+  const rightTeamObj = (teamA && teamA.name === rightTeamName) ? teamA : (teamB && teamB.name === rightTeamName) ? teamB : null;
+
   const leftSide = isTeam1T ? "T" : "CT";
   const rightSide = isTeam1T ? "CT" : "T";
 
@@ -1052,47 +1051,73 @@ export default function CSMatchViewer({
       </div>
 
       {/* ── Scoreboard ── */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 24, alignItems: "center", marginBottom: 20 }}>
         {/* Left Team */}
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "4px 8px", borderRadius: 6, background: getSideBg(leftSide), color: getSideColor(leftSide) }}>
-              <img src={getSideLogo(leftSide)} alt={leftSide} width={20} height={20} />
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", paddingRight: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "6px 12px", borderRadius: 8, background: getSideBg(leftSide), color: getSideColor(leftSide) }}>
+              <img src={getSideLogo(leftSide)} alt={leftSide} width={24} height={24} />
             </div>
-            <span style={{ fontSize: 15, fontWeight: 500, color: "var(--text-primary)" }}>{leftTeamName}</span>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                <span style={{ fontSize: 24, fontWeight: 700, color: "var(--text-primary)", lineHeight: 1 }}>{leftTeamName}</span>
+                {leftTeamObj?.major && (
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 4 }}>{leftTeamObj.major}</span>
+                )}
+              </div>
+            {leftTeamObj?.icon && <img src={leftTeamObj.icon} alt={leftTeamName} width={56} height={56} style={{ objectFit: 'contain' }} />}
           </div>
-          <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-            {leftStrategy} · ${fmt(leftEquip)}
-          </span>
+          
         </div>
 
         {/* Center Score */}
-        <div style={{ textAlign: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <span style={{ fontSize: 30, fontWeight: 500, color: "var(--text-primary)", minWidth: 36, textAlign: "right" }}>
+        <div style={{ textAlign: "center", display: "flex", alignItems: "center", gap: 20 }}>
+          {/* Team A series score pips */}
+          {seriesState && seriesState.bestOf > 1 && (
+            <div style={{ display: "flex", gap: 4 }}>
+              {Array.from({ length: seriesState.mapsToWin }).map((_, i) => (
+                <div key={i} style={{ width: 6, height: 36, backgroundColor: i < seriesState.winsA ? "white" : "rgba(255,255,255,0.1)", borderRadius: 3, boxShadow: i < seriesState.winsA ? "0 0 8px rgba(255,255,255,0.5)" : "none" }} />
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+            <span style={{ fontSize: 42, fontWeight: 700, color: "var(--text-primary)", minWidth: 46, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
               {leftScore}
             </span>
             <div>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 2 }}>RONDA</div>
-              <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text-secondary)" }}>{r.round} / 24</div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.1em", marginBottom: 2, textTransform: "uppercase" }}>Ronda</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums" }}>{r.round} / 24</div>
             </div>
-            <span style={{ fontSize: 30, fontWeight: 500, color: "var(--text-primary)", minWidth: 36, textAlign: "left" }}>
+            <span style={{ fontSize: 42, fontWeight: 700, color: "var(--text-primary)", minWidth: 46, textAlign: "left", fontVariantNumeric: "tabular-nums" }}>
               {rightScore}
             </span>
           </div>
+
+          {/* Team B series score pips */}
+          {seriesState && seriesState.bestOf > 1 && (
+            <div style={{ display: "flex", gap: 4 }}>
+              {Array.from({ length: seriesState.mapsToWin }).map((_, i) => (
+                <div key={i} style={{ width: 6, height: 36, backgroundColor: i < seriesState.winsB ? "white" : "rgba(255,255,255,0.1)", borderRadius: 3, boxShadow: i < seriesState.winsB ? "0 0 8px rgba(255,255,255,0.5)" : "none" }} />
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Right Team */}
-        <div style={{ textAlign: "right" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3, justifyContent: "flex-end" }}>
-            <span style={{ fontSize: 15, fontWeight: 500, color: "var(--text-primary)" }}>{rightTeamName}</span>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "4px 8px", borderRadius: 6, background: getSideBg(rightSide), color: getSideColor(rightSide) }}>
-              <img src={getSideLogo(rightSide)} alt={rightSide} width={20} height={20} />
+        <div style={{ textAlign: "left", display: "flex", flexDirection: "column", alignItems: "flex-start", paddingLeft: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
+            {rightTeamObj?.icon && <img src={rightTeamObj.icon} alt={rightTeamName} width={56} height={56} style={{ objectFit: 'contain' }} />}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+                <span style={{ fontSize: 24, fontWeight: 700, color: "var(--text-primary)", lineHeight: 1 }}>{rightTeamName}</span>
+                {rightTeamObj?.major && (
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 4 }}>{rightTeamObj.major}</span>
+                )}
+              </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "6px 12px", borderRadius: 8, background: getSideBg(rightSide), color: getSideColor(rightSide) }}>
+              <img src={getSideLogo(rightSide)} alt={rightSide} width={24} height={24} />
             </div>
           </div>
-          <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-            ${fmt(rightEquip)} · {rightStrategy}
-          </span>
+          
         </div>
       </div>
 
@@ -1109,8 +1134,11 @@ export default function CSMatchViewer({
       >
         {/* Left players */}
         <div>
+          <div style={{ textAlign: "center", marginBottom: 12, fontSize: 13, color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+             {leftStrategy} • ${fmt(leftEquip)}
+          </div>
           {leftPlayers.map((p) => (
-            <PlayerCard
+            <PlayerCard isRight={false}
               key={p.uid}
               name={p.name}
               side={leftSide}
@@ -1166,8 +1194,11 @@ export default function CSMatchViewer({
 
         {/* Right players */}
         <div>
+          <div style={{ textAlign: "center", marginBottom: 12, fontSize: 13, color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+             ${fmt(rightEquip)} • {rightStrategy}
+          </div>
           {rightPlayers.map((p) => (
-            <PlayerCard
+            <PlayerCard isRight={true}
               key={p.uid}
               name={p.name}
               side={rightSide}
@@ -1189,7 +1220,7 @@ export default function CSMatchViewer({
 
       {roundIdx === rounds.length - 1 && finished && matchSummary && (
         <div style={{ marginTop: 20, background: 'var(--surface-1)', padding: 16, borderRadius: 12 }}>
-          <h3 style={{ marginBottom: 12, textAlign: 'center' }}>Match Summary</h3>
+          <h3 style={{ marginBottom: 16, textAlign: 'center', fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Match Summary</h3>
           {(() => {
             const totalRounds = rounds.length;
             const enhancedStats = matchSummary.map(p => {
@@ -1201,34 +1232,72 @@ export default function CSMatchViewer({
               return { ...p, rating };
             }).sort((a, b) => b.rating - a.rating);
 
-            const teams = [...new Set(enhancedStats.map(p => p.team))];
+            // Ordenar los equipos para que el ganador o Team A este primero
+            const teams = [...new Set(enhancedStats.map(p => p.team))].sort((a, b) => a === teamA?.name ? -1 : 1);
             
-            return teams.map(teamName => {
-              const teamPlayers = enhancedStats.filter(p => p.team === teamName);
-              return (
-                <div key={teamName} style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 8, color: 'var(--text-accent)' }}>{teamName}</div>
-                  <table style={{ width: '100%', fontSize: 13, textAlign: 'left', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-                        <th style={{ padding: '4px 0' }}>Player</th>
-                        <th>K/D/A</th>
-                        <th>Rating 3.0</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {teamPlayers.map(p => (
-                        <tr key={p.uid} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                          <td style={{ padding: '4px 0' }}>{p.name}</td>
-                          <td>{p.kills}/{p.deaths}/{p.assists}</td>
-                          <td>{p.rating.toFixed(2)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              );
-            });
+            return (
+              <div style={{ maxWidth: 840, margin: "20px auto 0", borderRadius: 12, overflow: "hidden", border: "1px solid var(--border)" }}>
+                {teams.map((teamName, tIdx) => {
+                  const teamPlayers = enhancedStats.filter(p => p.team === teamName);
+                  const tObj = teamName === teamA?.name ? teamA : teamName === teamB?.name ? teamB : null;
+                  
+                  return (
+                    <div key={teamName} style={{ borderBottom: tIdx === 0 ? '4px solid var(--bg-body)' : 'none' }}>
+                      {/* Team Header */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#0a0a0a', padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                          {tObj?.icon ? (
+                            <img src={tObj.icon} alt={teamName} width={32} height={32} style={{ objectFit: 'contain', filter: 'drop-shadow(0 0 4px rgba(255,255,255,0.2))' }} />
+                          ) : (
+                             <div style={{ width: 32, height: 32, borderRadius: 6, backgroundColor: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 'bold', color: 'var(--text-muted)' }}>
+                               {teamName.substring(0,3).toUpperCase()}
+                             </div>
+                          )}
+                          <span style={{ fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "0.02em" }}>{teamName}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 32, fontSize: 12, fontWeight: 800, color: '#888', textTransform: 'uppercase', minWidth: 320, paddingRight: 8 }}>
+                          <div style={{ width: 60, textAlign: 'center' }}>K-D</div>
+                          <div style={{ width: 50, textAlign: 'center' }}>+/-</div>
+                          <div style={{ width: 50, textAlign: 'center' }}>A</div>
+                          <div style={{ width: 60, textAlign: 'center' }}>Rating</div>
+                        </div>
+                      </div>
+                      
+                      {/* Players */}
+                      <div style={{ backgroundColor: 'var(--surface-1)' }}>
+                        {teamPlayers.map((p, pIdx) => {
+                          const diff = p.kills - p.deaths;
+                          const diffColor = diff > 0 ? '#4ade80' : diff < 0 ? '#f87171' : '#9ca3af';
+                          
+                          return (
+                            <div key={p.uid} style={{ 
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between', 
+                              padding: '10px 20px', 
+                              backgroundColor: pIdx % 2 === 0 ? 'var(--surface-0)' : 'var(--surface-1)',
+                              borderBottom: pIdx === teamPlayers.length - 1 ? 'none' : '1px solid var(--border-light)'
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                                 <div style={{ width: 32, height: 32, borderRadius: 6, backgroundColor: 'var(--bg-body)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
+                                   {p.role ? p.role.substring(0,3).toUpperCase() : "PLY"}
+                                 </div>
+                                 <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>{p.name}</span>
+                              </div>
+                              
+                              <div style={{ display: 'flex', gap: 32, fontSize: 15, fontWeight: 500, color: 'var(--text-secondary)', minWidth: 320, paddingRight: 8 }}>
+                                <div style={{ width: 60, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{p.kills}-{p.deaths}</div>
+                                <div style={{ width: 50, textAlign: 'center', color: diffColor, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{diff > 0 ? '+' : ''}{diff}</div>
+                                <div style={{ width: 50, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{p.assists}</div>
+                                <div style={{ width: 60, textAlign: 'center', color: p.rating >= 1.05 ? '#4ade80' : p.rating <= 0.85 ? '#f87171' : 'var(--text-primary)', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{p.rating.toFixed(2)}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
           })()}
         </div>
       )}

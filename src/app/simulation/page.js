@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import { useTournament } from "@/context/TournamentContext";
 import { useRouter } from "next/navigation";
+import TeamRosterModal from "@/components/TeamRosterModal";
+import { useState } from "react";
 
 
 // Definición de la estructura del Swiss (pools por ronda)
@@ -58,6 +60,8 @@ export default function SimulationPage() {
     pendingResult,
   } = useTournament();
   const router = useRouter();
+  const [rosterModalTeam, setRosterModalTeam] = useState(null);
+
 
   const playoffRounds = ["Quarterfinals", "Semifinals", "Final"];
   const currentRoundMatches = matches.filter((m) =>
@@ -165,7 +169,7 @@ export default function SimulationPage() {
             !matches.some((m) => typeof m.round === "string"))) && (
           <>
             <div className="overflow-x-auto pb-4">
-              <div className="flex gap-2 min-w-[1200px]">
+              <div className="flex items-center gap-2 min-w-[1200px]">
                 {SWISS_STRUCTURE.map((col, colIdx) => {
                   const isCurrentOrPast = col.round <= swissRound;
                   const isFuture = col.round > swissRound;
@@ -196,12 +200,17 @@ export default function SimulationPage() {
                                   <div className="bg-neutral-800/80 border border-green-900/50 rounded p-1.5 flex flex-wrap gap-1 justify-center min-h-[28px]">
                                     {advTeams.length > 0 ? (
                                       advTeams.map((t) => (
-                                        <span
-                                          key={t.id}
-                                          className="text-[10px] font-bold text-green-400 bg-green-950/50 px-1.5 py-0.5 rounded"
+                                        <div 
+                                          key={t.id} 
+                                          className="w-6 h-6 rounded bg-neutral-900 border border-green-500 shrink-0 flex items-center justify-center overflow-hidden cursor-pointer hover:scale-110 transition-transform" onClick={() => typeof setRosterModalTeam !== "undefined" && setRosterModalTeam(t)} 
+                                          title={`${t.name}${t.major ? ` - ${t.major}` : ""}\n${t.players?.map(p => p.name).join(", ")}`}
                                         >
-                                          {t.name}
-                                        </span>
+                                          {t.icon ? (
+                                            <img src={t.icon} alt={t.name} className="w-5 h-5 object-contain" />
+                                          ) : (
+                                            <span className="text-[8px] font-bold text-green-500 uppercase">{t.name.slice(0,2)}</span>
+                                          )}
+                                        </div>
                                       ))
                                     ) : (
                                       <span className="text-[10px] text-neutral-600">
@@ -232,7 +241,7 @@ export default function SimulationPage() {
                               >
                                 {poolM.length > 0
                                   ? poolM.map((m) => (
-                                      <SwissMatchRow key={m.id} m={m} />
+                                      <SwissMatchRow onTeamClick={setRosterModalTeam} key={m.id} m={m} />
                                     ))
                                   : // Placeholders para rondas futuras
                                     Array.from({ length: pool.matchCount }).map(
@@ -260,12 +269,17 @@ export default function SimulationPage() {
                                   <div className="bg-neutral-800/80 border border-red-900/50 rounded p-1.5 flex flex-wrap gap-1 justify-center min-h-[28px]">
                                     {elimTeams.length > 0 ? (
                                       elimTeams.map((t) => (
-                                        <span
-                                          key={t.id}
-                                          className="text-[10px] font-bold text-red-400 bg-red-950/50 px-1.5 py-0.5 rounded"
+                                        <div 
+                                          key={t.id} 
+                                          className="w-6 h-6 rounded bg-neutral-900 border border-red-500 shrink-0 flex items-center justify-center overflow-hidden grayscale opacity-80 cursor-pointer hover:scale-110 transition-transform" onClick={() => typeof setRosterModalTeam !== "undefined" && setRosterModalTeam(t)} 
+                                          title={`${t.name}${t.major ? ` - ${t.major}` : ""}\n${t.players?.map(p => p.name).join(", ")}`}
                                         >
-                                          {t.name}
-                                        </span>
+                                          {t.icon ? (
+                                            <img src={t.icon} alt={t.name} className="w-5 h-5 object-contain" />
+                                          ) : (
+                                            <span className="text-[8px] font-bold text-red-500 uppercase">{t.name.slice(0,2)}</span>
+                                          )}
+                                        </div>
                                       ))
                                     ) : (
                                       <span className="text-[10px] text-neutral-600">
@@ -326,7 +340,7 @@ export default function SimulationPage() {
           (stage === "results_pending" &&
             matches.some((m) => typeof m.round === "string"))) && (
           <>
-            <PlayoffBracket matches={matches} />
+            <PlayoffBracket matches={matches} onTeamClick={setRosterModalTeam} />
 
             {/* Botón ver resultado final desde results_pending (playoffs) */}
             {stage === "results_pending" && (
@@ -381,7 +395,7 @@ export default function SimulationPage() {
                     return (
                       <tr
                         key={t.id}
-                        className={`transition-colors ${t.isPlayer ? "bg-amber-900/20 text-amber-400" : "hover:bg-neutral-800/50"}`}
+                        className={`transition-colors cursor-pointer ${t.isPlayer ? "bg-amber-900/20 text-amber-400 hover:bg-amber-900/40" : "hover:bg-neutral-800"}`} onClick={() => setRosterModalTeam(t)}
                       >
                         <td className="p-3 text-neutral-500 text-xs font-mono">
                           {idx + 1}
@@ -425,6 +439,7 @@ export default function SimulationPage() {
         </section>
 
         {/* MODALS */}
+        <TeamRosterModal team={rosterModalTeam} onClose={() => setRosterModalTeam(null)} />
         {stage === "eliminated" && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
             <div className="text-center bg-neutral-900 border border-neutral-700 p-8 rounded-xl max-w-2xl w-full mx-4 shadow-2xl">
@@ -473,7 +488,7 @@ export default function SimulationPage() {
 /* COMPONENTES SWISS         */
 /* ========================= */
 
-function SwissMatchRow({ m }) {
+function SwissMatchRow({ m, onTeamClick }) {
   const isWinnerA = m.completed && m.result?.winner === m.teamA.id;
   const isWinnerB = m.completed && m.result?.winner === m.teamB.id;
 
@@ -484,7 +499,7 @@ function SwissMatchRow({ m }) {
       {/* Team A */}
       <div 
         className={`flex items-center justify-center w-10 h-10 bg-neutral-800 rounded-md transition-all shrink-0 ${isWinnerA ? "ring-2 ring-white" : m.completed ? "opacity-40 grayscale" : ""}`}
-        title={`${m.teamA.name}${m.teamA.major ? ` - ${m.teamA.major}` : ""}`}
+        title={`${m.teamA.name}${m.teamA.major ? ` - ${m.teamA.major}` : ""}\n${m.teamA.players?.map(p => p.name).join(", ")}`}
       >
         {m.teamA.icon ? (
           <img src={m.teamA.icon} alt={m.teamA.name} className="w-8 h-8 object-contain" />
@@ -509,7 +524,7 @@ function SwissMatchRow({ m }) {
       {/* Team B */}
       <div 
         className={`flex items-center justify-center w-10 h-10 bg-neutral-800 rounded-md transition-all shrink-0 ${isWinnerB ? "ring-2 ring-white" : m.completed ? "opacity-40 grayscale" : ""}`}
-        title={`${m.teamB.name}${m.teamB.major ? ` - ${m.teamB.major}` : ""}`}
+        title={`${m.teamB.name}${m.teamB.major ? ` - ${m.teamB.major}` : ""}\n${m.teamB.players?.map(p => p.name).join(", ")}`}
       >
         {m.teamB.icon ? (
           <img src={m.teamB.icon} alt={m.teamB.name} className="w-8 h-8 object-contain" />
@@ -534,7 +549,7 @@ function ChevronArrows({ direction }) {
 /* COMPONENTE PLAYOFF BRACKET */
 /* ========================= */
 
-function PlayoffBracket({ matches }) {
+function PlayoffBracket({ matches, onTeamClick }) {
   const qf = matches
     .filter((m) => m.round === "Quarterfinals")
     .sort((a, b) => a.id.localeCompare(b.id));
@@ -556,11 +571,11 @@ function PlayoffBracket({ matches }) {
         {/* Quarterfinals */}
         <div className="flex flex-col justify-around h-[500px] w-[240px]">
           {qf.map((m, i) => (
-            <BracketMatchCard key={m.id} m={m} />
+            <BracketMatchCard onTeamClick={onTeamClick} key={m.id} m={m} />
           ))}
           {/* Placeholders si no hay 4 QF */}
           {Array.from({ length: Math.max(0, 4 - qf.length) }).map((_, i) => (
-            <BracketMatchCard key={`qf-tbd-${i}`} m={null} />
+            <BracketMatchCard onTeamClick={onTeamClick} key={`qf-tbd-${i}`} m={null} />
           ))}
         </div>
 
@@ -570,10 +585,10 @@ function PlayoffBracket({ matches }) {
         {/* Semifinals */}
         <div className="flex flex-col justify-around h-[500px] w-[240px]">
           {sf.map((m) => (
-            <BracketMatchCard key={m.id} m={m} />
+            <BracketMatchCard onTeamClick={onTeamClick} key={m.id} m={m} />
           ))}
           {Array.from({ length: Math.max(0, 2 - sf.length) }).map((_, i) => (
-            <BracketMatchCard key={`sf-tbd-${i}`} m={null} />
+            <BracketMatchCard onTeamClick={onTeamClick} key={`sf-tbd-${i}`} m={null} />
           ))}
         </div>
 
@@ -582,7 +597,7 @@ function PlayoffBracket({ matches }) {
 
         {/* Final */}
         <div className="flex flex-col justify-center h-[500px] w-[240px]">
-          <BracketMatchCard m={final || null} />
+          <BracketMatchCard m={final || null} onTeamClick={onTeamClick} />
         </div>
 
         {/* Conector Final → Champion */}
@@ -613,7 +628,7 @@ function PlayoffBracket({ matches }) {
   );
 }
 
-function BracketMatchCard({ m }) {
+function BracketMatchCard({ m, onTeamClick }) {
   if (!m) {
     return (
       <div className="border border-dashed border-neutral-700 rounded-lg p-3 bg-neutral-900/50">
