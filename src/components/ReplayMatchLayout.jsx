@@ -4,7 +4,7 @@ import { MatchTimeline, PlayerCard } from "./CSMatchViewer";
 import { mostExpensiveWeapon } from "../lib/replayEquipment.mjs";
 import styles from "./ReplayMatchLayout.module.css";
 
-export default function ReplayMatchLayout({ catalog, selection, round, sample, progress, teamA, teamB, seriesState, radar, killfeed }) {
+export default function ReplayMatchLayout({ catalog, selection, round, sample, progress, teamA, teamB, seriesState, radar, killfeed, controls }) {
   const sideA = round.meta.macro.teamASide;
   const sideB = sideA === "T" ? "CT" : "T";
   const nameA = teamA?.name || (sideA === "T" ? round.meta.macro.teamT : round.meta.macro.teamCT);
@@ -24,7 +24,7 @@ export default function ReplayMatchLayout({ catalog, selection, round, sample, p
     {!right && data?.icon && <img className={styles.logo} src={data.icon} alt="" />}
     {right && badge(side)}
   </div>;
-  const players = (teamId, side, right) => <section className={styles.players} aria-label={`Jugadores ${teamId === "A" ? nameA : nameB}`}>
+  const players = (teamId, side, right) => <section className={styles.players} aria-label={`${teamId === "A" ? nameA : nameB} players`}>
     {round.meta.assignments.filter((a) => a.team === teamId).map((assignment) => {
       const player = sample.players.find((p) => p.id === assignment.actorId);
       const stats = progress.players.find((p) => p.team === teamId && p.name === assignment.name);
@@ -37,10 +37,11 @@ export default function ReplayMatchLayout({ catalog, selection, round, sample, p
   return <div className={styles.layout}>
     <div className={styles.scoreboard}>
       {team(teamA, nameA, sideA, false)}
-      <div className={styles.score}>{pips(seriesState?.winsA)}<strong>{progress.score[0]}</strong><span>Ronda<b>{round.meta.round}{round.meta.macro.overtime ? ` · OT ${round.meta.macro.overtime}` : " / 24"}</b></span><strong>{progress.score[1]}</strong>{pips(seriesState?.winsB)}</div>
+      <div className={styles.score}>{pips(seriesState?.winsA)}<strong>{progress.score[0]}</strong><span>Round<b>{round.meta.round}{round.meta.macro.overtime ? ` · OT ${round.meta.macro.overtime}` : " / 24"}</b></span><strong>{progress.score[1]}</strong>{pips(seriesState?.winsB)}</div>
       {team(teamB, nameB, sideB, true)}
     </div>
     <MatchTimeline rounds={timeline} currentRoundIdx={selection} isCurrentRoundFinished={Boolean(sample.result)} />
+    {controls}
     <div className={styles.match}>
       {players("A", sideA, false)}
       <div className={styles.radar}>{radar}<div className={styles.killfeed}>{killfeed}</div></div>

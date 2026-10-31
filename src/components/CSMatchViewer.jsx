@@ -173,7 +173,7 @@ export function MatchTimeline({ rounds, currentRoundIdx, isCurrentRoundFinished 
       overflowX: "auto",
       background: "var(--surface-1)",
       borderRadius: 12,
-      border: "0.5px solid var(--border)"
+      border: "none"
     }}>
       {halves.map((half, hIdx) => {
         let halfStartIdx = 0;
@@ -195,7 +195,7 @@ export function MatchTimeline({ rounds, currentRoundIdx, isCurrentRoundFinished 
               let tickColor = "rgba(255, 255, 255, 0.25)";
               if (isCurrent) tickColor = "#ffffff";
               else if (isRevealed && rd) {
-                tickColor = rd.winnerSide === "T" ? "#dfbf63" : "#86a4d7";
+                tickColor = rd.winnerSide === "T" ? "var(--side-t)" : "var(--side-ct)";
               }
               
               if (!isRevealed && !isCurrent) {
@@ -219,7 +219,7 @@ export function MatchTimeline({ rounds, currentRoundIdx, isCurrentRoundFinished 
                   <div style={{ height: 26, width: "100%", position: "relative" }}>
                     {isRevealed && isWinnerT1 && rd && rd.winType && (
                       <>
-                        <div style={{ position: "absolute", bottom: 0, left: 0, width: "100%", height: 16, background: `linear-gradient(to top, ${tickColor}A0, transparent)` }} />
+                        <div style={{ position: "absolute", bottom: 0, left: 0, width: "100%", height: 16, background: "transparent" }} />
                         <div style={{ position: "absolute", bottom: 6, left: "50%", transform: "translateX(-50%)" }}>
                           <MaskIcon src={getIcon(rd.winType)} color={tickColor} size={14} />
                         </div>
@@ -233,7 +233,7 @@ export function MatchTimeline({ rounds, currentRoundIdx, isCurrentRoundFinished 
                     height: 4, 
                     width: 18, 
                     background: tickColor, 
-                    boxShadow: isCurrent ? "0 0 6px #ffffff" : "none",
+                    boxShadow: "none",
                     borderRadius: 2
                   }}>
                     {/* Superimposed Round Number */}
@@ -258,7 +258,7 @@ export function MatchTimeline({ rounds, currentRoundIdx, isCurrentRoundFinished 
                   <div style={{ height: 26, width: "100%", position: "relative" }}>
                     {isRevealed && !isWinnerT1 && rd && rd.winType && (
                       <>
-                        <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: 16, background: `linear-gradient(to bottom, ${tickColor}A0, transparent)` }} />
+                        <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: 16, background: "transparent" }} />
                         <div style={{ position: "absolute", top: 6, left: "50%", transform: "translateX(-50%)" }}>
                           <MaskIcon src={getIcon(rd.winType)} color={tickColor} size={14} />
                         </div>
@@ -381,7 +381,7 @@ export function PlayerCard({
 
       {health !== undefined && <span style={{ fontSize: 10, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{alive ? health : 0} HP</span>}
       <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0, flexDirection: isRight ? "row-reverse" : "row" }}>
-      <span role={health === undefined ? undefined : "group"} aria-label={health === undefined ? undefined : "Arma más cara del inventario"}>
+      <span role={health === undefined ? undefined : "group"} aria-label={health === undefined ? undefined : "Most valuable weapon"}>
       {alive && weaponSrc ?
         <Icon
           src={weaponSrc}
@@ -403,7 +403,7 @@ export function PlayerCard({
         </span>
       }
       </span>
-      {health !== undefined && alive && <span role="group" aria-label="Arma en mano" title={activeWeapon || "Sin arma"}>
+      {health !== undefined && alive && <span role="group" aria-label="Weapon in hand" title={activeWeapon || "No weapon"}>
         {activeSrc ? <Icon src={activeSrc} alt={activeWeapon} size={15} /> : <span style={{ fontSize: 10 }}>{activeWeapon || "—"}</span>}
       </span>}
       </span>
@@ -732,6 +732,8 @@ export default function CSMatchViewer({ rounds, matchSummary, onSimulationComple
   );
 
   useEffect(() => {
+    // A round change replaces all playback state; reset is stable while the simulation is unchanged.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     reset(roundIdx);
   }, [roundIdx, reset]);
 

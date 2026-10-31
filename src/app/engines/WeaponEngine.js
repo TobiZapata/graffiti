@@ -171,7 +171,7 @@ export const WEAPONS = {
   },
   MOLOTOV: {
     id: "MOLOTOV",
-    name: "Mólotov",
+    name: "Molotov",
     cost: 400,
     killReward: 300,
     power: 0,

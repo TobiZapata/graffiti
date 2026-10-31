@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import AppBar from "@/components/AppBar";
 import { useAuth } from "@/context/AuthContext";
 import { useTournament } from "@/context/TournamentContext";
 import { createRoom, joinRoom, listPublicRooms } from "@/lib/roomService";
@@ -24,15 +25,15 @@ export default function MultiplayerPage() {
     if (loading || !user) return;
     let active = true;
     listPublicRooms().then(result => { if (active) setRooms(result); })
-      .catch(err => { if (active) setError(err.message || "No se pudieron cargar las salas públicas."); })
+      .catch(err => { if (active) setError(err.message || "Public rooms could not be loaded."); })
       .finally(() => { if (active) setRefreshing(false); });
     return () => { active = false; };
   }, [loading, user]);
 
   async function enter(code) {
-    if (!user) return setError("No se pudo iniciar sesión. Recargá la página para volver a intentar.");
-    if (!validOrganization(organization)) return setError("Necesitás una organización válida para entrar a una sala.");
-    if (code !== null && !/^[A-Z0-9]{4}$/.test(code.trim().toUpperCase())) return setError("Ingresá un código de sala válido de 4 caracteres.");
+    if (!user) return setError("You could not be signed in. Reload the page to try again.");
+    if (!validOrganization(organization)) return setError("You need a complete organization to join a room.");
+    if (code !== null && !/^[A-Z0-9]{4}$/.test(code.trim().toUpperCase())) return setError("Room codes are 4 letters or numbers.");
     setError("");
     setBusy(code === null ? "create" : code);
     try {
@@ -42,42 +43,73 @@ export default function MultiplayerPage() {
         : await joinRoom(code.trim().toUpperCase(), user.uid, displayName, organization);
       router.push(`/room/${joinedCode}`);
     } catch (err) {
-      setError(err.message || "No se pudo entrar a la sala.");
+      setError(err.message || "Could not join the room.");
       setBusy("");
     }
   }
 
-  if (loading || !ready) return <main className="min-h-screen flex items-center justify-center text-white">Conectando...</main>;
-  if (!user) return <main className="min-h-screen p-8 text-white" role="alert">No se pudo iniciar sesión. Recargá la página para volver a intentar. <Link href="/" className="text-amber-400 underline">Volver al inicio</Link></main>;
-  if (!organization) return <main className="min-h-screen p-8 text-white"><p>{storageError || "Necesitás una organización para jugar multijugador."}</p><Link href="/organization" className="text-amber-400 underline">Ir a mi organización</Link> · <Link href="/play" className="text-amber-400 underline">Crear organización</Link></main>;
+  async function refresh() {
+    setRefreshing(true); setError("");
+    try { setRooms(await listPublicRooms()); }
+    catch (err) { setError(err.message); }
+    finally { setRefreshing(false); }
+  }
 
-  return <main className="min-h-screen p-8 text-white flex flex-col items-center">
-    <div className="w-full max-w-2xl bg-neutral-900/80 p-8 rounded-2xl border border-neutral-700">
-      <Link href="/" className="text-neutral-400 hover:text-white">← Volver</Link>
-      <h1 className="text-3xl font-black mt-4 text-amber-500">MULTIJUGADOR</h1>
-      <p className="text-neutral-400 mt-2">Jugás con {organization.name}. Tu organización se guarda en este dispositivo; al confirmar que estás listo compartís una copia con la sala.</p>
-      {error && <p role="alert" className="bg-red-900/50 border border-red-500 text-red-200 px-4 py-2 rounded my-4">{error}</p>}
-      <label className="block mt-6 text-sm font-bold text-neutral-400" htmlFor="nickname">APODO OPCIONAL</label>
-      <input id="nickname" value={name} onChange={e => setName(e.target.value)} placeholder={user.displayName || organization.name} maxLength={15} className="w-full rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 mt-2" />
-      <div className="grid sm:grid-cols-2 gap-4 mt-6">
-        <div className="flex flex-col gap-3">
-          <label className="flex items-center gap-2"><input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} /> Sala pública</label>
-          <button onClick={() => enter(null)} disabled={!!busy} className="rounded-xl bg-amber-600 px-4 py-3 font-bold disabled:opacity-50">{busy === "create" ? "CREANDO..." : "CREAR SALA"}</button>
+  if (loading || !ready) return <><AppBar /><main className="p-6 text-ink-2">Connecting…</main></>;
+  if (!user) return <><AppBar /><main className="p-6" role="alert">You could not be signed in. Reload the page to try again.</main></>;
+  if (!organization) return <><AppBar />
+    <main className="mx-auto w-full max-w-[1440px] px-4 py-16 sm:px-6">
+      <h1 className="text-[24px] font-medium">Multiplayer</h1>
+      <p className="mt-2 max-w-[520px] text-ink-2">{storageError || "You need an organization to play with friends. Draft your squad first, then come back to create or join a room."}</p>
+      <Link href="/play" className="btn btn-primary btn-lg mt-6">Create organization</Link>
+    </main></>;
+
+  return <>
+    <AppBar />
+    <main className="mx-auto w-full max-w-[1440px] px-4 py-8 sm:px-6">
+      <h1 className="text-[20px] font-medium">Multiplayer</h1>
+      <p className="mt-1 max-w-[640px] text-ink-2">You play as {organization.name}. Your organization stays on this device; when you mark yourself ready, the room gets a copy of it.</p>
+      {error && <p role="alert" className="mt-4 text-negative">{error}</p>}
+
+      <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+        <div className="grid content-start gap-4">
+          <section className="card p-6" aria-labelledby="create-title">
+            <h2 id="create-title" className="text-[16px] font-medium">Create a room</h2>
+            <label className="mt-4 block" htmlFor="nickname"><span className="label">Display name (optional)</span></label>
+            <input id="nickname" value={name} onChange={e => setName(e.target.value)} placeholder={user.displayName || organization.name} maxLength={15} className="field" />
+            <label className="mt-4 flex items-center gap-2 text-ink-2">
+              <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} className="accent-[var(--ink)]" />
+              List it in public rooms
+            </label>
+            <button type="button" onClick={() => enter(null)} disabled={!!busy} className="btn btn-primary mt-6">{busy === "create" ? "Creating…" : "Create room"}</button>
+          </section>
+
+          <section className="card p-6" aria-labelledby="join-title">
+            <h2 id="join-title" className="text-[16px] font-medium">Join with a code</h2>
+            <form className="mt-4 flex gap-2" onSubmit={e => { e.preventDefault(); enter(roomCode); }}>
+              <input aria-label="Room code" value={roomCode} onChange={e => setRoomCode(e.target.value.toUpperCase())} placeholder="ABCD" maxLength={4}
+                className="field tabular w-32 tracking-[0.2em]" autoComplete="off" />
+              <button type="submit" disabled={!!busy} className="btn btn-secondary">Join</button>
+            </form>
+          </section>
         </div>
-        <div className="flex flex-col gap-3">
-          <input aria-label="Código de sala" value={roomCode} onChange={e => setRoomCode(e.target.value.toUpperCase())} placeholder="CÓDIGO" maxLength={4} className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3" />
-          <button onClick={() => enter(roomCode)} disabled={!!busy} className="rounded-xl bg-neutral-700 px-4 py-3 font-bold disabled:opacity-50">ENTRAR CON CÓDIGO</button>
-        </div>
+
+        <section className="card p-6" aria-labelledby="rooms-title">
+          <div className="flex items-center justify-between gap-4">
+            <h2 id="rooms-title" className="text-[16px] font-medium">Public rooms</h2>
+            <button type="button" disabled={refreshing} onClick={refresh} className="link text-[13px] disabled:opacity-40">Refresh</button>
+          </div>
+          {refreshing ? <p className="mt-4 text-ink-2">Loading rooms…</p> : rooms.length === 0 ? <p className="mt-4 text-ink-2">No public rooms right now. Create one and share its code.</p> : (
+            <ul className="mt-2">{rooms.map(room => (
+              <li key={room.id} className="flex h-12 items-center gap-4 border-t border-rule first:border-t-0">
+                <span className="tabular font-medium tracking-[0.1em]">{room.id}</span>
+                <span className="flex-1 text-ink-2">{room.players?.length || 0} of 8 players</span>
+                <button type="button" onClick={() => enter(room.id)} disabled={!!busy} className="btn btn-secondary">Join</button>
+              </li>
+            ))}</ul>
+          )}
+        </section>
       </div>
-      <h2 className="text-xl font-bold mt-8">Salas públicas</h2>
-      <button disabled={refreshing} onClick={async () => {
-        setRefreshing(true); setError("");
-        try { setRooms(await listPublicRooms()); }
-        catch (err) { setError(err.message); }
-        finally { setRefreshing(false); }
-      }} className="mt-2 text-sm text-amber-400 underline disabled:opacity-50">Actualizar salas</button>
-      {refreshing ? <p className="text-neutral-400 mt-3">Cargando salas...</p> : rooms.length === 0 ? <p className="text-neutral-400 mt-3">No hay salas públicas disponibles.</p> : <ul className="mt-3 space-y-2">{rooms.map(room => <li key={room.id} className="flex items-center justify-between gap-4 rounded-xl bg-neutral-800 p-4"><span><strong>{room.id}</strong> · {room.players?.length || 0} jugadores</span><button onClick={() => enter(room.id)} disabled={!!busy} className="text-amber-400 font-bold disabled:opacity-50">Entrar</button></li>)}</ul>}
-      <Link href="/organization" className="inline-block mt-6 text-amber-400 underline">Preparar mi organización</Link>
-    </div>
-  </main>;
+    </main>
+  </>;
 }

@@ -1,12 +1,15 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useMemo } from "react";
 import { auth, db } from "@/lib/firebase";
-import { doc, onSnapshot, runTransaction } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, runTransaction, where } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { returnRoomToLobby } from "@/lib/roomService";
 import { useAuth } from "@/context/AuthContext";
 import { generateScore, generateSwissPairings } from "@/lib/tournamentService";
+import { decodeRoom } from "@/lib/roomStorage.mjs";
+import { applyForfeits } from "@/lib/roomForfeit.mjs";
+import { applySubmittedResults, matchResultId, validMatchResult } from "@/lib/multiplayerResults.mjs";
 
 const MultiplayerContext = createContext();
 
@@ -16,6 +19,8 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
   const [error, setError] = useState(null);
   
   const [room, setRoom] = useState(null);
+  const [submissions, setSubmissions] = useState([]);
+  const [resultsLoaded, setResultsLoaded] = useState(null);
   const [pendingResult, setPendingResult] = useState(null);
 
 
@@ -25,25 +30,43 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
     const roomRef = doc(db, "rooms", roomId);
     const unsubscribe = onSnapshot(roomRef, (docSnap) => {
       if (docSnap.exists()) {
-        setRoom(docSnap.data());
+        setRoom(decodeRoom(docSnap.data()));
       } else setError("Room not found.");
     }, err => setError(err.message));
 
     return () => unsubscribe();
   }, [roomId, user, loading]);
 
+  const activeTournamentId = room?.tournament?.tournamentId;
+  const isMember = !!room?.players.some(p => p.uid === user?.uid && !p.left);
+  useEffect(() => {
+    if (!activeTournamentId || !isMember) return;
+    return onSnapshot(query(collection(db, 'rooms', roomId, 'results'), where('tournamentId', '==', activeTournamentId)), { includeMetadataChanges: true },
+      snapshot => {
+        setSubmissions(snapshot.docs.filter(s => !s.metadata.hasPendingWrites).map(s => s.data()));
+        if (!snapshot.metadata.fromCache) setResultsLoaded(activeTournamentId);
+      }, err => setError(err.message));
+  }, [roomId, activeTournamentId, isMember]);
+  const resolved = useMemo(() => {
+    if (!room?.tournament) return null;
+    try { return { tournament: applyForfeits(applySubmittedResults(room.tournament, submissions)) }; }
+    catch (err) { return { error: err.message }; }
+  }, [room, submissions]);
+
   useEffect(() => {
     if (room?.status === "lobby" && !viewResults) router.replace(`/room/${roomId}`);
   }, [room?.status, roomId, router, viewResults]);
 
-  if (!loading && !user) return <div role="alert" className="p-8 text-red-400 text-center">No se pudo iniciar sesión. Volvé a multijugador para reintentar.</div>;
+  if (!loading && !user) return <div role="alert" className="p-8 text-red-400 text-center">You could not be signed in. Go back to multiplayer to try again.</div>;
   if (error) return <div role="alert" className="p-8 text-red-400 text-center">{error}</div>;
+  if (room && !isMember) return <div role="alert" className="p-8 text-red-400 text-center">You are not in this room.</div>;
+  if (resolved?.error) return <div role="alert" className="p-8 text-red-400 text-center">{resolved.error}</div>;
   if (room?.status === "lobby" && !viewResults) return <div className="p-8 text-white text-center">Returning to lobby...</div>;
-  if (!room || !room.tournament) {
+  if (!room || !room.tournament || resultsLoaded !== activeTournamentId) {
     return <div className="p-8 text-white text-center">Loading Multiplayer Tournament...</div>;
   }
 
-  const { stage, swissRound, standings, matches } = room.tournament;
+  const { stage, swissRound, standings, matches } = resolved.tournament;
   const isHost = room.hostId === user?.uid;
 
   const effectiveStage = stage;
@@ -55,37 +78,38 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
   const tournamentId = room.tournament.tournamentId;
   const checkCurrent = (data, hostOnly = false) => {
     if (!user?.uid || auth.currentUser?.uid !== user.uid || data.status !== "playing" || !tournamentId || data.tournament?.tournamentId !== tournamentId) throw new Error("This Major is no longer active.");
+    if (!Object.values(data.players || {}).some(p => p.uid === user.uid && !p.left)) throw new Error("You are not in this room.");
     if (hostOnly && data.hostId !== user.uid) throw new Error("Only the host can advance the Major.");
     return data.tournament;
   };
 
   const completeMatch = async (matchId, result) => {
     const roomRef = doc(db, "rooms", roomId);
-    await runTransaction(db, async tx => {
+    return runTransaction(db, async tx => {
       const snap = await tx.get(roomRef);
       if (!snap.exists()) throw new Error("Room not found.");
       const t = checkCurrent(snap.data());
       const index = t.matches.findIndex(m => m.id === matchId);
       const match = t.matches[index];
       if (!match || !match.playerUids?.includes(user.uid)) throw new Error("You cannot submit this match.");
-      if (match.completed) return;
-      if (!result || result.teamA?.id !== match.teamA.id || result.teamB?.id !== match.teamB.id ||
-          ![match.teamA.id, match.teamB.id].includes(result.winner) ||
-          !Number.isInteger(result.scoreA) || !Number.isInteger(result.scoreB) ||
-          result.scoreA < 0 || result.scoreB < 0 || result.scoreA === result.scoreB ||
-          (result.scoreA > result.scoreB ? match.teamA.id : match.teamB.id) !== result.winner) throw new Error("Invalid match result.");
-      const matches = [...t.matches];
-      matches[index] = { ...match, result: { ...result, teamA: match.teamA, teamB: match.teamB }, completed: true };
-      const standings = t.standings.map(team => ({ ...team }));
-      if (t.stage === "swiss") {
-        const winner = standings.find(team => team.id === result.winner);
-        const loser = standings.find(team => team.id === (result.winner === match.teamA.id ? match.teamB.id : match.teamA.id));
-        if (!winner || !loser) throw new Error("Match teams are missing from standings.");
-        winner.wins += 1;
-        loser.losses += 1;
-      }
-      tx.update(roomRef, { "tournament.matches": matches, "tournament.standings": standings });
+      const ref = doc(roomRef, 'results', matchResultId(tournamentId, matchId));
+      const submitted = await tx.get(ref);
+      if (match.completed) return match.result;
+      if (submitted.exists()) return submitted.data().result;
+      if (t.abandonedUids?.some(uid => match.playerUids?.includes(uid))) throw new Error("This match was decided by an abandonment.");
+      if (!t.matchesStarted || !validMatchResult(match, result)) throw new Error("Invalid match result.");
+      // shortcut: rebuild display stats from the replay; persist separately if cross-version match history is needed.
+      tx.set(ref, { tournamentId, matchId, matchIndex: index, submittedBy: user.uid,
+        result: { ...result, teamA: match.teamA, teamB: match.teamB,
+          maps: result.maps.map(({ map, scoreA, scoreB, winnerId }) => ({ map, scoreA, scoreB, winnerId })) } });
+      return result;
     });
+  };
+
+  const readSubmittedResults = async (tx, tournament) => {
+    const pending = tournament.matches.filter(m => m.isPlayerMatch && !m.completed);
+    const snapshots = await Promise.all(pending.map(m => tx.get(doc(db, 'rooms', roomId, 'results', matchResultId(tournamentId, m.id)))));
+    return applyForfeits(applySubmittedResults(tournament, snapshots.filter(s => s.exists()).map(s => s.data())));
   };
 
   const startMatches = async () => {
@@ -104,7 +128,7 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
     await runTransaction(db, async tx => {
     const snap = await tx.get(roomRef);
     if (!snap.exists()) throw new Error("Room not found.");
-    const t = checkCurrent(snap.data(), true);
+    const t = await readSubmittedResults(tx, checkCurrent(snap.data(), true));
     if (t.stage !== stage || t.swissRound !== swissRound || t.matchesStarted !== room.tournament.matchesStarted || t.matches.length !== room.tournament.matches.length || !["swiss", "playoffs"].includes(t.stage)) return;
     const current = t.matches.filter(m => t.stage === "swiss" ? m.round === t.swissRound : ["Quarterfinals", "Semifinals", "Final"].includes(m.round));
     if (current.some(m => m.isPlayerMatch && !m.completed)) throw new Error("A player match is still pending.");
@@ -154,8 +178,8 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
         const newMatches = generateSwissPairings(active, updatedMatches, nextRound);
         
         tx.update(roomRef, {
-          "tournament.matches": [...updatedMatches, ...newMatches],
-          "tournament.standings": updatedStandings,
+          "tournament.matches": applyForfeits({ ...t, matches: [...updatedMatches, ...newMatches], standings: updatedStandings }).matches,
+          "tournament.standings": applyForfeits({ ...t, matches: [...updatedMatches, ...newMatches], standings: updatedStandings }).standings,
           "tournament.swissRound": nextRound,
           "tournament.matchesStarted": false
         });
@@ -211,7 +235,7 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
         sf[1].isPlayerMatch = sf[1].teamA.isPlayer || sf[1].teamB.isPlayer;
         sf[1].playerUids = [sf[1].teamA.uid, sf[1].teamB.uid].filter(Boolean);
         
-        tx.update(roomRef, { "tournament.matches": [...updatedMatches, ...sf], "tournament.matchesStarted": false });
+        tx.update(roomRef, { "tournament.matches": applyForfeits({ ...t, matches: [...updatedMatches, ...sf] }).matches, "tournament.matchesStarted": false });
         return;
       }
       
@@ -221,7 +245,7 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
         fin.isPlayerMatch = fin.teamA.isPlayer || fin.teamB.isPlayer;
         fin.playerUids = [fin.teamA.uid, fin.teamB.uid].filter(Boolean);
         
-        tx.update(roomRef, { "tournament.matches": [...updatedMatches, fin], "tournament.matchesStarted": false });
+        tx.update(roomRef, { "tournament.matches": applyForfeits({ ...t, matches: [...updatedMatches, fin] }).matches, "tournament.matchesStarted": false });
         return;
       }
 
@@ -268,7 +292,7 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
     
     tx.update(roomRef, {
       "tournament.stage": "playoffs",
-      "tournament.matches": [...t.matches, ...qfMatches],
+      "tournament.matches": applyForfeits({ ...t, matches: [...t.matches, ...qfMatches] }).matches,
       "tournament.matchesStarted": false
     });
     });

@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 
 export function generateLogoSvg(shape, outerColor, innerColor) {
   let svgContent = '';
-  
+
   if (shape === 'circle') {
     svgContent = `
       <circle cx="50" cy="50" r="50" fill="${outerColor}" />
@@ -25,6 +25,12 @@ export function generateLogoSvg(shape, outerColor, innerColor) {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
+const SHAPES = [
+  { id: "circle", label: "Circle", icon: <circle cx="8" cy="8" r="6" /> },
+  { id: "square", label: "Square", icon: <rect x="2" y="2" width="12" height="12" rx="2" /> },
+  { id: "triangle", label: "Triangle", icon: <path d="M8 2l6.5 12h-13z" /> },
+];
+
 export default function LogoCreator({ onChange, onColorsChange }) {
   const [shape, setShape] = useState("circle");
   const [outerColor, setOuterColor] = useState("#1e293b");
@@ -36,68 +42,32 @@ export default function LogoCreator({ onChange, onColorsChange }) {
   }, [shape, outerColor, innerColor, onChange, onColorsChange]);
 
   return (
-    <div className="flex flex-col gap-4 bg-neutral-900 p-4 rounded-lg border border-neutral-800">
-      <h3 className="text-white font-semibold text-sm">Escudo de tu Equipo</h3>
-      
-      <div className="flex gap-4 items-center justify-center">
-        <div className="w-20 h-20 bg-neutral-950 p-2 rounded border border-neutral-800 flex items-center justify-center">
-          <img src={generateLogoSvg(shape, outerColor, innerColor)} className="w-16 h-16 object-contain" alt="Logo preview" />
+    <fieldset className="flex items-center gap-6">
+      <legend className="label">Crest</legend>
+      <span className="flex h-24 w-24 shrink-0 items-center justify-center rounded-xl bg-raised p-4">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={generateLogoSvg(shape, outerColor, innerColor)} className="h-full w-full object-contain" alt="Crest preview" />
+      </span>
+      <div className="grid gap-3">
+        <div className="flex items-center gap-1" role="group" aria-label="Shape">
+          {SHAPES.map(s => (
+            <button key={s.id} type="button" aria-label={s.label} aria-pressed={shape === s.id} onClick={() => setShape(s.id)}
+              className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${shape === s.id ? "bg-ink text-black" : "bg-raised text-ink-2 hover:bg-control"}`}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">{s.icon}</svg>
+            </button>
+          ))}
         </div>
-        
-        <div className="flex flex-col gap-3">
-          {/* Forma */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-neutral-400 w-12">Forma:</span>
-            <div className="flex bg-neutral-950 rounded border border-neutral-800">
-              <button 
-                type="button" aria-label="Forma circular" aria-pressed={shape === 'circle'}
-                onClick={() => setShape("circle")}
-                className={`p-1.5 ${shape === 'circle' ? 'bg-amber-600' : 'hover:bg-neutral-800'}`}
-              >
-                <div className="w-4 h-4 rounded-full border-2 border-white"></div>
-              </button>
-              <button 
-                type="button" aria-label="Forma cuadrada" aria-pressed={shape === 'square'}
-                onClick={() => setShape("square")}
-                className={`p-1.5 ${shape === 'square' ? 'bg-amber-600' : 'hover:bg-neutral-800'}`}
-              >
-                <div className="w-4 h-4 border-2 border-white rounded-[2px]"></div>
-              </button>
-              <button 
-                type="button" aria-label="Forma triangular" aria-pressed={shape === 'triangle'}
-                onClick={() => setShape("triangle")}
-                className={`p-1.5 ${shape === 'triangle' ? 'bg-amber-600' : 'hover:bg-neutral-800'}`}
-              >
-                {/* Triangulo CSS rapido */}
-                <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[14px] border-b-white"></div>
-              </button>
-            </div>
-          </div>
-          
-          {/* Colores */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-neutral-400 w-12">Principal:</span>
-            <input 
-              type="color" 
-              aria-label="Color principal"
-              value={outerColor}
-              onChange={(e) => setOuterColor(e.target.value)}
-              className="w-8 h-8 rounded cursor-pointer bg-neutral-950 border border-neutral-800"
-            />
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-neutral-400 w-12">Detalle:</span>
-            <input 
-              type="color" 
-              aria-label="Color de detalle"
-              value={innerColor}
-              onChange={(e) => setInnerColor(e.target.value)}
-              className="w-8 h-8 rounded cursor-pointer bg-neutral-950 border border-neutral-800"
-            />
-          </div>
-        </div>
+        <label className="flex items-center gap-3 text-ink-2">
+          <input type="color" value={outerColor} onChange={e => setOuterColor(e.target.value)}
+            className="h-8 w-8 cursor-pointer rounded-md border border-rule-strong bg-raised" />
+          Main color
+        </label>
+        <label className="flex items-center gap-3 text-ink-2">
+          <input type="color" value={innerColor} onChange={e => setInnerColor(e.target.value)}
+            className="h-8 w-8 cursor-pointer rounded-md border border-rule-strong bg-raised" />
+          Detail color
+        </label>
       </div>
-    </div>
+    </fieldset>
   );
 }

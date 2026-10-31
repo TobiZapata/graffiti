@@ -1,35 +1,78 @@
+"use client";
+
 import Link from "next/link";
+import teams from "@/data/teams.json";
+import { useTournament } from "@/context/TournamentContext";
+import { record } from "@/lib/majorDisplay.mjs";
+
+const MAJORS = [...new Set(teams.map(t => t.major))];
+const LOGOS = [...new Map(teams.map(t => [t.icon, t])).values()].slice(0, 24);
+
+function majorStatus({ standings, stage, swissRound, pendingResult }) {
+  const me = standings.find(t => t.isPlayer);
+  if (!me) return "No Major in progress";
+  if (stage === "won" || pendingResult === "won") return "Major champions";
+  if (stage === "eliminated" || pendingResult === "eliminated") return `Eliminated · ${record(me)}`;
+  if (stage === "swiss") return `Swiss stage, round ${swissRound} · ${record(me)}`;
+  if (stage === "swiss_complete") return `Qualified for the playoffs · ${record(me)}`;
+  return "Playoffs";
+}
 
 export default function Home() {
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8 text-white relative overflow-hidden">
-      {/* Dynamic background effect */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-900/20 via-transparent to-transparent"></div>
-      
-      <div className="z-10 flex flex-col items-center gap-8 text-center">
-        <h1 className="text-6xl font-black tracking-tighter sm:text-8xl bg-gradient-to-r from-amber-500 to-amber-700 bg-clip-text text-transparent drop-shadow-lg">
-          CS MAJOR SIMULATOR
-        </h1>
-        
-        <p className="max-w-2xl text-lg text-neutral-400 sm:text-xl">
-          Build your ultimate dream team. Strategize your economy, master the roles, and lead your squad through the grueling Swiss Stage to reach Major glory.
-        </p>
+  const tournament = useTournament();
+  const { organization, ready } = tournament;
 
-        <div className="flex gap-6 mt-4">
-          <Link
-            href="/organization"
-            className="group relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-full bg-neutral-800 px-10 py-5 text-xl font-black text-white shadow-xl transition-all duration-300 hover:scale-105 hover:bg-neutral-700 border border-neutral-700"
-          >
-            MI ORGANIZACIÓN
-          </Link>
-          <Link
-            href="/multiplayer"
-            className="group relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-full bg-amber-600 px-10 py-5 text-xl font-black text-white shadow-xl transition-all duration-300 hover:scale-105 hover:bg-amber-500 hover:shadow-amber-500/50"
-          >
-            MULTIPLAYER
-          </Link>
+  return (
+    <main className="flex min-h-screen flex-col">
+      <header className="mx-auto flex h-14 w-full max-w-[1440px] items-center px-4 sm:px-6">
+        <span className="text-[15px] font-semibold">CS Major Simulator</span>
+      </header>
+
+      <section className="mx-auto grid w-full max-w-[1440px] flex-1 items-center gap-12 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-20">
+        <div className="max-w-[600px]">
+          <h1 className="text-[24px] font-medium leading-[1.15] tracking-[-0.01em] sm:text-[32px]">
+            Draft a squad from past Majors and play your own
+          </h1>
+          <p className="mt-4 text-[16px] leading-relaxed text-ink-2">
+            Pick from the rosters of {MAJORS.slice(0, -1).join(", ")} and {MAJORS.at(-1)}. Take five players through a 16-team Swiss stage and the playoffs, and watch every round on the Mirage radar.
+          </p>
+
+          {!ready ? <div className="mt-8 h-11" aria-hidden="true" /> : organization ? (
+            <div className="mt-8">
+              <Link href="/organization" className="card flex items-center gap-4 p-4 transition-colors hover:bg-raised">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={organization.icon} alt="" width="48" height="48" />
+                <span className="min-w-0">
+                  <span className="block truncate text-[16px] font-medium">{organization.name}</span>
+                  <span className="meta tabular">{majorStatus(tournament)}</span>
+                </span>
+              </Link>
+              <div className="mt-6 flex flex-wrap items-center gap-6">
+                <Link href="/organization" className="btn btn-primary btn-lg">Continue</Link>
+                <Link href="/multiplayer" className="link">Play with friends</Link>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-8 flex flex-wrap items-center gap-6">
+              <Link href="/play" className="btn btn-primary btn-lg">Create organization</Link>
+              <Link href="/multiplayer" className="link">Play with friends</Link>
+            </div>
+          )}
         </div>
-      </div>
+
+        <figure>
+          <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6" aria-label="Teams in the draft pool">
+            {LOGOS.map(team => (
+              <li key={team.icon} className="card flex aspect-square items-center justify-center p-3" title={team.name}>
+                {/* Team logos are served from the team-logo CDN. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={team.icon} alt={team.name} className="max-h-full max-w-full object-contain" loading="lazy" />
+              </li>
+            ))}
+          </ul>
+          <figcaption className="meta mt-3">{teams.length} rosters from {MAJORS.length} Majors, 2013–2014</figcaption>
+        </figure>
+      </section>
     </main>
   );
 }

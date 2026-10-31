@@ -47,7 +47,7 @@ export function loadCareer(storage) {
     if (!validCareer(data)) throw new Error('Invalid career save');
     return { data, error: null };
   } catch {
-    return { data: null, error: 'No se pudo leer la partida local. Se conservó el archivo original.' };
+    return { data: null, error: 'Your saved game could not be read. The original save was kept.' };
   }
 }
 
@@ -57,6 +57,6 @@ export function saveCareer(storage, data) {
     storage.setItem(CAREER_KEY, JSON.stringify(data));
     return null;
   } catch {
-    return 'No se pudo guardar la partida local.';
+    return 'Your game could not be saved.';
   }
 }

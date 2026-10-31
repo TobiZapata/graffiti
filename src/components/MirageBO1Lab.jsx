@@ -64,32 +64,32 @@ export default function MirageBO1Lab() {
   }
 
   return <>
-    <section className={styles.lab} aria-label="Generar BO1 de Mirage">
-      <header className={styles.header}><div><h1>Ensamblador de Mirage</h1>
-        <p>BO1 · MR12 · Overtime MR3</p></div><Link href="/replay-lab">Ver rondas originales</Link></header>
+    <section className={styles.lab} aria-label="Generate a Mirage BO1">
+      <header className={styles.header}><div><h1>Mirage assembler</h1>
+        <p>BO1 · MR12 · Overtime MR3</p></div><Link href="/replay-lab">View the recorded rounds</Link></header>
       <form className={styles.controls} onSubmit={generate}>
-        <label>Equipo A <select disabled={busy} value={teams[teamAIndex] ? teamAIndex : 0} onChange={e => setTeamAIndex(Number(e.target.value))}>
+        <label>Team A <select disabled={busy} value={teams[teamAIndex] ? teamAIndex : 0} onChange={e => setTeamAIndex(Number(e.target.value))}>
           {teams.map((team, i) => <option key={team.id} value={i}>{team.name}</option>)}
         </select></label>
-        <label>Equipo B <select disabled={busy} value={teams[teamBIndex] ? teamBIndex : 0} onChange={e => setTeamBIndex(Number(e.target.value))}>
+        <label>Team B <select disabled={busy} value={teams[teamBIndex] ? teamBIndex : 0} onChange={e => setTeamBIndex(Number(e.target.value))}>
           {teams.map((team, i) => <option key={team.id} value={i}>{team.name}</option>)}
         </select></label>
         {[["A", teamA, selectedA, setRolesA], ["B", teamB, selectedB, setRolesB]].map(([side, team, roles, setRoles]) =>
           [["mainAwperUid", "Main AWPer"], ["iglUid", "IGL"]].map(([field, label]) =>
             <label key={side + field}>{label} equipo {side} <select required disabled={busy} value={roles[field]}
               onChange={e => setRoles({ ...roles, teamId: team.id, [field]: e.target.value })}>
-              <option value="">Elegir jugador</option>
+              <option value="">Choose a player</option>
               {team.players.map((player, index) => <option key={String(player.uid ?? index)} value={String(player.uid ?? index)}>{player.name}</option>)}
             </select></label>))}
-        <label>Semilla <input disabled={busy} required value={seed} onChange={e => setSeed(e.target.value)} /></label>
-        <button disabled={busy} type="submit">{busy ? "Ensamblando…" : "Generar BO1"}</button>
+        <label>Seed <input disabled={busy} required value={seed} onChange={e => setSeed(e.target.value)} /></label>
+        <button disabled={busy} type="submit">{busy ? "Assembling…" : "Generate BO1"}</button>
       </form>
-      <p className={styles.note}>El ganador se elige de antemano y las rondas observadas se ensamblan con objetivos de kills flexibles. Las compras internas respetan lo conservado y el presupuesto disponible; las armas se muestran con la apariencia elegida por el motor.</p>
+      <p className={styles.note}>The winner is chosen first, then recorded rounds are assembled against flexible kill targets. Buys respect saved weapons and the available money; weapons show the skin chosen by the engine.</p>
       {error && <p className={styles.error} role="alert">{error}</p>}
       {match && <>
-        <p>{match.catalog.rounds.length} rondas · Semilla: {String(match.seed)}</p>
-        <details><summary>Estadísticas del BO1</summary>
-          <table><thead><tr><th scope="col">Jugador</th><th scope="col">Equipo</th><th scope="col">K</th><th scope="col">K objetivo</th><th scope="col">Diferencia</th><th scope="col">D</th><th scope="col">A</th><th scope="col">Flash A</th></tr></thead>
+        <p>{match.catalog.rounds.length} rounds · seed {String(match.seed)}</p>
+        <details><summary>BO1 stats</summary>
+          <table><thead><tr><th scope="col">Player</th><th scope="col">Team</th><th scope="col">K</th><th scope="col">Target K</th><th scope="col">Difference</th><th scope="col">D</th><th scope="col">A</th><th scope="col">Flash A</th></tr></thead>
             <tbody>{match.playerStats.map(p => <tr key={p.uid}><th scope="row">{p.name}</th><td>{p.team}</td><td>{p.kills}</td><td>{p.targetKills}</td><td>{p.killDeviation}</td><td>{p.deaths}</td><td>{p.assists}</td><td>{p.flashAssists}</td></tr>)}</tbody>
           </table>
         </details>

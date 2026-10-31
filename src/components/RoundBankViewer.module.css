@@ -1,63 +1,59 @@
-.lab { max-width: 1480px; margin: 0 auto; padding: 32px 20px; color: #e8edf2; }
+.lab { max-width: 1480px; margin: 0 auto; padding: 24px 24px 40px; color: var(--ink); }
 .header { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 24px; }
-.header p { font-size: 12px; letter-spacing: .16em; color: #ecb458; margin-bottom: 6px; }
-.header h1 { font-size: 28px; font-weight: 700; }
-.header span, .note { color: #a8b3c2; font-size: 13px; }
-.header a { color: #75cbd2; text-decoration: underline; }
-.controls { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; }
+.header p { font-size: 12px; color: var(--ink-3); margin-bottom: 4px; }
+.header h1 { font-size: 20px; font-weight: 500; }
+.header span, .note { color: var(--ink-2); font-size: 13px; }
+.header a { color: var(--ink-2); }
+.header a:hover { color: #fff; }
+
+.toolbar { display: grid; gap: 8px; margin: 12px 0 16px; }
+.controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; color: var(--ink-2); font-size: 13px; }
 .controls label { display: flex; align-items: center; gap: 8px; }
-.controls select, .controls button { background: #172231; color: #e8edf2; border: 1px solid #42536a; padding: 8px 12px; border-radius: 5px; }
-.controls input { background: #172231; color: #e8edf2; border: 1px solid #42536a; padding: 8px; border-radius: 5px; max-width: 160px; }
-.lab table { width: 100%; text-align: left; font-size: 13px; }
-.lab th, .lab td { padding: 4px; }
-.lab details { margin-top: 16px; }
-.controls button { cursor: pointer; }
-.controls button:disabled { opacity: .5; cursor: wait; }
-.controls :focus-visible, .timeline input:focus-visible { outline: 2px solid #75cbd2; outline-offset: 3px; }
-.controls output { font-variant-numeric: tabular-nums; margin-left: auto; }
-.timeline { display: grid; gap: 6px; margin-top: 18px; font-size: 12px; }
-.timeline input { width: 100%; accent-color: #75cbd2; }
-.status { min-height: 38px; padding: 10px 0; font-size: 14px; font-weight: 600; }
+.controls select, .controls button { height: 32px; padding: 0 12px; border-radius: 16px; background: var(--control); color: var(--ink); font-size: 13px; cursor: pointer; transition: background-color 150ms var(--ease); }
+.controls select:hover, .controls button:hover:not(:disabled) { background: #363636; }
+.controls button:first-child { min-width: 72px; background: var(--ink); color: #000; font-weight: 500; }
+.controls button:first-child:hover:not(:disabled) { background: #fff; }
+.controls button:disabled { opacity: .4; cursor: wait; }
+.controls output { margin-left: auto; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.status { color: var(--ink); }
+.seek { width: 100%; accent-color: var(--ink); }
+.controls :focus-visible, .seek:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.lab table { width: 100%; text-align: left; font-size: 13px; font-variant-numeric: tabular-nums; }
+.lab th, .lab td { height: 36px; padding: 0 8px; border-top: 1px solid var(--rule); }
+.lab th { color: var(--ink-3); font-weight: 400; }
 .match { display: grid; grid-template-columns: minmax(175px, 1fr) minmax(320px, 700px) minmax(175px, 1fr); gap: 16px; align-items: start; }
-.radar { width: 100%; background: #111; border: 1px solid #394353; border-radius: 8px; }
-.team { background: #101823dd; border: 1px solid #394353; border-radius: 8px; padding: 14px; }
-.team h2, .feed h2 { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
-.player { padding: 12px 0; border-top: 1px solid #29374a; font-size: 12px; }
-.player > div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; margin-bottom: 5px; }
-.player strong { font-size: 14px; }
-.player > span { color: #c3ccd7; }
-.playerWeapons { display: flex; align-items: center; gap: 10px; min-height: 28px; }
+.radar { width: 100%; background: var(--surface); border-radius: 12px; }
+.team { background: var(--surface); border-radius: 12px; padding: 16px; }
+.team h2, .feed h2 { font-size: 14px; font-weight: 500; margin-bottom: 8px; }
+.player { padding: 12px 0; border-top: 1px solid var(--rule); font-size: 12px; }
+.player > div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.player strong { font-size: 14px; font-weight: 500; }
+.player > span { color: var(--ink-2); }
+.playerWeapons { display: flex; align-items: center; gap: 12px; min-height: 28px; }
 .inventoryWeapon { display: inline-flex; align-items: center; flex: 0 0 88px; min-width: 0; }
-.activeWeapon { display: inline-flex; align-items: center; min-width: 0; max-width: 60px; font-size: 10px; line-height: 1.2; }
+.activeWeapon { display: inline-flex; align-items: center; min-width: 0; max-width: 60px; font-size: 11px; line-height: 1.2; }
 .activeWeapon .weaponIcon { width: 44px; height: 18px; }
 .weaponIcon { display: inline-block; width: 88px; height: 28px; object-fit: contain; object-position: left center; flex-shrink: 0; }
 .killWeapon { display: inline-flex; align-items: center; gap: 4px; }
 .dead { opacity: .5; }
-.defuse { display: grid; gap: 4px; margin-top: 5px; color: #86efac; }
-.defuse progress { width: 100%; height: 6px; accent-color: #86efac; }
-.feed { margin-top: 18px; padding: 16px; background: #101823dd; border: 1px solid #394353; border-radius: 8px; }
-.feed p { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: 13px; padding: 3px 0; }
-.feed time { color: #a8b3c2; font-variant-numeric: tabular-nums; }
-.feed span { color: #ecb458; }
-.feed small { color: #a8b3c2; }
+.defuse { display: grid; gap: 4px; margin-top: 4px; color: var(--positive); }
+.defuse progress { width: 100%; height: 6px; accent-color: var(--positive); }
+.feed { margin-top: 16px; padding: 16px; background: var(--surface); border-radius: 12px; }
+.feed p { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: 13px; padding: 4px 0; }
+.feed time { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.feed small { color: var(--ink-2); }
 .note { margin-top: 16px; }
-.error { padding: 12px; color: #fecaca; background: #581c1c; margin: 16px 0; }
-@media (max-width: 900px) { .match { grid-template-columns: 1fr 1fr; } .radar { grid-column: 1 / -1; grid-row: 1; } }
-@media (max-width: 520px) { .lab { padding: 18px 12px; } .header { align-items: start; flex-direction: column; } .header h1 { font-size: 23px; } .controls output { margin-left: 0; } .team { padding: 10px; } }
-.stats { margin-top: 18px; padding: 16px; overflow-x: auto; background: #101823dd; border: 1px solid #394353; border-radius: 8px; }
-.seriesHeader { padding-top: 16px; padding-bottom: 0; }
-.seriesHeader .header { margin-bottom: 10px; }
-.mapBadge { display: flex; align-items: center; gap: 12px; }
-.mapBadge p { margin: 0; }
-.matchMode { padding-top: 16px; }
-.matchMode .controls { justify-content: center; padding-bottom: 12px; border-bottom: 1px solid #303030; gap: 8px; }
-.matchMode .controls select, .matchMode .controls button { background: #202020; border-color: #383838; font-size: 13px; padding: 5px 9px; }
-.matchMode .controls output { margin-left: 0; font-size: 12px; color: #a3a3a3; }
-.matchMode .timeline { margin-top: 10px; font-size: 11px; color: #a3a3a3; }
-.matchMode .status { font-size: 12px; min-height: 30px; }
-.matchMode .stats { background: #151515; border-color: #303030; font-size: 12px; }
-.compactFeed { margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; }
-.compactFeed p { justify-content: flex-end; flex-wrap: wrap; gap: 5px; width: fit-content; max-width: 100%; margin: 0 0 4px auto; padding: 4px 7px; border: 1px solid #ed1516; border-radius: 4px; background: #0a0a0ae6; font-size: 10px; line-height: 1.3; }
-.compactFeed strong { overflow-wrap: anywhere; }
+.error { padding: 12px; color: var(--negative); background: var(--surface); border-radius: 8px; margin: 16px 0; }
+.stats { margin-top: 16px; padding: 16px; overflow-x: auto; background: var(--surface); border-radius: 12px; font-size: 13px; }
+.stats summary { cursor: pointer; color: var(--ink-2); }
+.stats summary:hover { color: #fff; }
+.stats[open] summary { margin-bottom: 8px; }
+.matchMode { padding-top: 20px; }
+.compactFeed { margin: 0; padding: 0; border-radius: 0; background: transparent; }
+.compactFeed p { justify-content: flex-end; flex-wrap: wrap; gap: 4px; width: fit-content; max-width: 100%; margin: 0 0 4px auto; padding: 4px 8px; border-radius: 4px; background: #000000d9; font-size: 11px; line-height: 1.3; }
+.compactFeed strong { font-weight: 500; overflow-wrap: anywhere; }
 .compactFeed .weaponIcon { width: 38px; height: 14px; }
-.compactFeed .killWeapon { gap: 3px; }
+.compactFeed .killWeapon { gap: 4px; }
+@media (max-width: 900px) { .match { grid-template-columns: 1fr 1fr; } .radar { grid-column: 1 / -1; grid-row: 1; } }
+@media (max-width: 520px) { .lab { padding: 16px; } .header { align-items: start; flex-direction: column; } .controls output { margin-left: 0; } .team { padding: 12px; } }

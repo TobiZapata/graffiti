@@ -1,3 +1,5 @@
+import { validMapPlayerStats } from './matchSummary.mjs';
+
 export function replayBestOf(match) {
   if (match.round === 'Final') return 5;
   if (['Quarterfinals', 'Semifinals'].includes(match.round)) return 3;
@@ -20,7 +22,7 @@ export function replaySeriesResult(match, history) {
 
 export function validSeriesProgress(match, progress) {
   return !!progress && Array.isArray(progress.history) && progress.history.length < replayBestOf(match) &&
-    progress.history.every(map => map && map.map === 'de_mirage' && Number.isInteger(map.scoreA) && map.scoreA >= 0 &&
+    progress.history.every(map => map && validMapPlayerStats(match, map) && map.map === 'de_mirage' && Number.isInteger(map.scoreA) && map.scoreA >= 0 &&
       Number.isInteger(map.scoreB) && map.scoreB >= 0 && (map.winnerId === match.teamA.id && map.scoreA > map.scoreB || map.winnerId === match.teamB.id && map.scoreB > map.scoreA)) &&
     !replaySeriesResult(match, progress.history).done && Number.isInteger(progress.watchedMap) &&
     progress.watchedMap >= -1 && progress.watchedMap <= progress.history.length &&

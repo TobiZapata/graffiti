@@ -5,18 +5,20 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import AppBar from "@/components/AppBar";
+import RoomRolesDialog from "@/components/RoomRolesDialog";
 import { useAuth } from "@/context/AuthContext";
 import { useTournament } from "@/context/TournamentContext";
 import { validOrganization } from "@/lib/localCareer.mjs";
 import { leaveRoom, setRoomParticipation, setRoomReady, startRoomMajor } from "@/lib/roomService";
-
-const roles = { mainAwperUid: "AWP", iglUid: "IGL", starUid: "STAR" };
+import { ROLE_FIELDS } from "@/lib/majorDisplay.mjs";
+import { decodeRoom } from "@/lib/roomStorage.mjs";
 
 export default function RoomPage({ params }) {
   const roomId = use(params).id;
   const router = useRouter();
   const { user, loading } = useAuth();
-  const { organization, ready } = useTournament();
+  const { organization, ready, assignOrganizationRole } = useTournament();
   const [room, setRoom] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
@@ -24,67 +26,114 @@ export default function RoomPage({ params }) {
   useEffect(() => {
     if (loading || !user) return;
     return onSnapshot(doc(db, "rooms", roomId), snapshot => {
-      if (!snapshot.exists()) { setError("La sala no existe o fue eliminada."); setRoom(null); return; }
-      const data = snapshot.data();
+      if (!snapshot.exists()) { setError("This room doesn't exist or was closed."); setRoom(null); return; }
+      const data = decodeRoom(snapshot.data());
       setRoom(data);
       if (data.status === "playing" && data.tournament?.participantUids?.includes(user.uid)) router.push(`/room/${roomId}/simulation`);
-    }, err => setError(err.message || "No se pudo conectar a la sala."));
+    }, err => setError(err.message || "Could not connect to the room."));
   }, [roomId, user, loading, router]);
 
   async function run(action, operation) {
     setBusy(action);
     setError("");
     try { await operation(); }
-    catch (err) { setError(err.message || "No se pudo completar la acción."); }
+    catch (err) { setError(err.message || "That didn't work. Try again."); }
     finally { setBusy(""); }
   }
 
-  if (loading || !ready) return <main className="min-h-screen flex items-center justify-center text-white">Cargando sala...</main>;
-  if (!user) return <main className="min-h-screen p-8 text-white" role="alert">No se pudo iniciar sesión. Recargá la página para volver a intentar. <Link href="/multiplayer" className="text-amber-400 underline">Volver</Link></main>;
-  if (!room) return <main className="min-h-screen p-8 text-white">{error || "Cargando sala..."} <Link href="/multiplayer" className="text-amber-400 underline">Volver</Link></main>;
+  const back = <Link href="/multiplayer" className="link mt-2 inline-block underline">Back to multiplayer</Link>;
+  if (loading || !ready) return <><AppBar /><main className="p-6 text-ink-2">Loading room…</main></>;
+  if (!user) return <><AppBar /><main className="p-6" role="alert">You could not be signed in. Reload the page to try again. {back}</main></>;
+  if (!room) return <><AppBar /><main className="p-6"><p>{error || "Loading room…"}</p>{back}</main></>;
+
+  if (room.status === "closed") return <><AppBar /><main className="p-6"><p>This room has been closed.</p>{back}</main></>;
 
   const players = room.players || [];
-  const me = players.find(p => p.uid === user.uid);
+  const me = players.find(p => p.uid === user.uid && !p.left);
   const isHost = room.hostId === user.uid;
-  const included = players.filter(p => p.participating);
+  const included = players.filter(p => p.participating && !p.left);
   const canStart = included.length > 0 && included.every(p => p.isReady);
   const inLobby = room.status === "lobby";
   const canReady = validOrganization(organization);
 
-  return <main className="min-h-screen p-8 text-white flex flex-col items-center">
-    <div className="w-full max-w-3xl bg-neutral-900/80 p-8 rounded-2xl border border-neutral-700">
-      <div className="flex flex-wrap justify-between gap-4 border-b border-neutral-800 pb-6">
-        <div><h1 className="text-3xl font-black text-amber-500">LOBBY</h1><p className="text-neutral-400 mt-2">{inLobby ? "Prepará tu equipo para el próximo Major." : "Major en curso."}</p></div>
-        <div><span className="block text-sm text-neutral-400">CÓDIGO DE SALA</span><strong className="text-3xl font-mono tracking-widest">{roomId}</strong></div>
+  return <>
+    <AppBar />
+    <main className="mx-auto w-full max-w-[1440px] px-4 py-8 sm:px-6">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-[20px] font-medium">Room <span className="tabular tracking-[0.1em]">{roomId}</span></h1>
+          <p className="mt-1 text-ink-2">{inLobby ? "Share the code. The host starts the Major once everyone taking part is ready." : "A Major is being played in this room."}</p>
+        </div>
+        {me && inLobby && <button type="button" disabled={!!busy} className="link disabled:opacity-40"
+          onClick={() => run("leave", async () => { await leaveRoom(roomId, user.uid); router.push("/multiplayer"); })}>
+          {busy === "leave" ? "Leaving…" : "Leave room"}
+        </button>}
+      </header>
+      {error && <p role="alert" className="mt-4 text-negative">{error}</p>}
+      {!me && <p role="alert" className="mt-4">You are no longer in this room. {back}</p>}
+
+      <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <section className="card p-6" aria-labelledby="orgs-title">
+          <div className="flex items-baseline justify-between">
+            <h2 id="orgs-title" className="text-[16px] font-medium">Organizations</h2>
+            <span className="meta tabular">{players.filter(p => !p.left).length} of 8</span>
+          </div>
+          <ul className="mt-4 grid gap-4 sm:grid-cols-2">{players.map(p => {
+            const org = p.organization;
+            const playing = room.status === "playing" && room.tournament?.participantUids?.includes(p.uid);
+            const state = p.left ? "Left the Major" : !p.participating ? "Sitting out" : playing ? "In the Major" : p.isReady ? "Ready" : "Getting ready";
+            return <li key={p.uid} className="rounded-xl bg-raised p-4">
+              <div className="flex items-center gap-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {org?.icon && <img src={org.icon} alt="" width="40" height="40" className="object-contain" />}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{org?.name || p.teamName}</p>
+                  <p className="meta truncate">{p.name}{p.uid === user.uid ? " · you" : ""}{p.uid === room.hostId ? " · host" : ""}</p>
+                </div>
+                <span className={`flex items-center gap-2 text-[13px] ${p.isReady && p.participating ? "text-ink" : "text-ink-2"}`}>
+                  <span className="h-1.5 w-1.5 rounded-full" aria-hidden="true" style={{ background: p.isReady && p.participating ? "var(--positive)" : "var(--ink-3)" }} />
+                  {state}
+                </span>
+              </div>
+              {org?.squad && <ul className="mt-3 grid gap-1 text-[13px]">{org.squad.map((entry, i) => {
+                const tags = Object.entries(ROLE_FIELDS).filter(([field]) => org[field] === String(i)).map(([, label]) => label);
+                return <li key={i} className="flex justify-between gap-2"><span>{entry.player?.name}</span><span className="text-ink-3">{tags.join(" · ")}</span></li>;
+              })}</ul>}
+              {isHost && inLobby && !p.left && <button type="button" disabled={!!busy} className="link mt-3 text-[13px] underline disabled:opacity-40"
+                onClick={() => run(`participation-${p.uid}`, () => setRoomParticipation(roomId, user.uid, p.uid, !p.participating))}>
+                {p.participating ? "Leave out of the next Major" : "Include in the next Major"}
+              </button>}
+            </li>;
+          })}</ul>
+        </section>
+
+        <div className="grid content-start gap-4">
+          {me && inLobby && <section className="card p-6" aria-labelledby="you-title">
+            <h2 id="you-title" className="text-[16px] font-medium">Your organization</h2>
+            <p className="mt-1 text-ink-2">It lives on this device. Marking yourself ready shares its current roster and roles with the room.</p>
+            {!canReady && <p className="mt-2 text-negative">Your organization needs a full roster and valid roles before you can be ready.</p>}
+            <div className="mt-6 flex flex-wrap gap-3">
+              <button type="button" disabled={!!busy || !me.participating || (!me.isReady && !canReady)} className="btn btn-primary"
+                onClick={() => run("ready", () => setRoomReady(roomId, user.uid, organization, !me.isReady))}>
+                {busy === "ready" ? "Saving…" : me.isReady ? "Not ready" : "I'm ready"}
+              </button>
+              <RoomRolesDialog organization={organization} assignRole={assignOrganizationRole} disabled={!!busy}
+                onOpen={async () => { if (me.isReady) await setRoomReady(roomId, user.uid, organization, false); }}
+                onDone={() => setRoomReady(roomId, user.uid, organization, false)} />
+            </div>
+          </section>}
+
+          {isHost && inLobby && <section className="card p-6" aria-labelledby="host-title">
+            <h2 id="host-title" className="text-[16px] font-medium">Host</h2>
+            <p className="mt-1 text-ink-2">{canStart ? "Everyone taking part is ready." : "Everyone taking part has to be ready first."}</p>
+            <button type="button" disabled={!!busy || !canStart} className="btn btn-primary btn-lg mt-6"
+              onClick={() => run("start", () => startRoomMajor(roomId, user.uid))}>{busy === "start" ? "Starting…" : "Start Major"}</button>
+          </section>}
+
+          {room.status === "playing" && <Link href={`/room/${roomId}/simulation`} className="btn btn-primary self-start">Watch the Major</Link>}
+          {inLobby && room.lastMajor && room.tournament && <Link href={`/room/${roomId}/simulation?results=1`} className="link underline">See the last Major&apos;s results</Link>}
+        </div>
       </div>
-      {error && <p role="alert" className="bg-red-900/50 border border-red-500 text-red-200 px-4 py-2 rounded mt-4">{error}</p>}
-      {!me && <p role="alert" className="mt-4 text-red-300">Ya no sos miembro de esta sala. <Link href="/multiplayer" className="underline">Volver a multijugador</Link></p>}
-      <h2 className="text-xl font-bold mt-6">Organizaciones <span className="text-neutral-500 text-sm">{players.length} / 8</span></h2>
-      <ul className="grid sm:grid-cols-2 gap-4 mt-4">{players.map(p => {
-        const org = p.organization;
-        const state = !p.participating ? "No participa" : room.status === "playing" && room.tournament?.participantUids?.includes(p.uid) ? "En partida" : p.isReady ? "Listo" : "Preparando equipo";
-        return <li key={p.uid} className="rounded-xl border border-neutral-700 bg-neutral-800 p-4">
-          <div className="flex items-center gap-3">{org?.icon && <img src={org.icon} alt="" width="48" height="48" className="object-contain" />}<div><strong>{org?.name || p.teamName}</strong><p className="text-sm text-neutral-400">{p.name}{p.uid === user.uid ? " (vos)" : ""}{p.uid === room.hostId ? " · Host" : ""}</p></div></div>
-          <p className="mt-3 text-amber-400 font-bold">{state}</p>
-          <p className="text-sm text-neutral-400 mt-1">Plantel: {org?.squad?.length || 0} jugadores</p>
-          {org?.squad && <ul className="text-sm text-neutral-300 mt-2">{org.squad.map((entry, i) => <li key={i}>{entry.player?.name} {Object.entries(roles).filter(([field]) => org[field] === String(i)).map(([, label]) => label).join(" · ")}</li>)}</ul>}
-          {isHost && inLobby && <button disabled={!!busy} onClick={() => run(`participation-${p.uid}`, () => setRoomParticipation(roomId, user.uid, p.uid, !p.participating))} className="mt-3 text-sm text-amber-400 underline disabled:opacity-50">{p.participating ? "Dejar fuera del próximo Major" : "Incluir en el próximo Major"}</button>}
-        </li>;
-      })}</ul>
-      {me && inLobby && <div className="mt-6 space-y-3">
-        <p className="text-sm text-neutral-400">Tu organización es local. Al confirmar que estás listo compartís su estado actual con la sala.</p>
-        {!canReady && <p className="text-red-300">Tu organización necesita un plantel y roles válidos para confirmar.</p>}
-        <div className="flex flex-wrap gap-3"><button disabled={!!busy} onClick={() => run("prepare", async () => {
-          if (me.isReady) await setRoomReady(roomId, user.uid, organization, false);
-          router.push(`/organization?room=${encodeURIComponent(roomId)}`);
-        })} className="rounded-xl bg-neutral-700 px-4 py-3 font-bold">Preparar equipo</button>
-          <button disabled={!!busy || !me.participating || (!me.isReady && !canReady)} onClick={() => run("ready", () => setRoomReady(roomId, user.uid, organization, !me.isReady))} className="rounded-xl bg-amber-600 px-4 py-3 font-bold disabled:opacity-50">{busy === "ready" ? "GUARDANDO..." : me.isReady ? "DEJAR DE ESTAR LISTO" : "ESTOY LISTO"}</button></div>
-      </div>}
-      {isHost && inLobby && <button disabled={!!busy || !canStart} onClick={() => run("start", () => startRoomMajor(roomId, user.uid))} className="w-full mt-6 rounded-xl bg-green-700 px-4 py-4 font-bold disabled:opacity-50">{busy === "start" ? "INICIANDO..." : "INICIAR MAJOR"}</button>}
-      {isHost && inLobby && !canStart && <p className="text-sm text-neutral-400 mt-2">Todos los participantes incluidos deben estar listos.</p>}
-      {room.status === "playing" && <Link href={`/room/${roomId}/simulation`} className="inline-block mt-6 text-amber-400 underline">Ver Major en curso</Link>}
-      {inLobby && room.lastMajor && room.tournament && <Link href={`/room/${roomId}/simulation?results=1`} className="inline-block mt-6 text-amber-400 underline">Ver resultados del último Major</Link>}
-      {me && inLobby && <button disabled={!!busy} onClick={() => run("leave", async () => { await leaveRoom(roomId, user.uid); router.push("/multiplayer"); })} className="block mt-6 text-neutral-400 underline disabled:opacity-50">{busy === "leave" ? "Saliendo..." : "Salir de la sala"}</button>}
-    </div>
-  </main>;
+    </main>
+  </>;
 }
