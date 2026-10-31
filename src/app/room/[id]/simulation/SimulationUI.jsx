@@ -88,6 +88,7 @@ const SWISS_STRUCTURE = [
 
 export default function SimulationUI() {
   const [rosterModalTeam, setRosterModalTeam] = useState(null);
+  const [actionError, setActionError] = useState(null);
   const {
     stage,
     swissRound,
@@ -104,19 +105,10 @@ export default function SimulationUI() {
     userUid,
     matchesStarted,
     startMatches,
+    returnToLobby,
+    isArchived,
   } = useMultiplayerTournament();
   const router = useRouter();
-
-  if (
-    !standings ||
-    standings.length === 0
-  ) {
-    return (
-      <div className="text-white p-8 text-center text-xl">
-        Loading tournament...
-      </div>
-    );
-  }
 
   const playoffRounds = [
     "Quarterfinals",
@@ -124,7 +116,7 @@ export default function SimulationUI() {
     "Final",
   ];
   const currentRoundMatches =
-    matches.filter((m) =>
+    (matches || []).filter((m) =>
       stage === "swiss" ?
         m.round === swissRound
       : playoffRounds.includes(m.round),
@@ -173,7 +165,7 @@ export default function SimulationUI() {
       matchesStarted &&
       !anyHumanMatchPending
     ) {
-      advanceRound();
+      advanceRound().catch(err => setActionError(err.message));
     }
   }, [
     stage,
@@ -182,6 +174,17 @@ export default function SimulationUI() {
     advanceRound,
     matchesStarted,
   ]);
+
+  if (
+    !standings ||
+    standings.length === 0
+  ) {
+    return (
+      <div className="text-white p-8 text-center text-xl">
+        Loading tournament...
+      </div>
+    );
+  }
 
   // Agrupar TODOS los matches por su pool (W:L del teamA al momento del match)
   const getMatchesByPool = () => {
@@ -244,6 +247,7 @@ export default function SimulationUI() {
   return (
     <div className="min-h-screen p-4 md:p-8 text-white">
       <div className="mx-auto max-w-[1600px]">
+        {actionError && <div role="alert" className="mb-4 text-red-400">{actionError}</div>}
         {/* Header */}
         <header className="mb-6 flex items-center justify-between">
           <h1 className="text-3xl md:text-4xl font-black tracking-tight text-amber-500">
@@ -273,8 +277,8 @@ export default function SimulationUI() {
               <button
                 onClick={
                   anyHumanMatchPending ?
-                    startMatches
-                  : advanceRound
+                    () => startMatches().catch(err => setActionError(err.message))
+                  : () => advanceRound().catch(err => setActionError(err.message))
                 }
                 className={`rounded-lg px-6 py-3 font-bold text-sm uppercase tracking-wider transition-all hover:scale-105 shadow-lg ${
                   anyHumanMatchPending ?
@@ -547,7 +551,7 @@ export default function SimulationUI() {
               <div className="flex justify-center mt-6">
                 <button
                   onClick={
-                    continueToPlayoffs
+                    () => continueToPlayoffs().catch(err => setActionError(err.message))
                   }
                   className="rounded-lg bg-green-600 px-8 py-4 font-black text-lg uppercase tracking-wider hover:bg-green-500 transition-all hover:scale-105 shadow-lg shadow-green-600/30"
                 >
@@ -672,7 +676,7 @@ export default function SimulationUI() {
                               className={`font-semibold text-sm truncate ${t.isPlayer ? "text-amber-400" : ""}`}
                             >
                               {t.name}{" "}
-                              {t.isPlayer &&
+                              {t.uid === userUid &&
                                 "(You)"}
                             </span>
                             {t.major && (
@@ -736,13 +740,12 @@ export default function SimulationUI() {
                 matches={matches}
                 userUid={userUid}
               />
+              {actionError && <div role="alert" className="text-red-400">{actionError}</div>}
               <button
-                onClick={() =>
-                  router.push("/")
-                }
+                onClick={() => isArchived ? router.push(`/room/${roomId}`) : returnToLobby().catch(err => setActionError(err.message))} disabled={!isHost && !isArchived}
                 className="rounded bg-neutral-800 px-8 py-4 font-bold hover:bg-neutral-700 w-full mt-4"
               >
-                BACK TO HOME
+                {isArchived ? "BACK TO LOBBY" : isHost ? "RETURN TO LOBBY" : "WAITING FOR HOST TO RETURN TO LOBBY"}
               </button>
             </div>
           </div>
@@ -761,13 +764,12 @@ export default function SimulationUI() {
                 matches={matches}
                 userUid={userUid}
               />
+              {actionError && <div role="alert" className="text-red-400">{actionError}</div>}
               <button
-                onClick={() =>
-                  router.push("/")
-                }
+                onClick={() => isArchived ? router.push(`/room/${roomId}`) : returnToLobby().catch(err => setActionError(err.message))} disabled={!isHost && !isArchived}
                 className="rounded bg-amber-600 px-8 py-4 font-bold text-white hover:bg-amber-500 w-full mt-4"
               >
-                BACK TO HOME
+                {isArchived ? "BACK TO LOBBY" : isHost ? "RETURN TO LOBBY" : "WAITING FOR HOST TO RETURN TO LOBBY"}
               </button>
             </div>
           </div>

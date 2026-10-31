@@ -1,131 +1,90 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useState, use } from "react";
+import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { db } from "@/lib/firebase";
-import { doc, onSnapshot, updateDoc } from "firebase/firestore";
-import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
+import { doc, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { useAuth } from "@/context/AuthContext";
+import { useTournament } from "@/context/TournamentContext";
+import { validOrganization } from "@/lib/localCareer.mjs";
+import { leaveRoom, setRoomParticipation, setRoomReady, startRoomMajor } from "@/lib/roomService";
+
+const roles = { mainAwperUid: "AWP", iglUid: "IGL", starUid: "STAR" };
 
 export default function RoomPage({ params }) {
+  const roomId = use(params).id;
   const router = useRouter();
   const { user, loading } = useAuth();
-  const roomId = use(params).id;
-
+  const { organization, ready } = useTournament();
   const [room, setRoom] = useState(null);
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState("");
 
   useEffect(() => {
-    if (loading) return;
-    if (!user) {
-      router.push("/multiplayer");
-      return;
-    }
-
-    const roomRef = doc(db, "rooms", roomId);
-    const unsubscribe = onSnapshot(roomRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setRoom(data);
-
-        // If the game has started, redirect to multiplayer draft
-        if (data.status === "drafting") {
-          router.push(`/room/${roomId}/draft`);
-        }
-      } else {
-        setError("Room not found or was deleted.");
-      }
-    }, (err) => {
-      console.error(err);
-      setError("Failed to connect to room.");
-    });
-
-    return () => unsubscribe();
+    if (loading || !user) return;
+    return onSnapshot(doc(db, "rooms", roomId), snapshot => {
+      if (!snapshot.exists()) { setError("La sala no existe o fue eliminada."); setRoom(null); return; }
+      const data = snapshot.data();
+      setRoom(data);
+      if (data.status === "playing" && data.tournament?.participantUids?.includes(user.uid)) router.push(`/room/${roomId}/simulation`);
+    }, err => setError(err.message || "No se pudo conectar a la sala."));
   }, [roomId, user, loading, router]);
 
-  if (error) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center text-white">
-        <h2 className="text-2xl font-bold text-red-500 mb-4">{error}</h2>
-        <Link href="/multiplayer" className="text-amber-500 underline">Back to Lobby</Link>
-      </div>
-    );
+  async function run(action, operation) {
+    setBusy(action);
+    setError("");
+    try { await operation(); }
+    catch (err) { setError(err.message || "No se pudo completar la acción."); }
+    finally { setBusy(""); }
   }
 
-  if (!room) {
-    return <div className="min-h-screen flex items-center justify-center text-white">Loading room...</div>;
-  }
+  if (loading || !ready) return <main className="min-h-screen flex items-center justify-center text-white">Cargando sala...</main>;
+  if (!user) return <main className="min-h-screen p-8 text-white" role="alert">No se pudo iniciar sesión. Recargá la página para volver a intentar. <Link href="/multiplayer" className="text-amber-400 underline">Volver</Link></main>;
+  if (!room) return <main className="min-h-screen p-8 text-white">{error || "Cargando sala..."} <Link href="/multiplayer" className="text-amber-400 underline">Volver</Link></main>;
 
-  const isHost = room.hostId === user?.uid;
   const players = room.players || [];
+  const me = players.find(p => p.uid === user.uid);
+  const isHost = room.hostId === user.uid;
+  const included = players.filter(p => p.participating);
+  const canStart = included.length > 0 && included.every(p => p.isReady);
+  const inLobby = room.status === "lobby";
+  const canReady = validOrganization(organization);
 
-  const handleStartDraft = async () => {
-    try {
-      const roomRef = doc(db, "rooms", roomId);
-      await updateDoc(roomRef, { status: "drafting" });
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  return (
-    <main className="min-h-screen p-8 text-white flex flex-col items-center">
-      <div className="w-full max-w-2xl mt-12 bg-neutral-900/80 p-8 rounded-2xl border border-neutral-700 shadow-xl">
-        <div className="flex items-center justify-between mb-8 pb-8 border-b border-neutral-800">
-          <div>
-            <h1 className="text-3xl font-black text-amber-500">LOBBY</h1>
-            <p className="text-neutral-400 mt-2">Waiting for players to join...</p>
-          </div>
-          <div className="text-center">
-            <span className="block text-sm font-bold text-neutral-500 mb-1">ROOM CODE</span>
-            <span className="text-4xl font-mono font-black tracking-widest">{roomId}</span>
-          </div>
-        </div>
-
-        <div className="mb-8">
-          <div className="flex justify-between items-end mb-4">
-            <h2 className="text-xl font-bold">Players</h2>
-            <span className="text-sm font-bold text-neutral-500">{players.length} / 8</span>
-          </div>
-          
-          <div className="grid grid-cols-2 gap-4">
-            {players.map((p, idx) => (
-              <div key={p.uid} className={`flex items-center gap-3 p-4 rounded-xl border ${p.uid === user?.uid ? 'border-amber-500 bg-amber-500/10' : 'border-neutral-700 bg-neutral-800'}`}>
-                <div className="w-8 h-8 rounded-full bg-neutral-700 flex items-center justify-center font-bold text-sm">
-                  {idx + 1}
-                </div>
-                <div className="flex flex-col">
-                  <span className="font-bold">{p.name} {p.uid === user?.uid && "(You)"}</span>
-                  {p.isHost && <span className="text-[10px] text-amber-500 uppercase tracking-wider font-bold">Host</span>}
-                </div>
-              </div>
-            ))}
-            
-            {/* Empty slots */}
-            {Array.from({ length: 8 - players.length }).map((_, idx) => (
-              <div key={`empty-${idx}`} className="flex items-center gap-3 p-4 rounded-xl border border-dashed border-neutral-700 bg-neutral-800/30 opacity-50">
-                <div className="w-8 h-8 rounded-full border border-neutral-600 flex items-center justify-center text-neutral-600">
-                  +
-                </div>
-                <span className="text-neutral-500 font-bold italic">Waiting...</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {isHost ? (
-          <button
-            onClick={handleStartDraft}
-            className="w-full rounded-xl bg-green-600 px-6 py-4 text-xl font-black uppercase tracking-wider hover:bg-green-500 transition-colors shadow-lg shadow-green-600/20"
-          >
-            START MAJOR DRAFT
-          </button>
-        ) : (
-          <div className="w-full rounded-xl bg-neutral-800 px-6 py-4 text-center text-lg font-bold text-neutral-400 uppercase tracking-wider border border-neutral-700">
-            Waiting for host to start...
-          </div>
-        )}
+  return <main className="min-h-screen p-8 text-white flex flex-col items-center">
+    <div className="w-full max-w-3xl bg-neutral-900/80 p-8 rounded-2xl border border-neutral-700">
+      <div className="flex flex-wrap justify-between gap-4 border-b border-neutral-800 pb-6">
+        <div><h1 className="text-3xl font-black text-amber-500">LOBBY</h1><p className="text-neutral-400 mt-2">{inLobby ? "Prepará tu equipo para el próximo Major." : "Major en curso."}</p></div>
+        <div><span className="block text-sm text-neutral-400">CÓDIGO DE SALA</span><strong className="text-3xl font-mono tracking-widest">{roomId}</strong></div>
       </div>
-    </main>
-  );
+      {error && <p role="alert" className="bg-red-900/50 border border-red-500 text-red-200 px-4 py-2 rounded mt-4">{error}</p>}
+      {!me && <p role="alert" className="mt-4 text-red-300">Ya no sos miembro de esta sala. <Link href="/multiplayer" className="underline">Volver a multijugador</Link></p>}
+      <h2 className="text-xl font-bold mt-6">Organizaciones <span className="text-neutral-500 text-sm">{players.length} / 8</span></h2>
+      <ul className="grid sm:grid-cols-2 gap-4 mt-4">{players.map(p => {
+        const org = p.organization;
+        const state = !p.participating ? "No participa" : room.status === "playing" && room.tournament?.participantUids?.includes(p.uid) ? "En partida" : p.isReady ? "Listo" : "Preparando equipo";
+        return <li key={p.uid} className="rounded-xl border border-neutral-700 bg-neutral-800 p-4">
+          <div className="flex items-center gap-3">{org?.icon && <img src={org.icon} alt="" width="48" height="48" className="object-contain" />}<div><strong>{org?.name || p.teamName}</strong><p className="text-sm text-neutral-400">{p.name}{p.uid === user.uid ? " (vos)" : ""}{p.uid === room.hostId ? " · Host" : ""}</p></div></div>
+          <p className="mt-3 text-amber-400 font-bold">{state}</p>
+          <p className="text-sm text-neutral-400 mt-1">Plantel: {org?.squad?.length || 0} jugadores</p>
+          {org?.squad && <ul className="text-sm text-neutral-300 mt-2">{org.squad.map((entry, i) => <li key={i}>{entry.player?.name} {Object.entries(roles).filter(([field]) => org[field] === String(i)).map(([, label]) => label).join(" · ")}</li>)}</ul>}
+          {isHost && inLobby && <button disabled={!!busy} onClick={() => run(`participation-${p.uid}`, () => setRoomParticipation(roomId, user.uid, p.uid, !p.participating))} className="mt-3 text-sm text-amber-400 underline disabled:opacity-50">{p.participating ? "Dejar fuera del próximo Major" : "Incluir en el próximo Major"}</button>}
+        </li>;
+      })}</ul>
+      {me && inLobby && <div className="mt-6 space-y-3">
+        <p className="text-sm text-neutral-400">Tu organización es local. Al confirmar que estás listo compartís su estado actual con la sala.</p>
+        {!canReady && <p className="text-red-300">Tu organización necesita un plantel y roles válidos para confirmar.</p>}
+        <div className="flex flex-wrap gap-3"><button disabled={!!busy} onClick={() => run("prepare", async () => {
+          if (me.isReady) await setRoomReady(roomId, user.uid, organization, false);
+          router.push(`/organization?room=${encodeURIComponent(roomId)}`);
+        })} className="rounded-xl bg-neutral-700 px-4 py-3 font-bold">Preparar equipo</button>
+          <button disabled={!!busy || !me.participating || (!me.isReady && !canReady)} onClick={() => run("ready", () => setRoomReady(roomId, user.uid, organization, !me.isReady))} className="rounded-xl bg-amber-600 px-4 py-3 font-bold disabled:opacity-50">{busy === "ready" ? "GUARDANDO..." : me.isReady ? "DEJAR DE ESTAR LISTO" : "ESTOY LISTO"}</button></div>
+      </div>}
+      {isHost && inLobby && <button disabled={!!busy || !canStart} onClick={() => run("start", () => startRoomMajor(roomId, user.uid))} className="w-full mt-6 rounded-xl bg-green-700 px-4 py-4 font-bold disabled:opacity-50">{busy === "start" ? "INICIANDO..." : "INICIAR MAJOR"}</button>}
+      {isHost && inLobby && !canStart && <p className="text-sm text-neutral-400 mt-2">Todos los participantes incluidos deben estar listos.</p>}
+      {room.status === "playing" && <Link href={`/room/${roomId}/simulation`} className="inline-block mt-6 text-amber-400 underline">Ver Major en curso</Link>}
+      {inLobby && room.lastMajor && room.tournament && <Link href={`/room/${roomId}/simulation?results=1`} className="inline-block mt-6 text-amber-400 underline">Ver resultados del último Major</Link>}
+      {me && inLobby && <button disabled={!!busy} onClick={() => run("leave", async () => { await leaveRoom(roomId, user.uid); router.push("/multiplayer"); })} className="block mt-6 text-neutral-400 underline disabled:opacity-50">{busy === "leave" ? "Saliendo..." : "Salir de la sala"}</button>}
+    </div>
+  </main>;
 }

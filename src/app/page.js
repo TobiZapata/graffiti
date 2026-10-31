@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Image from "next/image";
 
 export default function Home() {
   return (
@@ -18,10 +17,10 @@ export default function Home() {
 
         <div className="flex gap-6 mt-4">
           <Link
-            href="/play"
+            href="/organization"
             className="group relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-full bg-neutral-800 px-10 py-5 text-xl font-black text-white shadow-xl transition-all duration-300 hover:scale-105 hover:bg-neutral-700 border border-neutral-700"
           >
-            SINGLEPLAYER
+            MI ORGANIZACIÓN
           </Link>
           <Link
             href="/multiplayer"

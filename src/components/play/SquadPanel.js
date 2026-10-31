@@ -19,9 +19,9 @@ export default function SquadPanel({
               {slot.player?.name}
             </div>
 
-            <div className="text-sm text-neutral-400">
+            {slot.assignedRole && <div className="text-sm text-neutral-400">
               {slot.assignedRole}
-            </div>
+            </div>}
           </div>
         ))}
 

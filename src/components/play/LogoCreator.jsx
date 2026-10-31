@@ -25,14 +25,15 @@ export function generateLogoSvg(shape, outerColor, innerColor) {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
-export default function LogoCreator({ onChange }) {
+export default function LogoCreator({ onChange, onColorsChange }) {
   const [shape, setShape] = useState("circle");
   const [outerColor, setOuterColor] = useState("#1e293b");
   const [innerColor, setInnerColor] = useState("#38bdf8");
 
   useEffect(() => {
     onChange(generateLogoSvg(shape, outerColor, innerColor));
-  }, [shape, outerColor, innerColor]);
+    onColorsChange?.([outerColor, innerColor]);
+  }, [shape, outerColor, innerColor, onChange, onColorsChange]);
 
   return (
     <div className="flex flex-col gap-4 bg-neutral-900 p-4 rounded-lg border border-neutral-800">
@@ -49,18 +50,21 @@ export default function LogoCreator({ onChange }) {
             <span className="text-xs text-neutral-400 w-12">Forma:</span>
             <div className="flex bg-neutral-950 rounded border border-neutral-800">
               <button 
+                type="button" aria-label="Forma circular" aria-pressed={shape === 'circle'}
                 onClick={() => setShape("circle")}
                 className={`p-1.5 ${shape === 'circle' ? 'bg-amber-600' : 'hover:bg-neutral-800'}`}
               >
                 <div className="w-4 h-4 rounded-full border-2 border-white"></div>
               </button>
               <button 
+                type="button" aria-label="Forma cuadrada" aria-pressed={shape === 'square'}
                 onClick={() => setShape("square")}
                 className={`p-1.5 ${shape === 'square' ? 'bg-amber-600' : 'hover:bg-neutral-800'}`}
               >
                 <div className="w-4 h-4 border-2 border-white rounded-[2px]"></div>
               </button>
               <button 
+                type="button" aria-label="Forma triangular" aria-pressed={shape === 'triangle'}
                 onClick={() => setShape("triangle")}
                 className={`p-1.5 ${shape === 'triangle' ? 'bg-amber-600' : 'hover:bg-neutral-800'}`}
               >
@@ -75,6 +79,7 @@ export default function LogoCreator({ onChange }) {
             <span className="text-xs text-neutral-400 w-12">Principal:</span>
             <input 
               type="color" 
+              aria-label="Color principal"
               value={outerColor}
               onChange={(e) => setOuterColor(e.target.value)}
               className="w-8 h-8 rounded cursor-pointer bg-neutral-950 border border-neutral-800"
@@ -85,6 +90,7 @@ export default function LogoCreator({ onChange }) {
             <span className="text-xs text-neutral-400 w-12">Detalle:</span>
             <input 
               type="color" 
+              aria-label="Color de detalle"
               value={innerColor}
               onChange={(e) => setInnerColor(e.target.value)}
               className="w-8 h-8 rounded cursor-pointer bg-neutral-950 border border-neutral-800"

@@ -3,7 +3,7 @@ import {
   getDefaultPistol,
   isUpgrade,
   weaponPower,
-} from "./WeaponEngine";
+} from "./WeaponEngine.js";
 
 export const ARMOR = {
   KEVLAR: {
@@ -161,6 +161,7 @@ function tryBuy(
 ) {
   const weapon = WEAPONS[weaponId];
   if (!weapon) return false;
+  if (player.weapon === weaponId) return true;
   if (
     weapon.side !== "BOTH" &&
     weapon.side !== side
@@ -250,13 +251,14 @@ function buyUtility(
   player,
   strategy,
   side,
+  random = Math.random,
 ) {
   const [min, max] =
     UTILITY_SPEND_RATIO[strategy] || [
       0, 0,
     ];
   const ratio =
-    min + Math.random() * (max - min);
+    min + random() * (max - min);
 
   let budget = player.money * ratio;
   if (player.role === "SUPPORT") {
@@ -282,10 +284,11 @@ function buyMainWeapon(
   strategy,
   side,
   isDesignatedAwper,
+  random = Math.random,
 ) {
   switch (strategy) {
     case "PISTOL": {
-      const rand = Math.random();
+      const rand = random();
       if (side === "T") {
         if (rand < 0.04)
           tryBuy(player, "TEC9", side);
@@ -311,7 +314,7 @@ function buyMainWeapon(
     }
 
     case "ECO": {
-      const rand = Math.random();
+      const rand = random();
       if (rand < 0.25)
         tryBuy(player, "DEAGLE", side);
       else if (rand < 0.5)
@@ -439,10 +442,10 @@ function buyMainWeapon(
   }
 }
 
-function buyArmor(player, strategy) {
+function buyArmor(player, strategy, random = Math.random) {
   const buyChance =
     ARMOR_BUY_CHANCE[strategy] ?? 0;
-  if (Math.random() > buyChance) return;
+  if (random() > buyChance) return;
 
   const wantsHelmet =
     strategy === "FULL" ||
@@ -469,11 +472,13 @@ function buyArmor(player, strategy) {
   }
 }
 
-function buyIdealWeapon(
+export function buyIdealWeapon(
   player,
   strategy,
   side,
   isDesignatedAwper,
+  random = Math.random,
+  preservePrimary = false,
 ) {
   player.armorValue = 0; // se recompra (o no) cada ronda
 
@@ -482,9 +487,9 @@ function buyIdealWeapon(
       getDefaultPistol(side);
   }
 
-  if (isRifleOrSniper(player.weapon)) {
-    buyArmor(player, strategy);
-    buyUtility(player, strategy, side);
+  if (preservePrimary || isRifleOrSniper(player.weapon)) {
+    buyArmor(player, strategy, random);
+    buyUtility(player, strategy, side, random);
     return;
   }
 
@@ -493,15 +498,17 @@ function buyIdealWeapon(
     strategy,
     side,
     isDesignatedAwper,
+    random,
   );
-  buyArmor(player, strategy);
-  buyUtility(player, strategy, side);
+  buyArmor(player, strategy, random);
+  buyUtility(player, strategy, side, random);
 }
 
 export function decidePlayerBuys(
   team,
   strategy,
   side,
+  random = Math.random,
 ) {
   redistributeAWP(team, side);
   absorbWeaponPool(team, side);
@@ -523,6 +530,7 @@ export function decidePlayerBuys(
       strategy,
       side,
       player === bestAwper,
+      random,
     );
     totalSpent +=
       moneyBefore - player.money;

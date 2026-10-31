@@ -15,6 +15,9 @@
 
 # next.js
 /.next/
+/.next-emulator/
+/.firebase/
+/*-debug.log
 /out/
 
 # production
@@ -39,3 +42,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Banco generado desde CS2 Data Lab (replays gzip)
+/public/round-bank/

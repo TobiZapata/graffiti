@@ -4,6 +4,7 @@ import {
   useEffect,
   useCallback,
 } from "react";
+import { replayWeaponIcon } from "../lib/replayWeaponIcon.mjs";
 
 const WEAPON_POWER = {
   KNIFE: 0,
@@ -34,26 +35,26 @@ const UTILITY = new Set([
 ]);
 
 const WEAPON_IMG = {
-  AK47: "/weapons/ak47.svg",
-  M4A1S: "/weapons/m4a1_silencer.svg",
-  M4A4: "/weapons/m4a1.svg",
-  AWP: "/weapons/awp.svg",
-  GLOCK: "/weapons/glock.svg",
-  USP: "/weapons/usp_silencer.svg",
-  DEAGLE: "/weapons/deagle.svg",
-  DUALIES: "/weapons/elite.svg",
-  P250: "/weapons/p250.svg",
-  TEC9: "/weapons/tec9.svg",
-  FIVESEVEN: "/weapons/fiveseven.svg",
-  MAC10: "/weapons/mac10.svg",
-  MP9: "/weapons/mp9.svg",
-  GALIL: "/weapons/galilar.svg",
-  FAMAS: "/weapons/famas.svg",
-  SSG08: "/weapons/ssg08.svg",
-  HE: "/weapons/hegrenade.svg",
-  MOLOTOV: "/weapons/inferno.svg",
-  INCENDIARY: "/weapons/inferno.svg",
-  KNIFE: "/weapons/knife_butterfly.svg",
+  AK47: "/weapons/rifles_smg/ak47.svg",
+  M4A1S: "/weapons/rifles_smg/m4a1_silencer.svg",
+  M4A4: "/weapons/rifles_smg/m4a1.svg",
+  AWP: "/weapons/scopes/awp.svg",
+  GLOCK: "/weapons/pistols/glock.svg",
+  USP: "/weapons/pistols/usp_silencer.svg",
+  DEAGLE: "/weapons/pistols/deagle.svg",
+  DUALIES: "/weapons/pistols/elite.svg",
+  P250: "/weapons/pistols/p250.svg",
+  TEC9: "/weapons/pistols/tec9.svg",
+  FIVESEVEN: "/weapons/pistols/fiveseven.svg",
+  MAC10: "/weapons/rifles_smg/mac10.svg",
+  MP9: "/weapons/rifles_smg/mp9.svg",
+  GALIL: "/weapons/rifles_smg/galilar.svg",
+  FAMAS: "/weapons/rifles_smg/famas.svg",
+  SSG08: "/weapons/scopes/ssg08.svg",
+  HE: "/weapons/other/hegrenade.svg",
+  MOLOTOV: "/weapons/other/molotov.svg",
+  INCENDIARY: "/weapons/other/incgrenade.svg",
+  KNIFE: "/weapons/knifes/knife_butterfly.svg",
 };
 
 const MODIFIER_IMG = {
@@ -101,7 +102,7 @@ const PlayerName = ({
 );
 
 // ─── TIMELINE ───────────────────────────────────────────────────────────────
-function MatchTimeline({ rounds, currentRoundIdx, isCurrentRoundFinished }) {
+export function MatchTimeline({ rounds, currentRoundIdx, isCurrentRoundFinished }) {
   if (!rounds || rounds.length === 0) return null;
   const team1Name = rounds[0].tTeam;
   const team2Name = rounds[0].ctTeam;
@@ -110,8 +111,8 @@ function MatchTimeline({ rounds, currentRoundIdx, isCurrentRoundFinished }) {
     switch (type) {
       case "KILL": return "/modifiers/kill.svg";
       case "TIME": return "/modifiers/clock.svg";
-      case "BOMB": return "/weapons/planted_c4.svg";
-      case "DEFUSE": return "/weapons/defuser.svg";
+      case "BOMB": return "/weapons/other/planted_c4.svg";
+      case "DEFUSE": return "/weapons/other/defuser.svg";
       default: return null;
     }
   };
@@ -288,13 +289,15 @@ function MatchTimeline({ rounds, currentRoundIdx, isCurrentRoundFinished }) {
 }
 
 // ─── PLAYER CARD ────────────────────────────────────────────────────────────
-function PlayerCard({
+export function PlayerCard({
   name,
   weapon,
   alive,
   side,
   kda,
-  isRight
+  isRight,
+  health,
+  activeWeapon,
 }) {
   const dotColor =
     alive ?
@@ -304,7 +307,8 @@ function PlayerCard({
     : "var(--text-muted)";
 
   // Buscamos la imagen correspondiente al ID del arma
-  const weaponSrc = WEAPON_IMG[weapon];
+  const weaponSrc = WEAPON_IMG[weapon] || replayWeaponIcon(weapon);
+  const activeSrc = replayWeaponIcon(activeWeapon);
 
   return (
     <div
@@ -327,6 +331,8 @@ function PlayerCard({
           isRight ?
             "row-reverse"
           : "row",
+        minWidth: 0,
+        flexWrap: health === undefined ? undefined : "wrap",
       }}
     >
       <div
@@ -373,7 +379,9 @@ function PlayerCard({
         </span>
       )}
 
-      {/* Reemplazo del texto short(weapon) por el Icono */}
+      {health !== undefined && <span style={{ fontSize: 10, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{alive ? health : 0} HP</span>}
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0, flexDirection: isRight ? "row-reverse" : "row" }}>
+      <span role={health === undefined ? undefined : "group"} aria-label={health === undefined ? undefined : "Arma más cara del inventario"}>
       {alive && weaponSrc ?
         <Icon
           src={weaponSrc}
@@ -391,9 +399,14 @@ function PlayerCard({
             textAlign: "center",
           }}
         >
-          —
+          {alive ? weapon || "—" : "—"}
         </span>
       }
+      </span>
+      {health !== undefined && alive && <span role="group" aria-label="Arma en mano" title={activeWeapon || "Sin arma"}>
+        {activeSrc ? <Icon src={activeSrc} alt={activeWeapon} size={15} /> : <span style={{ fontSize: 10 }}>{activeWeapon || "—"}</span>}
+      </span>}
+      </span>
     </div>
   );
 }
@@ -447,8 +460,8 @@ function KillFeedEntry({
     const isPlant = ev.type === "PLANT";
     const iconSrc =
       isPlant ?
-        "/weapons/c4.svg"
-      : "/weapons/defuser.svg";
+        "/weapons/other/c4.svg"
+      : "/weapons/other/defuser.svg";
     const side = isPlant ? "T" : "CT";
 
     content = (
@@ -472,7 +485,7 @@ function KillFeedEntry({
   else if (ev.type === "BOMB_KILL") {
     content = (
       <>
-        <Icon src="/weapons/planted_c4.svg" alt="Explosión C4" size={24} />
+        <Icon src="/weapons/other/planted_c4.svg" alt="Explosión C4" size={24} />
         <PlayerName name={ev.victim?.name} side={ev.victimSide ?? "CT"} size={14} />
       </>
     );

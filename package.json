@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "bank:import": "node scripts/import-round-bank.mjs",
+    "test:replay": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "firebase": "^12.19.0",

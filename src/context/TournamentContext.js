@@ -1,6 +1,9 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
+import { CAREER_KEY, loadCareer, saveCareer, validOrganization } from "@/lib/localCareer.mjs";
+import { buildMajorRecord } from "@/lib/organizationProfile.mjs";
+import { moveOrganizationRole } from "@/lib/organizationRoles.mjs";
 import teamsData from "@/data/teams.json";
 
 import { formatTeamForSimulation } from "@/app/utils/playerExpansion";
@@ -44,8 +47,89 @@ export function TournamentProvider({ children }) {
   const [standings, setStandings] = useState([]); // [{ teamId, wins, losses }]
   const [matches, setMatches] = useState([]); // [{ round, teamA, teamB, result, isPlayerMatch, completed }]
 
+  const [organization, setOrganization] = useState(null);
+  const [tournamentId, setTournamentId] = useState(null);
+  const [matchProgress, setMatchProgress] = useState({});
+  const [storageError, setStorageError] = useState(null);
+  const [ready, setReady] = useState(false);
+  const writesBlocked = useRef(false);
+  const completedIds = useRef(new Set());
+
+  // Hydration must finish before tournament consumers mount.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    let loaded;
+    try { loaded = loadCareer(window.localStorage); }
+    catch { loaded = { error: "No se pudo acceder al almacenamiento local." }; }
+    if (loaded.error) { writesBlocked.current = true; setStorageError(loaded.error); }
+    if (loaded.data) {
+      const { organization: org, tournament: t, matchProgress: progress } = loaded.data;
+      setOrganization(org); setMatchProgress(progress);
+      if (t) {
+        setTournamentId(t.tournamentId); setMySquad(t.mySquad); setTeamName(t.teamName);
+        setStage(t.stage); setPendingResult(t.pendingResult); setSwissRound(t.swissRound);
+        setStandings(t.standings); setMatches(t.matches);
+        completedIds.current = new Set(t.matches.filter(m => m.completed).map(m => m.id));
+      }
+    }
+    setReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!ready || !organization || writesBlocked.current) return;
+    const tournament = tournamentId ? { tournamentId, mySquad, teamName, stage, pendingResult, swissRound, standings, matches } : null;
+    let error;
+    try { error = saveCareer(window.localStorage, { version: 1, organization, tournament, matchProgress }); }
+    catch { error = "No se pudo acceder al almacenamiento local."; }
+    setStorageError(error);
+  }, [ready, organization, tournamentId, mySquad, teamName, stage, pendingResult, swissRound, standings, matches, matchProgress]);
+
+  useEffect(() => {
+    const onStorage = event => {
+      if (event.key !== CAREER_KEY && event.key !== null) return;
+      writesBlocked.current = true;
+      setStorageError("La partida cambió en otra pestaña. Recarga esta página para continuar.");
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  /* eslint-enable react-hooks/set-state-in-effect */
+  const createOrganization = input => {
+    if (organization || writesBlocked.current) throw new Error("Ya existe una organización o no se pudo leer la partida local.");
+    const org = { ...input, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
+    if (!validOrganization(org)) throw new Error("La organización o sus roles no son válidos.");
+    setOrganization(org);
+    return org;
+  };
+
+  const assignOrganizationRole = (field, targetUid) => {
+    if (!organization || writesBlocked.current) throw new Error("No hay una organización disponible.");
+    const updated = moveOrganizationRole(organization, field, targetUid);
+    setOrganization(updated);
+  };
+
+  const startOrganizationMajor = () => {
+    if (!organization || writesBlocked.current) throw new Error("No hay una organización disponible.");
+    if (tournamentId && !["won", "eliminated", "results_pending"].includes(stage)) throw new Error("El Major actual sigue en curso.");
+    if (tournamentId) {
+      const record = buildMajorRecord({ tournamentId, stage, pendingResult, matches });
+      setOrganization({ ...organization, majorHistory: [...(organization.majorHistory || []).filter(r => r.id !== tournamentId), record] });
+    }
+    initTournament(organization.squad, organization.name, organization.icon, {
+      mainAwperUid: organization.mainAwperUid, iglUid: organization.iglUid, starUid: organization.starUid
+    });
+  };
+
+  const saveMatchProgress = useCallback((matchId, progress) => {
+    setMatchProgress(prev => ({ ...prev, [matchId]: progress }));
+  }, []);
+
   // Initialize tournament
-  const initTournament = (squad, name = "My Team", icon = "/logos/faze.png") => {
+  const initTournament = (squad, name = "My Team", icon = "/logos/faze.png", roles = {}) => {
+    setTournamentId(crypto.randomUUID());
+    setMatchProgress({});
+    completedIds.current = new Set();
     setMySquad(squad);
     setTeamName(name);
     setStage("swiss");
@@ -64,13 +148,13 @@ export function TournamentProvider({ children }) {
     otherTeams = otherTeams.slice(0, 15);
     
     const initialStandings = [
-      { id: "player_team", ...formatTeamForSimulation({ name, isPlayer: true, icon: icon }, squad), isPlayer: true, wins: 0, losses: 0 },
+      { id: "player_team", ...formatTeamForSimulation({ name, isPlayer: true, icon: icon, ...roles }, squad), isPlayer: true, starUid: roles.starUid, wins: 0, losses: 0 },
       ...otherTeams.map((t, i) => ({ id: `${t.id}_${i}`, ...formatTeamForSimulation(t), isPlayer: false, wins: 0, losses: 0 }))
     ];
     setStandings(initialStandings);
     
     // Generate Round 1 matchups
-    generateSwissMatchups(initialStandings, 1);
+    setMatches(generateSwissPairings(initialStandings, [], 1));
   };
 
   const generateSwissMatchups = (currentStandings, round) => {
@@ -80,6 +164,14 @@ export function TournamentProvider({ children }) {
   };
 
   const completeMatch = (matchId, result) => {
+    const match = matches.find(m => m.id === matchId);
+    if (!match || match.completed || completedIds.current.has(matchId) || !result || result.teamA?.id !== match.teamA.id || result.teamB?.id !== match.teamB.id || ![match.teamA.id, match.teamB.id].includes(result.winner)) return;
+    completedIds.current.add(matchId);
+    setMatchProgress(prev => {
+      const next = { ...prev };
+      delete next[matchId];
+      return next;
+    });
     setMatches(prev => prev.map(m => m.id === matchId ? { ...m, result, completed: true } : m));
     
     if (stage === "swiss") {
@@ -336,12 +428,16 @@ export function TournamentProvider({ children }) {
     setMatches(prev => [...prev, ...qfMatches]);
   };
 
+  if (!ready) return null;
+
   return (
     <TournamentContext.Provider value={{
       mySquad, teamName, stage, swissRound, standings, matches, pendingResult,
+      organization, createOrganization, assignOrganizationRole, startOrganizationMajor, tournamentId, matchProgress, saveMatchProgress, storageError, ready,
       initTournament, completeMatch, advanceRound: advanceStage,
       continueToPlayoffs, showFinalResult
     }}>
+      {storageError && <div role="alert">{storageError}</div>}
       {children}
     </TournamentContext.Provider>
   );

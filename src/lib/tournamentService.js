@@ -1,5 +1,5 @@
 import { formatTeamForSimulation } from "@/app/utils/playerExpansion";
-import { getTeamsFromDB } from "./teamService";
+import allDbTeams from "@/data/teams.json";
 
 // Helper function to generate scores for NPC matches
 export function generateScore() {
@@ -25,7 +25,6 @@ export function generateScore() {
 
 // Generate the initial tournament state
 export async function initializeMultiplayerTournament(roomPlayers) {
-  const allDbTeams = await getTeamsFromDB();
   
   // Format human players
   const humanTeams = roomPlayers.map((p, i) => ({
@@ -35,7 +34,8 @@ export async function initializeMultiplayerTournament(roomPlayers) {
     playerName: p.name,
     wins: 0,
     losses: 0,
-    ...formatTeamForSimulation({ name: p.teamName || p.name, isPlayer: true, icon: p.icon || "/logos/faze.png" }, p.squad)
+    ...formatTeamForSimulation({ name: p.teamName || p.name, isPlayer: true, icon: p.icon || "/logos/faze.png", mainAwperUid: p.organization.mainAwperUid, iglUid: p.organization.iglUid }, p.squad),
+    starUid: p.organization.starUid
   }));
 
   // Fill remaining slots with NPCs to reach 16 teams

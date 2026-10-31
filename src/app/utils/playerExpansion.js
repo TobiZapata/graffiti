@@ -15,7 +15,7 @@ export function expandPlayerStats(playerData, assignedRole = null) {
   const randomize = (val, variance = 5) => Math.max(1, Math.min(99, val + Math.floor(Math.random() * variance * 2) - variance));
 
   return {
-    name: playerData.name,
+    ...playerData,
     role: role,
     aim: randomize(base),
     gamesense: randomize(base),
@@ -35,7 +35,9 @@ export function formatTeamForSimulation(team, squad = null) {
     return {
       name: team.name,
       icon: team.icon,
-      players: squad.map(s => expandPlayerStats(s.player, s.assignedRole))
+      mainAwperUid: team.mainAwperUid,
+      iglUid: team.iglUid,
+      players: squad.map((s, index) => ({ ...expandPlayerStats(s.player, s.assignedRole), uid: String(index) }))
     };
   }
   

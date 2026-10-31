@@ -1,21 +1,23 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect } from "react";
-import { db } from "@/lib/firebase";
-import { doc, onSnapshot, updateDoc, getDoc } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
+import { doc, onSnapshot, runTransaction } from "firebase/firestore";
+import { useRouter } from "next/navigation";
+import { returnRoomToLobby } from "@/lib/roomService";
 import { useAuth } from "@/context/AuthContext";
 import { generateScore, generateSwissPairings } from "@/lib/tournamentService";
 
 const MultiplayerContext = createContext();
 
-export function MultiplayerProvider({ children, roomId }) {
+export function MultiplayerProvider({ children, roomId, viewResults = false }) {
   const { user, loading } = useAuth();
+  const router = useRouter();
+  const [error, setError] = useState(null);
   
   const [room, setRoom] = useState(null);
   const [pendingResult, setPendingResult] = useState(null);
 
-  const [localStageOverride, setLocalStageOverride] = useState(null);
-  const [lastSeenStage, setLastSeenStage] = useState(null);
 
   useEffect(() => {
     if (loading || !user || !roomId) return;
@@ -24,23 +26,19 @@ export function MultiplayerProvider({ children, roomId }) {
     const unsubscribe = onSnapshot(roomRef, (docSnap) => {
       if (docSnap.exists()) {
         setRoom(docSnap.data());
-      }
-    });
+      } else setError("Room not found.");
+    }, err => setError(err.message));
 
     return () => unsubscribe();
   }, [roomId, user, loading]);
 
-  const currentStage = room?.tournament?.stage;
-
   useEffect(() => {
-    if (currentStage && currentStage !== lastSeenStage) {
-      if (lastSeenStage === "playoffs" && currentStage === "won") {
-         setLocalStageOverride("results_pending");
-      }
-      setLastSeenStage(currentStage);
-    }
-  }, [currentStage, lastSeenStage]);
+    if (room?.status === "lobby" && !viewResults) router.replace(`/room/${roomId}`);
+  }, [room?.status, roomId, router, viewResults]);
 
+  if (!loading && !user) return <div role="alert" className="p-8 text-red-400 text-center">No se pudo iniciar sesión. Volvé a multijugador para reintentar.</div>;
+  if (error) return <div role="alert" className="p-8 text-red-400 text-center">{error}</div>;
+  if (room?.status === "lobby" && !viewResults) return <div className="p-8 text-white text-center">Returning to lobby...</div>;
   if (!room || !room.tournament) {
     return <div className="p-8 text-white text-center">Loading Multiplayer Tournament...</div>;
   }
@@ -48,61 +46,68 @@ export function MultiplayerProvider({ children, roomId }) {
   const { stage, swissRound, standings, matches } = room.tournament;
   const isHost = room.hostId === user?.uid;
 
-  const effectiveStage = localStageOverride || stage;
+  const effectiveStage = stage;
 
   const myPlayerObj = room.players?.find(p => p.uid === user?.uid);
   const mySquad = myPlayerObj?.squad || [];
   const teamName = myPlayerObj?.teamName || "My Team";
 
+  const tournamentId = room.tournament.tournamentId;
+  const checkCurrent = (data, hostOnly = false) => {
+    if (!user?.uid || auth.currentUser?.uid !== user.uid || data.status !== "playing" || !tournamentId || data.tournament?.tournamentId !== tournamentId) throw new Error("This Major is no longer active.");
+    if (hostOnly && data.hostId !== user.uid) throw new Error("Only the host can advance the Major.");
+    return data.tournament;
+  };
+
   const completeMatch = async (matchId, result) => {
     const roomRef = doc(db, "rooms", roomId);
-    const snap = await getDoc(roomRef);
-    if (!snap.exists()) return;
-    
-    const t = snap.data().tournament;
-    const matchIndex = t.matches.findIndex(m => m.id === matchId);
-    if (matchIndex === -1 || t.matches[matchIndex].completed) return; // Prevent double write
-    
-    const updatedMatches = [...t.matches];
-    updatedMatches[matchIndex] = { ...updatedMatches[matchIndex], result, completed: true };
-    
-    let updatedStandings = [...t.standings];
-    if (t.stage === "swiss") {
-      const teamAIdx = updatedStandings.findIndex(tm => tm.id === result.teamA.id);
-      const teamBIdx = updatedStandings.findIndex(tm => tm.id === result.teamB.id);
-      
-      updatedStandings[teamAIdx] = { ...updatedStandings[teamAIdx] };
-      updatedStandings[teamBIdx] = { ...updatedStandings[teamBIdx] };
-
-      if (result.winner === result.teamA.id) {
-        updatedStandings[teamAIdx].wins += 1;
-        updatedStandings[teamBIdx].losses += 1;
-      } else {
-        updatedStandings[teamBIdx].wins += 1;
-        updatedStandings[teamAIdx].losses += 1;
+    await runTransaction(db, async tx => {
+      const snap = await tx.get(roomRef);
+      if (!snap.exists()) throw new Error("Room not found.");
+      const t = checkCurrent(snap.data());
+      const index = t.matches.findIndex(m => m.id === matchId);
+      const match = t.matches[index];
+      if (!match || !match.playerUids?.includes(user.uid)) throw new Error("You cannot submit this match.");
+      if (match.completed) return;
+      if (!result || result.teamA?.id !== match.teamA.id || result.teamB?.id !== match.teamB.id ||
+          ![match.teamA.id, match.teamB.id].includes(result.winner) ||
+          !Number.isInteger(result.scoreA) || !Number.isInteger(result.scoreB) ||
+          result.scoreA < 0 || result.scoreB < 0 || result.scoreA === result.scoreB ||
+          (result.scoreA > result.scoreB ? match.teamA.id : match.teamB.id) !== result.winner) throw new Error("Invalid match result.");
+      const matches = [...t.matches];
+      matches[index] = { ...match, result: { ...result, teamA: match.teamA, teamB: match.teamB }, completed: true };
+      const standings = t.standings.map(team => ({ ...team }));
+      if (t.stage === "swiss") {
+        const winner = standings.find(team => team.id === result.winner);
+        const loser = standings.find(team => team.id === (result.winner === match.teamA.id ? match.teamB.id : match.teamA.id));
+        if (!winner || !loser) throw new Error("Match teams are missing from standings.");
+        winner.wins += 1;
+        loser.losses += 1;
       }
-    }
-
-    await updateDoc(roomRef, {
-      "tournament.matches": updatedMatches,
-      "tournament.standings": updatedStandings
+      tx.update(roomRef, { "tournament.matches": matches, "tournament.standings": standings });
     });
   };
 
   const startMatches = async () => {
-    if (!isHost) return;
     const roomRef = doc(db, "rooms", roomId);
-    await updateDoc(roomRef, { "tournament.matchesStarted": true });
+    await runTransaction(db, async tx => {
+      const snap = await tx.get(roomRef);
+      if (!snap.exists()) throw new Error("Room not found.");
+      const t = checkCurrent(snap.data(), true);
+      if (t.stage !== stage || t.swissRound !== swissRound || t.matches.length !== room.tournament.matches.length || !["swiss", "playoffs"].includes(t.stage)) return;
+      tx.update(roomRef, { "tournament.matchesStarted": true });
+    });
   };
 
   const advanceStage = async () => {
-    if (!isHost) return;
-    
     const roomRef = doc(db, "rooms", roomId);
-    const snap = await getDoc(roomRef);
-    if (!snap.exists()) return;
-    
-    const t = snap.data().tournament;
+    await runTransaction(db, async tx => {
+    const snap = await tx.get(roomRef);
+    if (!snap.exists()) throw new Error("Room not found.");
+    const t = checkCurrent(snap.data(), true);
+    if (t.stage !== stage || t.swissRound !== swissRound || t.matchesStarted !== room.tournament.matchesStarted || t.matches.length !== room.tournament.matches.length || !["swiss", "playoffs"].includes(t.stage)) return;
+    const current = t.matches.filter(m => t.stage === "swiss" ? m.round === t.swissRound : ["Quarterfinals", "Semifinals", "Final"].includes(m.round));
+    if (current.some(m => m.isPlayerMatch && !m.completed)) throw new Error("A player match is still pending.");
     
     if (t.stage === "swiss") {
       const currentRoundMatches = t.matches.filter(m => m.round === t.swissRound);
@@ -137,7 +142,7 @@ export function MultiplayerProvider({ children, roomId }) {
       const swissComplete = updatedStandings.every(tm => tm.wins >= 3 || tm.losses >= 3);
       
       if (swissComplete) {
-        await updateDoc(roomRef, {
+        tx.update(roomRef, {
           "tournament.matches": updatedMatches,
           "tournament.standings": updatedStandings,
           "tournament.stage": "swiss_complete",
@@ -148,7 +153,7 @@ export function MultiplayerProvider({ children, roomId }) {
         const active = updatedStandings.filter(tm => tm.wins < 3 && tm.losses < 3);
         const newMatches = generateSwissPairings(active, updatedMatches, nextRound);
         
-        await updateDoc(roomRef, {
+        tx.update(roomRef, {
           "tournament.matches": [...updatedMatches, ...newMatches],
           "tournament.standings": updatedStandings,
           "tournament.swissRound": nextRound,
@@ -187,7 +192,7 @@ export function MultiplayerProvider({ children, roomId }) {
       const finalMatch = updatedMatches.find(m => m.round === 'Final');
 
       if (finalMatch && finalMatch.completed) {
-        await updateDoc(roomRef, {
+        tx.update(roomRef, {
           "tournament.matches": updatedMatches,
           "tournament.stage": "won",
           "tournament.matchesStarted": false
@@ -206,7 +211,7 @@ export function MultiplayerProvider({ children, roomId }) {
         sf[1].isPlayerMatch = sf[1].teamA.isPlayer || sf[1].teamB.isPlayer;
         sf[1].playerUids = [sf[1].teamA.uid, sf[1].teamB.uid].filter(Boolean);
         
-        await updateDoc(roomRef, { "tournament.matches": [...updatedMatches, ...sf], "tournament.matchesStarted": false });
+        tx.update(roomRef, { "tournament.matches": [...updatedMatches, ...sf], "tournament.matchesStarted": false });
         return;
       }
       
@@ -216,25 +221,29 @@ export function MultiplayerProvider({ children, roomId }) {
         fin.isPlayerMatch = fin.teamA.isPlayer || fin.teamB.isPlayer;
         fin.playerUids = [fin.teamA.uid, fin.teamB.uid].filter(Boolean);
         
-        await updateDoc(roomRef, { "tournament.matches": [...updatedMatches, fin], "tournament.matchesStarted": false });
+        tx.update(roomRef, { "tournament.matches": [...updatedMatches, fin], "tournament.matchesStarted": false });
         return;
       }
 
-      await updateDoc(roomRef, { "tournament.matches": updatedMatches, "tournament.matchesStarted": false });
+      tx.update(roomRef, { "tournament.matches": updatedMatches, "tournament.matchesStarted": false });
     }
+    });
   };
 
   const continueToPlayoffs = async () => {
-    if (!isHost) return;
     const roomRef = doc(db, "rooms", roomId);
-    
-    let qualified = room.tournament.standings
+    await runTransaction(db, async tx => {
+    const snap = await tx.get(roomRef);
+    if (!snap.exists()) throw new Error("Room not found.");
+    const t = checkCurrent(snap.data(), true);
+    if (t.stage !== stage || t.swissRound !== swissRound || t.stage !== "swiss_complete") return;
+    let qualified = t.standings
       .filter(tm => tm.wins >= 3)
       .sort((a, b) => a.losses - b.losses);
       
     if (qualified.length < 8) {
       const qualifiedIds = new Set(qualified.map(tm => tm.id));
-      const remaining = room.tournament.standings
+      const remaining = t.standings
         .filter(tm => !qualifiedIds.has(tm.id))
         .sort((a, b) => b.wins - a.wins || a.losses - b.losses);
       qualified = [...qualified, ...remaining].slice(0, 8);
@@ -257,22 +266,25 @@ export function MultiplayerProvider({ children, roomId }) {
       });
     }
     
-    await updateDoc(roomRef, {
+    tx.update(roomRef, {
       "tournament.stage": "playoffs",
-      "tournament.matches": [...room.tournament.matches, ...qfMatches],
+      "tournament.matches": [...t.matches, ...qfMatches],
       "tournament.matchesStarted": false
+    });
     });
   };
 
   const showFinalResult = () => {
     setPendingResult(null);
-    setLocalStageOverride(null);
   };
 
   const contextValue = {
     isMultiplayer: true,
     isHost,
     roomId,
+    tournamentId,
+    isArchived: room.status === "lobby",
+    returnToLobby: () => returnRoomToLobby(roomId, user.uid),
     userUid: user?.uid,
     mySquad,
     teamName,

@@ -1,0 +1,36 @@
+.layout {
+  --surface-0: #11151b;
+  --surface-1: #191e26;
+  --surface-2: #222933;
+  --border: #343c49;
+  --border-strong: #505b6a;
+  --text-primary: #f5f5f5;
+  --text-secondary: #c5ccd4;
+  --text-muted: #8993a1;
+  --text-warning: #dfbf63;
+  --text-accent: #86a4d7;
+  --font-mono: monospace;
+  --radius: 6px;
+  font-family: var(--font-sans, sans-serif);
+}
+.scoreboard { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 24px; margin-bottom: 20px; }
+.teamHeading { display: flex; align-items: center; justify-content: flex-end; gap: 12px; text-align: right; min-width: 0; }
+.teamHeading.right { justify-content: flex-start; text-align: left; }
+.teamHeading strong { display: block; color: var(--text-primary); font-size: 24px; line-height: 1; overflow-wrap: anywhere; }
+.teamHeading small { display: block; color: var(--text-muted); font-size: 11px; margin-top: 4px; text-transform: uppercase; }
+.logo { width: 56px; height: 56px; object-fit: contain; }
+.badge { display: flex; padding: 6px 12px; border-radius: 8px; }
+.t { background: #564828; } .ct { background: #283c59; }
+.score { display: flex; align-items: center; gap: 20px; color: var(--text-primary); }
+.score > strong { font-size: 42px; min-width: 46px; text-align: center; font-variant-numeric: tabular-nums; }
+.score > span:not(.pips) { color: var(--text-muted); font-size: 11px; text-transform: uppercase; text-align: center; }
+.score b { display: block; color: var(--text-secondary); font-size: 16px; }
+.pips { display: flex; gap: 4px; }.pips i { width: 6px; height: 36px; background: #ffffff1a; border-radius: 3px; }.pips i.won { background: white; box-shadow: 0 0 8px #ffffff80; }
+.match { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+.players { min-width: 0; }
+.radar { position: relative; min-width: 0; }
+.killfeed { position: absolute; top: 8px; right: 8px; max-width: 65%; max-height: 55%; overflow: auto; z-index: 1; font-size: 11px; }
+@media (max-width: 800px) {
+  .scoreboard { gap: 6px; }.teamHeading { gap: 4px; }.teamHeading strong { font-size: 15px; }.logo { width: 30px; height: 30px; }.badge { padding: 3px; }.score { gap: 4px; }.score > strong { font-size: 28px; min-width: 25px; }
+  .match { grid-template-columns: 1fr 1fr; }.radar { grid-column: 1 / -1; grid-row: 1; }
+}

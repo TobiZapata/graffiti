@@ -7,7 +7,7 @@ export const WEAPONS = {
     power: 0,
     side: "BOTH",
     image:
-      "/weapons/knife_karambit.svg",
+      "/weapons/knifes/knife_karambit.svg",
   },
 
   GLOCK: {
@@ -17,7 +17,7 @@ export const WEAPONS = {
     killReward: 300,
     power: 10,
     side: "T",
-    image: "/weapons/glock.svg",
+    image: "/weapons/pistols/glock.svg",
   },
   USP: {
     id: "USP",
@@ -26,7 +26,7 @@ export const WEAPONS = {
     killReward: 300,
     power: 12,
     side: "CT",
-    image: "/weapons/usp_silencer.svg",
+    image: "/weapons/pistols/usp_silencer.svg",
   },
 
   P250: {
@@ -36,7 +36,7 @@ export const WEAPONS = {
     killReward: 300,
     power: 18,
     side: "BOTH",
-    image: "/weapons/p250.svg",
+    image: "/weapons/pistols/p250.svg",
   },
   DEAGLE: {
     id: "DEAGLE",
@@ -45,7 +45,7 @@ export const WEAPONS = {
     killReward: 300,
     power: 35,
     side: "BOTH",
-    image: "/weapons/deagle.svg",
+    image: "/weapons/pistols/deagle.svg",
   },
   DUALIES: {
     id: "DUALIES",
@@ -54,7 +54,7 @@ export const WEAPONS = {
     killReward: 300,
     power: 14,
     side: "BOTH",
-    image: "/weapons/elite.svg",
+    image: "/weapons/pistols/elite.svg",
   },
   TEC9: {
     id: "TEC9",
@@ -63,7 +63,7 @@ export const WEAPONS = {
     killReward: 300,
     power: 22,
     side: "T",
-    image: "/weapons/tec9.svg",
+    image: "/weapons/pistols/tec9.svg",
   },
   FIVESEVEN: {
     id: "FIVESEVEN",
@@ -72,7 +72,7 @@ export const WEAPONS = {
     killReward: 300,
     power: 22,
     side: "CT",
-    image: "/weapons/fiveseven.svg",
+    image: "/weapons/pistols/fiveseven.svg",
   },
 
   MAC10: {
@@ -82,7 +82,7 @@ export const WEAPONS = {
     killReward: 600,
     power: 28,
     side: "T",
-    image: "/weapons/mac10.svg",
+    image: "/weapons/rifles_smg/mac10.svg",
   },
   MP9: {
     id: "MP9",
@@ -91,26 +91,26 @@ export const WEAPONS = {
     killReward: 600,
     power: 30,
     side: "CT",
-    image: "/weapons/mp9.svg",
+    image: "/weapons/rifles_smg/mp9.svg",
   },
 
   GALIL: {
     id: "GALIL",
     name: "Galil AR",
-    cost: 2000,
+    cost: 1800,
     killReward: 300,
     power: 52,
     side: "T",
-    image: "/weapons/galilar.svg",
+    image: "/weapons/rifles_smg/galilar.svg",
   },
   FAMAS: {
     id: "FAMAS",
     name: "FAMAS",
-    cost: 2250,
+    cost: 1950,
     killReward: 300,
     power: 52,
     side: "CT",
-    image: "/weapons/famas.svg",
+    image: "/weapons/rifles_smg/famas.svg",
   },
 
   AK47: {
@@ -120,7 +120,7 @@ export const WEAPONS = {
     killReward: 300,
     power: 68,
     side: "T",
-    image: "/weapons/ak47.svg",
+    image: "/weapons/rifles_smg/ak47.svg",
   },
   M4A1S: {
     id: "M4A1S",
@@ -129,16 +129,16 @@ export const WEAPONS = {
     killReward: 300,
     power: 63,
     side: "CT",
-    image: "/weapons/m4a1_silencer.svg",
+    image: "/weapons/rifles_smg/m4a1_silencer.svg",
   },
   M4A4: {
     id: "M4A4",
     name: "M4A4",
-    cost: 3100,
+    cost: 2900,
     killReward: 300,
     power: 63,
     side: "CT",
-    image: "/weapons/m4a1.svg",
+    image: "/weapons/rifles_smg/m4a1.svg",
   },
 
   SSG08: {
@@ -148,7 +148,7 @@ export const WEAPONS = {
     killReward: 300,
     power: 60,
     side: "BOTH",
-    image: "/weapons/ssg08.svg",
+    image: "/weapons/scopes/ssg08.svg",
   },
   AWP: {
     id: "AWP",
@@ -157,7 +157,7 @@ export const WEAPONS = {
     killReward: 100,
     power: 82,
     side: "BOTH",
-    image: "/weapons/awp.svg",
+    image: "/weapons/scopes/awp.svg",
   },
 
   HE: {
@@ -167,7 +167,7 @@ export const WEAPONS = {
     killReward: 300,
     power: 0,
     side: "BOTH",
-    image: "/weapons/hegrenade.svg",
+    image: "/weapons/other/hegrenade.svg",
   },
   MOLOTOV: {
     id: "MOLOTOV",
@@ -176,7 +176,7 @@ export const WEAPONS = {
     killReward: 300,
     power: 0,
     side: "T",
-    image: "/weapons/inferno.svg",
+    image: "/weapons/other/molotov.svg",
   },
   INCENDIARY: {
     id: "INCENDIARY",
@@ -185,7 +185,7 @@ export const WEAPONS = {
     killReward: 300,
     power: 0,
     side: "CT",
-    image: "/weapons/inferno.svg",
+    image: "/weapons/other/incgrenade.svg",
   },
 };
 

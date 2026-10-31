@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useTournament } from "@/context/TournamentContext";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import TeamRosterModal from "@/components/TeamRosterModal";
 import { useState } from "react";
 
@@ -83,16 +84,11 @@ export default function SimulationPage() {
   if (!standings || standings.length === 0) {
     return (
       <div className="text-white p-8 text-center text-xl">
-        Loading tournament...
+        <p>No hay un Major iniciado.</p>
+        <Link className="text-amber-500 underline" href="/organization">Ir a mi organización</Link>
       </div>
     );
   }
-
-  const handlePlayMatch = () => {
-    if (playerMatch && !playerMatch.completed) {
-      router.push(`/simulation/match?id=${playerMatch.id}`);
-    }
-  };
 
   // Agrupar TODOS los matches por su pool (W:L del teamA al momento del match)
   const getMatchesByPool = () => {
@@ -138,6 +134,7 @@ export default function SimulationPage() {
       <div className="mx-auto max-w-[1600px]">
         {/* Header */}
         <header className="mb-6 flex items-center justify-between">
+          <Link href="/organization" className="text-sm text-amber-400 underline">Mi organización</Link>
           <h1 className="text-3xl md:text-4xl font-black tracking-tight text-amber-500">
             {stage === "swiss"
               ? `SWISS STAGE — ROUND ${swissRound}`
@@ -153,12 +150,12 @@ export default function SimulationPage() {
           {["swiss", "playoffs"].includes(stage) &&
             playerMatch &&
             !playerMatch.completed && (
-              <button
-                onClick={handlePlayMatch}
+              <Link
+                href={`/simulation/match?id=${encodeURIComponent(playerMatch.id)}`}
                 className="rounded-lg bg-amber-600 px-6 py-3 font-bold text-sm uppercase tracking-wider hover:bg-amber-500 transition-all hover:scale-105 shadow-lg shadow-amber-600/30"
               >
                 ▶ PLAY MATCH
-              </button>
+              </Link>
             )}
         </header>
 
@@ -451,10 +448,10 @@ export default function SimulationPage() {
               </p>
               <TeamSummary standings={standings} mySquad={mySquad} />
               <button
-                onClick={() => router.push("/")}
+                onClick={() => router.push("/organization")}
                 className="rounded bg-neutral-800 px-8 py-4 font-bold hover:bg-neutral-700 w-full mt-4"
               >
-                BACK TO HOME
+                MI ORGANIZACIÓN
               </button>
             </div>
           </div>
@@ -471,10 +468,10 @@ export default function SimulationPage() {
               </p>
               <TeamSummary standings={standings} mySquad={mySquad} />
               <button
-                onClick={() => router.push("/")}
+                onClick={() => router.push("/organization")}
                 className="rounded bg-amber-600 px-8 py-4 font-bold text-white hover:bg-amber-500 w-full mt-4"
               >
-                BACK TO HOME
+                MI ORGANIZACIÓN
               </button>
             </div>
           </div>
