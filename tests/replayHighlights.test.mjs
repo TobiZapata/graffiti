@@ -1,0 +1,56 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { selectHighlightRounds } from '../src/lib/replayHighlights.mjs';
+
+function map(winners, clutches = []) {
+  let scoreTeam1 = 0, scoreTeam2 = 0;
+  return [...winners].map((winner, index) => {
+    if (winner === 'A') scoreTeam1++; else scoreTeam2++;
+    const round = index + 1;
+    const half = round <= 24 ? (round <= 12 ? 1 : 2) : Math.floor((round - 25) % 6 / 3) + 1;
+    return { round, clutch: clutches.includes(round) ? { actor_id: 'clutcher' } : null,
+      macro: { scoreTeam1, scoreTeam2, teamASide: half === 1 ? 'T' : 'CT' } };
+  });
+}
+
+test('highlights preserve mandatory rounds, one third, chronology and both nonpistol sides', () => {
+  const rounds = map('AB'.repeat(10) + 'AAA', [5, 7]);
+  const selected = selectHighlightRounds(rounds, 'map-1');
+  assert.equal(selected.length, Math.ceil(rounds.length / 3));
+  assert.deepEqual(selected, [...new Set(selected)].sort((a, b) => a - b));
+  assert.deepEqual(selected, selectHighlightRounds(rounds, 'map-1'));
+  for (const index of [0, 12, 22]) assert.ok(selected.includes(index));
+  assert.ok(selected.some(index => rounds[index].clutch));
+  for (const side of ['T', 'CT']) assert.ok(selected.some(index => ![1, 13].includes(rounds[index].round) && rounds[index].macro.teamASide === side));
+});
+
+test('matchpoint selects the opportunity to finish, not the round that reaches twelve', () => {
+  const rounds = map('A'.repeat(12) + 'BBBBBA', [4]);
+  const selected = selectHighlightRounds(rounds, 'matchpoint');
+  assert.ok(selected.includes(12));
+  assert.ok(selected.includes(17));
+  assert.ok(selected.includes(3));
+});
+
+test('13-0 deduplicates second pistol, matchpoint and final without exceeding five', () => {
+  const selected = selectHighlightRounds(map('A'.repeat(13), [13]), 'sweep');
+  assert.equal(selected.length, 5);
+  assert.ok(selected.includes(0));
+  assert.ok(selected.includes(12));
+});
+
+test('overtime does not treat 12-12 as matchpoint and uses score fifteen', () => {
+  const rounds = map('AB'.repeat(12) + 'AAABBA').slice(24);
+  const selected = selectHighlightRounds(rounds, 'overtime');
+  assert.deepEqual(selected, [3, 5]);
+});
+
+test('empty and short maps respect exact quota and maps without clutches still fill it', () => {
+  assert.deepEqual(selectHighlightRounds([], 'empty'), []);
+  assert.deepEqual(selectHighlightRounds(map('A'), 'short'), [0]);
+  for (let n = 1; n <= 60; n++) {
+    const rounds = map('AB'.repeat(30).slice(0, n));
+    assert.equal(selectHighlightRounds(rounds, n).length, Math.ceil(n / 3));
+  }
+  assert.notDeepEqual(selectHighlightRounds(map('AB'.repeat(12)), 'a'), selectHighlightRounds(map('AB'.repeat(12)), 'b'));
+});
