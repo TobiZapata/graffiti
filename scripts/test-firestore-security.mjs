@@ -82,6 +82,20 @@ try {
   await check('identity control signed out', false, () => setDoc(doc(anonymous, 'control/check'), { ok: true }));
   await loadRules(fs.readFileSync('firestore.rules', 'utf8'));
 
+  for (const [id, mode, allowed] of [['MF01', 'full', true], ['MH01', 'highlights', true], ['MI01', 'invalid', false]]) {
+    const uid = `mode-${id}`, db = client(uid);
+    await check(`room playback mode ${mode}`, allowed, async () => {
+      const batch = writeBatch(db);
+      batch.set(doc(db, `rooms/${id}`), { ...lobby(id), hostId: uid, playbackMode: mode, players: { [uid]: member(uid, true) } });
+      batch.set(doc(db, `roomSessions/${uid}`), session(uid, id));
+      await batch.commit();
+    });
+    if (allowed) {
+      await check(`host cannot change playback mode ${mode}`, false, () => updateDoc(doc(db, `rooms/${id}`), { playbackMode: mode === 'full' ? 'highlights' : 'full' }));
+      await check(`host cannot remove playback mode ${mode}`, false, () => updateDoc(doc(db, `rooms/${id}`), { playbackMode: deleteField() }));
+    }
+  }
+
   await check('authenticated room creation and claim', true, async () => {
     const batch = writeBatch(host);
     batch.set(doc(host, 'rooms/NEW1'), { ...lobby('NEW1'), players: { host: hostMember } });

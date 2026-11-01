@@ -32,9 +32,10 @@ async function availableSession(tx, uid) {
   if ((await tx.get(sessionRef(uid))).exists()) throw new Error('You already have an active room. Leave it in the original tab before joining another.');
 }
 
-export async function createRoom(uid, name, organization, visibility = 'public') {
+export async function createRoom(uid, name, organization, visibility = 'public', playbackMode = 'full') {
   authenticate(uid);
   if (!['public', 'private'].includes(visibility)) throw new Error('Invalid room visibility.');
+  if (!['full', 'highlights'].includes(playbackMode)) throw new Error('Invalid playback mode.');
   const identity = getPageSession(), player = newMember(uid, name, organization, true);
   await cachePageToken(uid);
   for (let attempt = 0; attempt < 10; attempt++) {
@@ -43,7 +44,7 @@ export async function createRoom(uid, name, organization, visibility = 'public')
     const created = await runTransaction(db, async tx => {
       await availableSession(tx, uid);
       if ((await tx.get(ref)).exists()) return false;
-      tx.set(ref, { id: code, hostId: uid, status: 'lobby', visibility, players: encodePlayers([player]), schemaVersion: 3, generation: 0, createdAt: new Date().toISOString() });
+      tx.set(ref, { id: code, hostId: uid, status: 'lobby', visibility, playbackMode, players: encodePlayers([player]), schemaVersion: 3, generation: 0, createdAt: new Date().toISOString() });
       tx.set(sessionRef(uid), sessionData(uid, code, identity));
       return true;
     });

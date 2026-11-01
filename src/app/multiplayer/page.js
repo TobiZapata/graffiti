@@ -16,6 +16,7 @@ export default function MultiplayerPage() {
   const [name, setName] = useState("");
   const [roomCode, setRoomCode] = useState("");
   const [isPublic, setIsPublic] = useState(true);
+  const [playbackMode, setPlaybackMode] = useState("full");
   const [rooms, setRooms] = useState([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
@@ -39,7 +40,7 @@ export default function MultiplayerPage() {
     try {
       const displayName = name.trim() || user.displayName || organization.name;
       const joinedCode = code === null
-        ? await createRoom(user.uid, displayName, organization, isPublic ? "public" : "private")
+        ? await createRoom(user.uid, displayName, organization, isPublic ? "public" : "private", playbackMode)
         : await joinRoom(code.trim().toUpperCase(), user.uid, displayName, organization);
       router.push(`/room/${joinedCode}`);
     } catch (err) {
@@ -77,6 +78,12 @@ export default function MultiplayerPage() {
             <h2 id="create-title" className="text-[16px] font-medium">Create a room</h2>
             <label className="mt-4 block" htmlFor="nickname"><span className="label">Display name (optional)</span></label>
             <input id="nickname" value={name} onChange={e => setName(e.target.value)} placeholder={user.displayName || organization.name} maxLength={15} className="field" />
+            <label className="mt-4 block" htmlFor="playback-mode"><span className="label">Match playback</span></label>
+            <select id="playback-mode" value={playbackMode} onChange={e => setPlaybackMode(e.target.value)} disabled={!!busy} className="field" aria-describedby="playback-help">
+              <option value="full">Full match</option>
+              <option value="highlights">Highlights · one third of rounds</option>
+            </select>
+            <p id="playback-help" className="meta mt-2">Highlights shows pistols, a clutch when available, match point and the finish, plus random rounds. All rounds count. Fixed for this room.</p>
             <label className="mt-4 flex items-center gap-2 text-ink-2">
               <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} className="accent-[var(--ink)]" />
               List it in public rooms
@@ -103,7 +110,7 @@ export default function MultiplayerPage() {
             <ul className="mt-2">{rooms.map(room => (
               <li key={room.id} className="flex h-12 items-center gap-4 border-t border-rule first:border-t-0">
                 <span className="tabular font-medium tracking-[0.1em]">{room.id}</span>
-                <span className="flex-1 text-ink-2">{room.players?.length || 0} of 8 players</span>
+                <span className="flex-1 text-ink-2">{room.players?.length || 0} of 8 players · {room.playbackMode === "highlights" ? "Highlights" : "Full match"}</span>
                 <button type="button" onClick={() => enter(room.id)} disabled={!!busy} className="btn btn-secondary">Join</button>
               </li>
             ))}</ul>

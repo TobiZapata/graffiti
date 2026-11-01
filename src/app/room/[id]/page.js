@@ -62,6 +62,7 @@ export default function RoomPage({ params }) {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-[20px] font-medium">Room <span className="tabular tracking-[0.1em]">{roomId}</span></h1>
+          <p className="meta mt-2">{room.playbackMode === "highlights" ? "Highlights · one third of rounds, rounded up. All rounds count." : "Full match · every round."}</p>
           <p className="mt-1 text-ink-2">{inLobby ? "Share the code. The host starts the Major once everyone taking part is ready." : "A Major is being played in this room."}</p>
         </div>
         {me && inLobby && <button type="button" disabled={!!busy} className="link disabled:opacity-40"

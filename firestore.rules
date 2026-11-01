@@ -117,7 +117,8 @@ service cloud.firestore {
     match /rooms/{code} {
       allow get: if signed();
       allow list: if signed() && resource.data.visibility == 'public' && resource.data.status == 'lobby' && request.query.limit <= 50;
-      allow create: if signed() && code.matches('^[A-Z0-9]{4}$') && request.resource.data.keys().hasOnly(['id','hostId','status','visibility','players','schemaVersion','generation','createdAt']) &&
+      allow create: if signed() && code.matches('^[A-Z0-9]{4}$') && request.resource.data.keys().hasOnly(['id','hostId','status','visibility','playbackMode','players','schemaVersion','generation','createdAt']) &&
+        request.resource.data.get('playbackMode','full') in ['full','highlights'] &&
         request.resource.data.id == code && request.resource.data.hostId == request.auth.uid && request.resource.data.schemaVersion == 3 &&
         request.resource.data.status == 'lobby' && request.resource.data.visibility in ['public','private'] && request.resource.data.generation == 0 &&
         request.resource.data.createdAt is string && request.resource.data.createdAt.size() <= 40 && request.resource.data.players.size() == 1 &&
