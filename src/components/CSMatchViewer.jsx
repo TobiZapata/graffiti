@@ -4,7 +4,7 @@ import {
   useEffect,
   useCallback,
 } from "react";
-import { replayWeaponIcon } from "../lib/replayWeaponIcon.mjs";
+import { cachedWeaponIcon, replayWeaponIcon } from "../lib/replayWeaponIcon.mjs";
 
 const WEAPON_POWER = {
   KNIFE: 0,
@@ -72,7 +72,7 @@ const Icon = ({
   size = 18,
 }) => (
   <img
-    src={src}
+    src={cachedWeaponIcon(src)}
     alt={alt}
     style={{
       height: size,
@@ -143,7 +143,7 @@ export function MatchTimeline({ rounds, currentRoundIdx, isCurrentRoundFinished 
     <div style={{
       width: size, height: size,
       backgroundColor: color,
-      WebkitMaskImage: `url(${src})`,
+      WebkitMaskImage: `url(${cachedWeaponIcon(src)})`,
       WebkitMaskSize: "contain",
       WebkitMaskRepeat: "no-repeat",
       WebkitMaskPosition: "center"

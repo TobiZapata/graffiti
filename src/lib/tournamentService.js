@@ -1,5 +1,4 @@
 import { formatTeamForSimulation } from "@/app/utils/playerExpansion";
-import allDbTeams from "@/data/teams.json";
 
 // Helper function to generate scores for NPC matches
 export function generateScore() {
@@ -25,6 +24,7 @@ export function generateScore() {
 
 // Generate the initial tournament state
 export async function initializeMultiplayerTournament(roomPlayers) {
+  const { default: allDbTeams } = await import("@/data/teams.json");
   
   // Format human players
   const humanTeams = roomPlayers.map((p, i) => ({

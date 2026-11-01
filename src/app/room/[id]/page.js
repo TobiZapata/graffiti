@@ -132,7 +132,7 @@ export default function RoomPage({ params }) {
           </section>}
 
           {room.status === "playing" && <Link href={`/room/${roomId}/simulation`} className="btn btn-primary self-start">Watch the Major</Link>}
-          {inLobby && room.lastMajor && room.tournament && <Link href={`/room/${roomId}/simulation?results=1`} className="link underline">See the last Major&apos;s results</Link>}
+          {inLobby && room.lastMajor && room.tournament && <Link href={`/room/${roomId}/simulation?results=1`} prefetch={false} className="link underline">See the last Major&apos;s results</Link>}
         </div>
       </div>
     </main>

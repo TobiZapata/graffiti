@@ -38,6 +38,10 @@ export function roomSessionExpired(session, now = Date.now()) {
   return !!session?.leaving || Number.isFinite(heartbeat) && heartbeat <= now - SESSION_LEASE_MS;
 }
 
+export function roomSessionsNeedReconciliation(sessions, now = Date.now()) {
+  return sessions === null || sessions.some(session => roomSessionExpired(session, now));
+}
+
 export function roomDeparture(room, uid, reason) {
   const target = room.players.find(p => p.uid === uid);
   if (!target || target.left || room.status === 'closed') return null;

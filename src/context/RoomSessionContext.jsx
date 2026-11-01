@@ -6,7 +6,7 @@ import { collection, doc, getDoc, limit, onSnapshot, query, where } from "fireba
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { decodeRoom } from "@/lib/roomStorage.mjs";
-import { clearRoomSession, getPageSession, readRoomSession, roomSessionExpired, SESSION_HEARTBEAT_MS, SESSION_LEASE_MS } from "@/lib/roomSession.mjs";
+import { clearRoomSession, getPageSession, readRoomSession, roomSessionExpired, roomSessionsNeedReconciliation, SESSION_HEARTBEAT_MS } from "@/lib/roomSession.mjs";
 import { heartbeatRoomSession, leaveRoom, markRoomSessionLeaving, reconcileRoomSessions } from "@/lib/roomService";
 
 const RoomSessionContext = createContext(null);
@@ -117,13 +117,22 @@ export function RoomSessionProvider({ children }) {
   useEffect(() => {
     if (!entry || !uid) return;
     let stopped = false;
+    let sessions = null;
+    let reconciling = null;
     const report = err => { if (!stopped) setError(err.message || "Could not update the room session."); };
     const heartbeat = () => heartbeatRoomSession(uid, entry.pageId).catch(report);
-    const reconcile = () => reconcileRoomSessions(entry.roomId).catch(report);
+    const reconcile = () => {
+      if (!reconciling) reconciling = reconcileRoomSessions(entry.roomId).catch(report).finally(() => { reconciling = null; });
+      return reconciling;
+    };
+    const checkSessions = () => {
+      if (roomSessionsNeedReconciliation(sessions)) reconcile();
+    };
     heartbeat();
     reconcile();
     const heartTimer = setInterval(heartbeat, SESSION_HEARTBEAT_MS);
-    const reconcileTimer = setInterval(reconcile, 15000);
+    // Check elapsed leases even when no peer sends another snapshot after a crash.
+    const reconcileTimer = setInterval(checkSessions, 30000);
     let ended = false;
     function endSession(message) {
       if (stopped || ended || leaving.current) return;
@@ -145,9 +154,11 @@ export function RoomSessionProvider({ children }) {
     const unsubscribeOwn = onSnapshot(doc(db, "roomSessions", uid), snapshot => {
       if (!snapshot.metadata.fromCache && (!snapshot.exists() || snapshot.data().pageId !== entry.pageId)) endSession("Your room session ended. You have returned to multiplayer.");
     }, report);
-    const unsubscribePeers = onSnapshot(query(collection(db, "roomSessions"), where("roomId", "==", entry.roomId), limit(8)), snapshot => {
-      if (snapshot.docs.some(item => item.data().heartbeat && (item.data().leaving || item.data().heartbeat.toMillis() <= Date.now() - SESSION_LEASE_MS))) reconcile();
-    }, err => { if (!ended) report(err); });
+    const unsubscribePeers = onSnapshot(query(collection(db, "roomSessions"), where("roomId", "==", entry.roomId), limit(8)), { includeMetadataChanges: true }, snapshot => {
+      if (stopped) return;
+      sessions = snapshot.metadata.fromCache ? null : snapshot.docs.map(item => item.data());
+      checkSessions();
+    }, err => { sessions = null; if (!ended) report(err); });
     return () => { stopped = true; clearInterval(heartTimer); clearInterval(reconcileTimer); unsubscribeRoom(); unsubscribeOwn(); unsubscribePeers(); };
   }, [entry, uid, router]);
 

@@ -4,7 +4,6 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef } f
 import { CAREER_KEY, loadCareer, saveCareer, validOrganization } from "@/lib/localCareer.mjs";
 import { buildMajorRecord } from "@/lib/organizationProfile.mjs";
 import { moveOrganizationRole } from "@/lib/organizationRoles.mjs";
-import teamsData from "@/data/teams.json";
 
 import { formatTeamForSimulation } from "@/app/utils/playerExpansion";
 import { generateSwissPairings } from "@/lib/tournamentService";
@@ -110,16 +109,17 @@ export function TournamentProvider({ children }) {
     setOrganization(updated);
   };
 
-  const startOrganizationMajor = () => {
+  const startOrganizationMajor = async () => {
     if (!organization || writesBlocked.current) throw new Error("There is no organization.");
     if (tournamentId && !["won", "eliminated", "results_pending"].includes(stage)) throw new Error("The current Major is still in progress.");
+    let nextOrganization = organization;
     if (tournamentId) {
       const record = buildMajorRecord({ tournamentId, stage, pendingResult, matches });
-      setOrganization({ ...organization, majorHistory: [...(organization.majorHistory || []).filter(r => r.id !== tournamentId), record] });
+      nextOrganization = { ...organization, majorHistory: [...(organization.majorHistory || []).filter(r => r.id !== tournamentId), record] };
     }
-    initTournament(organization.squad, organization.name, organization.icon, {
+    await initTournament(organization.squad, organization.name, organization.icon, {
       mainAwperUid: organization.mainAwperUid, iglUid: organization.iglUid, starUid: organization.starUid
-    });
+    }, nextOrganization);
   };
 
   const saveMatchProgress = useCallback((matchId, progress) => {
@@ -127,16 +127,9 @@ export function TournamentProvider({ children }) {
   }, []);
 
   // Initialize tournament
-  const initTournament = (squad, name = "My Team", icon = "/logos/faze.png", roles = {}) => {
-    setTournamentId(crypto.randomUUID());
-    setMatchProgress({});
-    completedIds.current = new Set();
-    setMySquad(squad);
-    setTeamName(name);
-    setStage("swiss");
-    setSwissRound(1);
-    setMatches([]);
-    setPendingResult(null);
+  const initTournament = async (squad, name = "My Team", icon = "/logos/faze.png", roles = {}, nextOrganization = null) => {
+    const { default: teamsData } = await import("@/data/teams.json");
+    if (writesBlocked.current) throw new Error("Your saved game cannot be written. Reload this page to continue.");
     
     // Pick random teams from DB to fill the 15 spots
     let otherTeams = [...teamsData].sort(() => Math.random() - 0.5);
@@ -152,10 +145,20 @@ export function TournamentProvider({ children }) {
       { id: "player_team", ...formatTeamForSimulation({ name, isPlayer: true, icon: icon, ...roles }, squad), isPlayer: true, starUid: roles.starUid, wins: 0, losses: 0 },
       ...otherTeams.map((t, i) => ({ id: `${t.id}_${i}`, ...formatTeamForSimulation(t), isPlayer: false, wins: 0, losses: 0 }))
     ];
-    setStandings(initialStandings);
-    
     // Generate Round 1 matchups
-    setMatches(generateSwissPairings(initialStandings, [], 1));
+    const initialMatches = generateSwissPairings(initialStandings, [], 1);
+    const nextTournamentId = crypto.randomUUID();
+    if (nextOrganization) setOrganization(nextOrganization);
+    setTournamentId(nextTournamentId);
+    setMatchProgress({});
+    completedIds.current = new Set();
+    setMySquad(squad);
+    setTeamName(name);
+    setStage("swiss");
+    setSwissRound(1);
+    setPendingResult(null);
+    setStandings(initialStandings);
+    setMatches(initialMatches);
   };
 
   const generateSwissMatchups = (currentStandings, round) => {

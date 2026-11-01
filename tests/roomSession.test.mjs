@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { roomDeparture, roomSessionExpired, SESSION_LEASE_MS } from '../src/lib/roomSession.mjs';
+import { roomDeparture, roomSessionExpired, roomSessionsNeedReconciliation, SESSION_LEASE_MS } from '../src/lib/roomSession.mjs';
 
 const host = { uid: 'host', participating: true, isReady: true, isHost: true, left: false };
 const guest = { ...host, uid: 'guest', isHost: false };
@@ -35,4 +35,16 @@ test('presence expires after the lease or an explicit leaving signal, not visibi
   assert.equal(roomSessionExpired({ heartbeat: { toMillis: () => now - SESSION_LEASE_MS } }, now), true);
   assert.equal(roomSessionExpired({ heartbeat: { toMillis: () => now }, leaving: true }, now), true);
   assert.equal(roomSessionExpired({ heartbeat: null }, now), false);
+});
+
+test('confirmed live peers avoid scans, but missing snapshots, departures and elapsed leases require server checks', () => {
+  const now = 1000000;
+  const fresh = { heartbeat: { toMillis: () => now } };
+  const older = { heartbeat: { toMillis: () => now - SESSION_LEASE_MS + 1 } };
+  assert.equal(roomSessionsNeedReconciliation(null, now), true);
+  assert.equal(roomSessionsNeedReconciliation([fresh, older], now), false);
+  assert.equal(roomSessionsNeedReconciliation([fresh, older], now + 1), true);
+  assert.equal(roomSessionsNeedReconciliation([fresh, { ...fresh, leaving: true }], now), true);
+  assert.equal(roomSessionsNeedReconciliation([{ heartbeat: null }, fresh], now), false);
+  assert.equal(roomSessionsNeedReconciliation([], now), false);
 });

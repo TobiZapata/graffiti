@@ -19,7 +19,7 @@ function RoomReturnLink() {
   return /^[A-Z0-9]{4}$/.test(room || "") ? <Link href={`/room/${room}`} className="link">Back to room {room}</Link> : null;
 }
 
-function NextStep({ hasTournament, finished, stage, swissRound, standings, playerMatch, playHref, resuming, onStart, lastOutcome }) {
+function NextStep({ hasTournament, finished, stage, swissRound, standings, playerMatch, playHref, resuming, onStart, starting, lastOutcome }) {
   const me = standings.find(t => t.isPlayer);
   if (hasTournament && !finished) {
     const opponent = opponentOf(playerMatch, "player_team");
@@ -52,7 +52,7 @@ function NextStep({ hasTournament, finished, stage, swissRound, standings, playe
       <p className="mt-2 text-ink-2">16 teams play a Swiss stage to three wins or three losses. The top eight go to a single-elimination playoff.</p>
       {lastOutcome && <p className="mt-2 text-ink-2">Last Major: <span className="text-ink">{lastOutcome}</span>{me && <span className="tabular"> · {record(me)}</span>}</p>}
       <div className="mt-6 flex flex-wrap items-center gap-6">
-        <button type="button" className="btn btn-primary btn-lg" onClick={onStart}>Start Major</button>
+        <button type="button" className="btn btn-primary btn-lg" onClick={onStart} disabled={starting}>{starting ? "Starting…" : "Start Major"}</button>
         {hasTournament && <Link href="/simulation" className="link">View last results</Link>}
       </div>
     </section>
@@ -63,6 +63,7 @@ export default function OrganizationPage() {
   const router = useRouter();
   const { organization, ready, storageError, startOrganizationMajor, assignOrganizationRole, standings, matches, matchProgress, stage, swissRound, pendingResult, tournamentId } = useTournament();
   const [error, setError] = useState("");
+  const [starting, setStarting] = useState(false);
   const [selectedRole, setSelectedRole] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const [roleNotice, setRoleNotice] = useState("");
@@ -86,13 +87,15 @@ export default function OrganizationPage() {
   const founded = new Date(organization.createdAt).getFullYear();
   const lastOutcome = finished ? outcomes[profile.recentMajors[0]?.outcome] : null;
 
-  function start() {
-    try { startOrganizationMajor(); router.push("/simulation"); }
+  async function start() {
+    setStarting(true); setError("");
+    try { await startOrganizationMajor(); router.push("/simulation"); }
     catch (e) { setError(e.message || "The Major could not be started. Try again."); }
+    finally { setStarting(false); }
   }
 
   function moveRole(field, uid) {
-    if (!Object.hasOwn(ROLE_FIELDS, field) || storageError) return;
+    if (!Object.hasOwn(ROLE_FIELDS, field) || storageError || starting) return;
     try {
       assignOrganizationRole(field, uid);
       setRoleNotice(`${ROLE_FIELDS[field]} moved to ${organization.squad[Number(uid)].player.name}.`);
@@ -119,7 +122,7 @@ export default function OrganizationPage() {
       <div className="mt-8 grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="grid content-start gap-4">
           <NextStep hasTournament={hasTournament} finished={finished} stage={stage} swissRound={swissRound} standings={standings}
-            playerMatch={playerMatch} playHref={playHref} resuming={resuming} onStart={start} lastOutcome={lastOutcome} />
+            playerMatch={playerMatch} playHref={playHref} resuming={resuming} onStart={start} starting={starting} lastOutcome={lastOutcome} />
 
           <section className="card p-6" aria-labelledby="active-roster">
             <header className="flex items-center justify-between gap-4">
@@ -133,7 +136,7 @@ export default function OrganizationPage() {
                 className={`flex h-12 items-center gap-3 rounded-lg px-3 transition-colors ${dropTarget === uid ? "bg-control" : selectedRole ? "hover:bg-raised" : ""}`}
                 data-player-uid={uid}
                 onDragOver={e => {
-                  if (storageError || !e.dataTransfer.types.includes("text/plain")) return;
+                  if (storageError || starting || !e.dataTransfer.types.includes("text/plain")) return;
                   e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDropTarget(uid);
                 }}
                 onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropTarget(null); }}
@@ -143,14 +146,14 @@ export default function OrganizationPage() {
                   if (payload.startsWith(roleDragPrefix)) moveRole(payload.slice(roleDragPrefix.length), uid);
                   setDropTarget(null);
                 }}>
-                <button type="button" disabled={!selectedRole || !!storageError}
+                <button type="button" disabled={!selectedRole || !!storageError || starting}
                   className={`min-w-0 flex-1 truncate text-left font-medium ${selectedRole ? "cursor-pointer underline decoration-ink-3 underline-offset-4" : "cursor-default"}`}
                   aria-label={selectedRole ? `Make ${entry.player.name} the ${ROLE_FIELDS[selectedRole]}` : entry.player.name}
                   onClick={() => moveRole(selectedRole, uid)}>{entry.player.name}</button>
                 <span className="text-ink-3">{roleLabel(entry.player.role)}</span>
                 <span className="flex w-[148px] justify-end gap-1">
                   {Object.entries(ROLE_FIELDS).filter(([field]) => organization[field] === uid).map(([field, label]) =>
-                    <button type="button" key={field} data-role={field} draggable={!storageError} disabled={!!storageError}
+                    <button type="button" key={field} data-role={field} draggable={!storageError && !starting} disabled={!!storageError || starting}
                       className={`h-7 cursor-grab rounded-md px-2 text-[12px] font-medium transition-colors active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50 ${selectedRole === field ? "bg-ink text-black" : "bg-control hover:bg-[#363636]"} ${field === "starUid" && selectedRole !== field ? "text-accent" : ""}`}
                       aria-label={`Move ${label} from ${entry.player.name}`} aria-pressed={selectedRole === field}
                       onClick={() => { setSelectedRole(selectedRole === field ? null : field); setRoleNotice(""); }}

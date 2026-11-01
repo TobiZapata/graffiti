@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { decodeReplay, sampleReplay, worldToRadar } from "../lib/roundBankReplay.mjs";
 import { readReplayJSON } from "../lib/readReplayJSON.mjs";
-import { replayWeaponIcon } from "../lib/replayWeaponIcon.mjs";
+import { cachedWeaponIcon, replayWeaponIcon } from "../lib/replayWeaponIcon.mjs";
+import mirageRadar from "../../public/maps/mirage/de_mirage_radar_psd.webp";
 import { replayProgress } from "../lib/replayProgress.mjs";
 import { anchorReplay, nextReplayRound, replayTime } from "../lib/replayClock.mjs";
 import { mostExpensiveWeapon } from "../lib/replayEquipment.mjs";
@@ -19,7 +20,7 @@ const timeLabel = (time) => `${Math.floor(time / 60)}:${String(Math.floor(time %
 
 function WeaponIcon({ weapon }) {
   const [failedSource, setFailedSource] = useState(null);
-  const source = replayWeaponIcon(weapon);
+  const source = cachedWeaponIcon(replayWeaponIcon(weapon));
   if (!source || failedSource === source) return <span>{weapon || "—"}</span>;
   // SVG silhouettes are served directly and retain a text fallback if the asset fails to load.
   // eslint-disable-next-line @next/next/no-img-element
@@ -55,7 +56,7 @@ function TeamList({ side, sample, round }) {
 function Radar({ sample, round }) {
   const point = (p) => worldToRadar(p, MAP);
   return <svg className={styles.radar} viewBox="0 0 1024 1024" role="img" aria-label="Mirage radar with player positions">
-    <image href={`${BASE}/mirage.png`} width="1024" height="1024" />
+    <image href={mirageRadar.src} width="1024" height="1024" />
     {sample.effects.map((effect) => {
       const p = point(effect);
       return <circle key={effect.id} cx={p.x} cy={p.y} r={effect.kind === "smoke" ? 29 : effect.kind === "fire" ? 22 : 8}

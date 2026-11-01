@@ -19,6 +19,11 @@ const special = {
 };
 const utility = { FLASH: 'flashbang', SMOKE: 'smokegrenade', DECOY: 'decoy', MOLOTOV: 'molotov', INCENDIARY: 'incgrenade' };
 
+export function cachedWeaponIcon(source) {
+  const version = process.env.NEXT_PUBLIC_WEAPON_ASSET_VERSION;
+  return version && source?.startsWith('/weapons/') ? `${source}?v=${version}` : source;
+}
+
 export function replayWeaponIcon(weapon) {
   if (typeof weapon !== 'string') return null;
   const name = weapon.trim().toLowerCase().replace(/^weapon_/, '');

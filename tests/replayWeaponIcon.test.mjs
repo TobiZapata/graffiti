@@ -2,7 +2,27 @@
 import { existsSync } from 'node:fs';
 import { test } from 'node:test';
 import { WEAPONS } from '../src/app/engines/WeaponEngine.js';
-import { replayWeaponIcon } from '../src/lib/replayWeaponIcon.mjs';
+import { cachedWeaponIcon, replayWeaponIcon } from '../src/lib/replayWeaponIcon.mjs';
+import nextConfig from '../next.config.mjs';
+
+test('weapon cache URLs match the content version required by the cache headers', async () => {
+  const previous = process.env.NEXT_PUBLIC_WEAPON_ASSET_VERSION;
+  try {
+    process.env.NEXT_PUBLIC_WEAPON_ASSET_VERSION = nextConfig.env.NEXT_PUBLIC_WEAPON_ASSET_VERSION;
+    const [rule] = await nextConfig.headers();
+    const version = rule.has[0].value;
+    assert.match(version, /^[a-f0-9]{16}$/);
+    assert.equal(cachedWeaponIcon('/weapons/other/c4.svg'), `/weapons/other/c4.svg?v=${version}`);
+    assert.equal(rule.headers[0].value, 'public, max-age=31536000, immutable');
+    assert.equal(cachedWeaponIcon('/modifiers/trophy.svg'), '/modifiers/trophy.svg');
+    assert.equal(cachedWeaponIcon(null), null);
+    delete process.env.NEXT_PUBLIC_WEAPON_ASSET_VERSION;
+    assert.equal(cachedWeaponIcon('/weapons/other/c4.svg'), '/weapons/other/c4.svg');
+  } finally {
+    if (previous === undefined) delete process.env.NEXT_PUBLIC_WEAPON_ASSET_VERSION;
+    else process.env.NEXT_PUBLIC_WEAPON_ASSET_VERSION = previous;
+  }
+});
 
 test('weapons and native killfeed aliases resolve to existing SVG assets', () => {
   for (const weapon of Object.values(WEAPONS).filter(w => w.id !== 'KNIFE')) {
