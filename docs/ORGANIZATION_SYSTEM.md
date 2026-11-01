@@ -61,7 +61,7 @@ indica recargarla para recuperar el estado mas reciente.
 
 ## Verificacion y limites
 
-80 pruebas pasan, incluido guardado/lectura, roles, referencias, rosters, progreso
+90 pruebas pasan, incluido guardado/lectura, roles, referencias, rosters, progreso
 de series y fallos de almacenamiento. ESLint de los archivos de integracion y
 build pasan. Chrome verifico creacion, colores/roles/STAR, recarga del Hub, ronda
 3 a 37 segundos y velocidad 4x, salida y retorno, BO3 entre mapas, proteccion
@@ -84,16 +84,29 @@ entrega no pueden reconstruirse.
 
 ## Perfil visual
 
-Basado en `public/references/orgpage.jpg`: identidad centrada, metricas grandes,
-resultados recientes y trofeos, fondo oscuro uniforme. En el espacio intermedio
-se ubican la plantilla activa a la izquierda y jugadores historicos a la derecha;
-en movil se apilan. La ventana historica indica los ultimos cinco pero sigue vacia:
-no hay bajas de plantilla ni estadisticas individuales historicas implementadas.
-No se inventan exjugadores ni rendimientos. Debajo se muestran enfrentamientos
-reales contra IA. Evidencia visual: `../cs2-data-lab/output/organization-reference-desktop.png`
-y `organization-reference-mobile.png`; las pruebas verifican ubicacion, datos
-acumulados tras otro Major y ausencia de desborde a 390 px.
+El rediseño usa AppBar, superficies oscuras y controles compartidos. El Hub muestra
+el siguiente partido o arranque de Major, plantilla activa con roles editables,
+estadisticas, jugadores historicos y rivalidades. En movil se apilan. La ventana
+historica sigue vacia: no hay bajas ni estadisticas individuales historicas
+implementadas. No se inventan exjugadores ni rendimientos.
 La regeneracion supone la misma version del motor y banco; una migracion futura
 debera conservar la compatibilidad o versionar tambien el plan de los mapas.
 Las salas ahora admiten organizaciones, confirmacion y regreso al lobby entre
 Majors. Detalles y limites de la prueba local: `MULTIPLAYER_LOBBIES.md`.
+
+## Draft y correcciones de UI
+
+La oferta del draft deriva de una semilla guardada en sessionStorage, la cantidad
+de picks y los rerolls restantes. Recargar o deshacer y repetir un pick conserva
+la oferta; no concede rerolls gratuitos. Quitar un jugador tambien quita los picks
+posteriores. Los rerolls gastados no se recuperan. Los drafts antiguos sin semilla
+conservan su plantilla valida y contador, y reciben una nueva oferta una sola vez.
+
+El cuadro Swiss reconstruye los balances de entrada desde los resultados de las
+rondas anteriores, incluso al leer partidas viejas con snapshots modificados.
+Los resultados siempre muestran la posicion individual. Se retiro el MVP calculado
+con atributos y nombre: no era una estadistica real del torneo.
+
+Chrome verifico estas correcciones, guardado y reanudacion del replay, roles del
+Major congelados y posicion final de semifinales sin MVP. Hub a 390 px sin
+desborde. Reporte: `../cs2-data-lab/output/ui-regressions.json`.

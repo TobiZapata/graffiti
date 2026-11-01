@@ -1,90 +1,126 @@
-# Salas entre Majors
+# Salas y abandonos
 
-La organizacion local se puede usar en salas publicas y privadas. Esta entrega no
-decide reglas de bajas, reemplazos ni offseason; todos conservan sus cinco jugadores.
+## Reglas de uso
 
-## Flujo disponible
+Cada usuario tiene una sola sala activa, reservada en roomSessions/{uid} al crear
+o entrar. Otra pestana no puede abrir una segunda sala ni tomar la sesion original.
+La navegacion dentro de /room/{code} conserva la sesion entre lobby, cuadro y replay.
+Salir de ese conjunto de pantallas, recargar o cerrar termina la participacion.
 
-- `/multiplayer`: lista de salas publicas actualizable, crear sala publica/privada
-  y entrar con codigo. Se necesita organizacion y sesion anonima de Firebase Auth.
-- `/room/[id]`: organizaciones, plantillas, roles y estados Preparando equipo,
-  Listo, En partida o No participa. Cada persona confirma su propio equipo.
-- Preparar equipo quita Listo antes de abrir el Hub y permite regresar a la sala.
-  La membresia permanece. Confirmar publica una copia actual de identidad/plantilla;
-  no se sube el historial local completo de la organizacion.
-- El host puede excluir a alguien solo del proximo Major, manteniendolo en el lobby.
-  El arranque requiere al menos un participante y todos los incluidos listos.
-  Se completa el cuadro con NPC del catalogo local hasta dieciseis equipos.
-- El Major fija equipos y roles. Usa el reproductor de demos: todos los mapas son
-  Mirage, incluidos BO3 y BO5. Cada usuario conserva su posicion en sessionStorage
-  de esa pestana; una recarga vuelve al mismo mapa/ronda/segundo.
-- Tras la final, el host devuelve a todos al mismo lobby. Se liberan reservas,
-  se restablece participacion y se solicita una nueva confirmacion. El ultimo
-  resultado queda consultable mientras no se inicie el siguiente Major.
-- Otro arranque crea un tournamentId y una generacion nuevos. No se repite el draft.
-  La ruta antigua `/room/[id]/draft` redirige al lobby.
+Al completarse un match, el reproductor muestra un resumen con marcador, ganador y
+estadisticas de jugadores y equipos por mapa y para toda la serie. La pantalla
+conserva la sesion de sala, tambien si el rival confirma primero el resultado.
+Back to Major queda habilitado al confirmar el guardado; un error permite reintentar.
+El ultimo mapa abre el resumen automaticamente al terminar la reproduccion.
 
-## Concurrencia
+Firebase conserva el resultado liviano, sin filas de estadisticas. El resumen usa
+los datos de la replay en memoria o reconstruye los mapas con su semilla original,
+comprobando que coincidan marcador y ganador antes de mostrar las estadisticas.
+Un mapa antiguo que no se puede reconstruir muestra datos no disponibles, nunca ceros
+inventados. El guardado local de una partida individual conserva las filas por mapa.
 
-`roomService` usa transacciones para altas, bajas, confirmaciones, participacion,
-arranque y regreso. La creacion no sobrescribe codigos existentes. Las consultas
-de salas publicas filtran visibility/status antes de leer y se limitan a cincuenta.
+| Accion | Lobby | Major en curso |
+| --- | --- | --- |
+| Invitado sale, recarga o navega fuera | Se retira del lobby | Abandono y W/O en sus cruces pendientes |
+| Host hace lo mismo | La sala se cierra para todos | Abandono y transferencia a otro miembro activo |
+| No queda ningun miembro activo | Sala cerrada | Major cancelado, sin campeon inventado |
+| Perder foco, minimizar o cambiar de pestana | Permanece | La replay continua por tiempo transcurrido |
+| Salir despues de la final | Salida normal | No agrega abandono ni elimina el campeon |
 
-Al arrancar se reservan las organizaciones participantes en
-`organizationSessions/{organizationId}`. Una reserva existente impide empezar
-otro Major con la misma organizacion en otra sala. Al regresar tras una final
-valida, se liberan solo las reservas correspondientes a esa sala y tournamentId.
+Salir durante un Major pide confirmacion al usar los enlaces. La recarga/cierre
+usa tambien la advertencia nativa del navegador cuando este la permite.
+La navegacion atras o una direccion escrita directamente tambien termina la sesion.
+El boton Leave room sigue disponible; no es la unica forma de salir.
 
-El contexto multijugador tambien usa transacciones para resultados y avance.
-Comprueba usuario participante, equipos, ganador/puntaje, torneo vigente y estado
-de ronda. Un partido completado no vuelve a sumar victorias. No se permite avanzar
-con partidas humanas pendientes. Los equipos publicados no siguen los cambios
-posteriores del Hub.
+Edit roles abre un dialogo dentro del lobby: desmarca listo, edita AWPer/IGL/STAR
+y guarda el snapshot sin navegar a la organizacion. AWPer e IGL se intercambian si
+se asignan al mismo jugador. El Major fija los roles al arrancar; no hay offseason.
 
-## Prueba local
+## Presencia y desconexiones
 
-Se utiliza un proyecto demo sin servicios reales ni facturacion:
+El servidor valida una sesion con heartbeat cada 30 segundos y vencimiento de
+180 segundos. La renovacion no puede cambiar usuario, sala ni identidad de pagina,
+y una sesion vencida no revive. El cambio de foco no es una senal de salida.
+El controlador vive en el layout; desmontar una pantalla interna no abandona.
 
-```powershell
-firebase emulators:start --only auth,firestore --project demo-major-mvp --config tests/firebase-emulators.json
-```
+Al recargar, la nueva pagina reconoce la entrada anterior de esa pestana y realiza
+la salida antes de mostrar el juego. Las pestanas nuevas o duplicadas quedan
+bloqueadas; no reemplazan una sesion viva. pagehide intenta marcar leaving mediante
+una peticion keepalive con token solo en memoria. No se depende de que esa peticion
+llegue: existe el vencimiento para cierres bruscos, cierres forzados o perdida de red.
+Los timestamps pendientes de confirmar no se interpretan como desconexion.
 
-En otra terminal:
+Los otros miembros concilian salidas y vencimientos; tambien se revisan al listar
+salas o iniciar una sesion. Si no queda ningun cliente conectado, el vencimiento
+impide operar y la limpieza se materializa al siguiente acceso. No hay un proceso
+programado de backend: no se promete deteccion instantanea con todos desconectados.
+La suspension completa de un dispositivo puede terminar venciendo la sesion.
 
-```powershell
-$env:NEXT_PUBLIC_USE_FIREBASE_EMULATORS='true'
-npm run build
-npm run start -- --hostname 127.0.0.1 --port 3001
-```
+## Forfeits e historial
 
-Esa variable selecciona datos ficticios, Auth 9098, Firestore 8088 y el directorio
-`.next-emulator`. Sin ella se conserva la configuracion Firebase existente y `.next`.
-El origen 3001 tiene un guardado de organizacion separado del de 3000.
+Durante el Major, el miembro que abandona queda marcado left y su UID se conserva
+en abandonedUids. El host restante resuelve automaticamente cruces actuales y
+futuros por W/O, sin reescribir partidos ya terminados. Swiss suma cada resultado
+una vez; los abandonados siguen recibiendo derrotas hasta ser eliminados. En
+playoffs se entrega el cruce al rival. Si ambos abandonaron, el pase se resuelve
+deterministicamente y el abandono sigue vigente para la siguiente ronda.
+No se inventan mapas jugados, kills ni estadisticas de rendimiento para un W/O.
 
-`tests/firestore-emulator.rules` permite pruebas autenticadas locales: **no son
-reglas de produccion y no deben desplegarse**. Ninguna regla o recurso real fue
-publicado o cambiado durante esta entrega.
+Cada abandono de un Major genera una entrada inmutable y unica en
+users/{uid}/abandonments/{tournamentId}. El perfil de organizacion muestra la
+cantidad de esas entradas para su organizationId. No cuenta salir del lobby,
+ser espectador ni salir despues de terminar el torneo. Una recarga repetida no
+duplica el registro. La identidad sigue siendo anonima del navegador, no una cuenta
+recuperable entre dispositivos.
 
-Verificacion: 85 pruebas unitarias, ESLint de integracion y build. Chrome con tres
-usuarios anonimos y Firestore/Auth locales verifico altas simultaneas, confirmacion,
-exclusion sin expulsion, preparacion, salas privadas ocultas, reserva de organizacion,
-partidas reales de Mirage y resultados concurrentes sin duplicar victorias.
-Para probar el regreso se inserto una final terminada en el emulador; no se jugo
-un Major multijugador entero. Se verificaron regreso al mismo lobby, consulta del
-ultimo resultado y segundo arranque. Reporte:
-`../cs2-data-lab/output/multiplayer-browser.json`.
+## Persistencia y concurrencia
 
-## Limites actuales
+Las salas nuevas usan schemaVersion 3 y miembros por UID con sessionId y left.
+Crear/entrar y reservar la sesion es atomico; no se sobrescribe una reserva activa.
+Cada jugador envia resultados individuales inmutables; el host los incorpora en
+una transaccion junto con W/O pendientes. No avanza con partidos humanos pendientes.
+Las organizaciones se reservan al arrancar y se liberan al abandonar o volver al
+lobby. Una organizacion liberada puede jugar otro Major sin reactivar al equipo
+abandonado en el anterior.
 
-La autenticacion anonima identifica al usuario del navegador; la organizacion
-sigue siendo local y se comparte una copia con la sala, sin sincronizacion de
-cuenta ni historial competitivo multijugador permanente. Los resultados siguen
-calculados por clientes. Las comprobaciones del SDK no sustituyen reglas Firebase
-de produccion ni un servidor que determine resultados: falta validar esos permisos
-y autoridad antes de presentar el modo como competicion publica protegida.
+El host que sale del lobby lo cierra. Si sale durante el Major, se transfiere a otro
+miembro que no haya salido. Las salas cerradas conservan el ultimo torneo como
+registro y salen del directorio. Al cerrar se eliminan las sesiones y resultados
+temporales; una segunda limpieza recoge envios concurrentes anteriores al cierre.
+Tras la final se conserva el regreso al lobby, resultados consultables y otro Major
+con nueva generacion, sin repetir el draft. El regreso elimina miembros que salieron.
 
-Una reserva puede quedar pendiente si el host abandona definitivamente o se borra
-la sala externamente. No se implemento recuperacion de host ni caducidad de reservas.
-El bloqueo abarca estas salas, no el torneo individual local. No hay chat ni draft
-de reemplazos todavia. El indice de la consulta publica puede necesitar configuracion
-en el proyecto Firestore real.
+Las salas anteriores se conservan como archivo de solo lectura. La actualizacion
+de protocolo no genera abandonos. Se respaldaron y liberaron dos reservas del
+formato anterior para que no bloqueen organizaciones en el sistema nuevo.
+
+## Verificacion
+
+Con Firebase CLI y Java instalados:
+
+    firebase emulators:start --only auth,firestore --project demo-major-mvp --config tests/firebase-emulators.json
+    npm run test:firestore
+    npm run test:replay
+
+El emulador usa las mismas firestore.rules de produccion. Las pruebas de permisos
+usan proyectos demo aleatorios y limpian solo sus fixtures. Para la web local:
+
+    $env:NEXT_PUBLIC_USE_FIREBASE_EMULATORS='true'
+    node node_modules/next/dist/bin/next build --webpack
+    npm run start -- --hostname 127.0.0.1 --port 3001
+
+Sin esa variable se utiliza graffity-major y .next; con ella, Auth 9098, Firestore
+8088 y .next-emulator. Reporte de navegador:
+../cs2-data-lab/output/room-lifecycle-browser.json. Detalles de datos, despliegue
+y pruebas cloud en FIREBASE_STORAGE.md.
+
+## Limites
+
+El host coordina el torneo y los resultados siguen declarados por clientes. Las
+reglas verifican permisos y coherencia, no demuestran una simulacion legitima.
+La exclusividad por usuario esta protegida en Firestore; un cliente modificado con
+la misma autenticacion representa al mismo usuario y no una identidad de pestana
+verificable en servidor. La coordinacion entre pestanas normales la hace el cliente.
+Privada significa no listada: un usuario autenticado con el codigo puede consultarla.
+Cuenta permanente, autoridad de servidor e historial competitivo completo siguen
+pendientes. No se agregaron servicios pagos ni dependencias.

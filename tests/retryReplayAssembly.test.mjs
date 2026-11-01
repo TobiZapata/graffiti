@@ -31,7 +31,7 @@ test('coverage retries use distinct reproducible seeds and preserve the returned
 
 test('stops after five coverage failures and does not retry other errors', async () => {
   let calls = 0;
-  await assert.rejects(retryReplayAssembly(() => { calls++; throw coverage(); }, 'seed'), /tras 5 intentos/);
+  await assert.rejects(retryReplayAssembly(() => { calls++; throw coverage(); }, 'seed'), /after 5 attempts/);
   assert.equal(calls, 5);
   for (const error of [new TypeError('Datos inválidos'), new Error('Error interno')]) {
     calls = 0;

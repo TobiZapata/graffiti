@@ -1,0 +1,216 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signed() { return request.auth != null; }
+    function roomPath(code) { return /databases/$(database)/documents/rooms/$(code); }
+    function sessionPath(uid) { return /databases/$(database)/documents/roomSessions/$(uid); }
+    function eventPath(uid, major) { return /databases/$(database)/documents/users/$(uid)/abandonments/$(major); }
+    function live(r, uid) { let c = get(sessionPath(uid)).data; return uid in r.players && !r.players[uid].left && c.uid == uid && c.roomId == r.id && c.pageId == r.players[uid].sessionId && !c.leaving && c.heartbeat > request.time - duration.value(180, 's'); }
+    function claimed(r, uid) { let c = getAfter(sessionPath(uid)).data; return c.uid == uid && c.roomId == r.id && c.pageId == r.players[uid].sessionId && !c.leaving && c.heartbeat == request.time; }
+    function expired(uid) { let c = get(sessionPath(uid)).data; return c.leaving || c.heartbeat <= request.time - duration.value(180, 's'); }
+    function lockPath(id) { return /databases/$(database)/documents/organizationSessions/$(id); }
+    function validPlayer(p) {
+      return p is map && p.player is map && p.player.name is string && p.player.name.size() > 0 && p.player.name.size() <= 100;
+    }
+    function validOrganization(o) {
+      return o is map && o.id is string && o.id.size() > 0 && o.id.size() <= 150 && o.id.matches('^[^/]+$') &&
+        o.name is string && o.name.size() > 0 && o.name.size() <= 100 && o.icon is string && o.icon.size() > 0 && o.icon.size() <= 100000 &&
+        o.createdAt is string && o.createdAt.size() > 0 && o.createdAt.size() <= 100 &&
+        o.colors is list && o.colors.size() == 2 && o.colors[0] is string && o.colors[0].matches('^#[0-9a-fA-F]{6}$') && o.colors[1] is string && o.colors[1].matches('^#[0-9a-fA-F]{6}$') &&
+        o.squad is list && o.squad.size() == 5 && validPlayer(o.squad[0]) && validPlayer(o.squad[1]) && validPlayer(o.squad[2]) && validPlayer(o.squad[3]) && validPlayer(o.squad[4]) &&
+        o.mainAwperUid in ['0','1','2','3','4'] && o.iglUid in ['0','1','2','3','4'] && o.starUid in ['0','1','2','3','4'] && o.mainAwperUid != o.iglUid;
+    }
+    function member(p, uid, host) {
+      return p is map && p.keys().hasOnly(['uid','name','isHost','organization','participating','isReady','squad','teamName','icon','sessionId','left']) &&
+        p.keys().hasAll(['uid','name','isHost','organization','participating','isReady','squad','teamName','icon','sessionId','left']) &&
+        p.uid == uid && p.sessionId is string && p.sessionId.size() > 0 && p.left == false && p.name is string && p.name.size() <= 100 && p.isHost == host && p.participating is bool && p.isReady is bool &&
+        (!p.isReady || p.participating) && validOrganization(p.organization) && p.squad == p.organization.squad && p.teamName == p.organization.name && p.icon == p.organization.icon;
+    }
+    function locked(r, uid) {
+      let p = r.players[uid];
+      let lock = getAfter(lockPath(p.organization.id));
+      return p.participating && p.isReady && lock.data == { 'ownerUid': uid, 'roomId': r.id, 'tournamentId': r.tournament.tournamentId };
+    }
+    function startPlayer(old, next, i) {
+      let keys = old.players.keys();
+      return keys.size() <= i || (old.players[keys[i]].participating ?
+        (keys[i] in next.tournament.participantUids && locked(next, keys[i])) : !(keys[i] in next.tournament.participantUids));
+    }
+    function releasePlayer(players, ids, i) {
+      return ids.size() <= i || players[ids[i]].left || !existsAfter(lockPath(players[ids[i]].organization.id));
+    }
+    function resetPlayer(players, updated, keys, i) {
+      let uid = keys.size() > i ? keys[i] : '';
+      let p = uid == '' ? {} : players[uid];
+      let q = updated.get(uid, {});
+      return uid == '' || (p.left ? !(uid in updated) : (q.diff(p).affectedKeys().hasOnly(['participating','isReady']) && q.participating == true && q.isReady == false));
+    }
+    function start(old, next) {
+      return old.hostId == request.auth.uid && old.status == 'lobby' && next.status == 'playing' &&
+        next.diff(old).affectedKeys().hasOnly(['status','generation','tournament']) && next.generation == old.generation + 1 &&
+        next.tournament.tournamentId is string && next.tournament.tournamentId.size() > 0 && next.tournament.tournamentId.size() <= 100 &&
+        next.tournament.participantUids is list && next.tournament.participantUids.size() > 0 && next.tournament.participantUids.size() <= 8 &&
+        next.tournament.participantUids.toSet().size() == next.tournament.participantUids.size() &&
+        next.tournament.participantUids.toSet().difference(old.players.keys().toSet()).size() == 0 && next.tournament.get('abandonedUids',[]) == [] && next.tournament.matchesStarted == false &&
+        startPlayer(old,next,0) && startPlayer(old,next,1) && startPlayer(old,next,2) && startPlayer(old,next,3) && startPlayer(old,next,4) && startPlayer(old,next,5) && startPlayer(old,next,6) && startPlayer(old,next,7);
+    }
+    function returning(old, next) {
+      let players = old.players;
+      let updated = next.players;
+      let keys = players.keys();
+      let ids = old.tournament.participantUids;
+      return old.hostId == request.auth.uid && old.status == 'playing' && old.tournament.stage == 'won' && next.status == 'lobby' &&
+        next.diff(old).affectedKeys().hasOnly(['status','players','lastMajor']) && next.players.keys().toSet().difference(old.players.keys().toSet()).size() == 0 &&
+        next.lastMajor.keys().hasOnly(['tournamentId','winner']) && next.lastMajor.tournamentId == old.tournament.tournamentId &&
+        releasePlayer(players,ids,0) && releasePlayer(players,ids,1) && releasePlayer(players,ids,2) && releasePlayer(players,ids,3) && releasePlayer(players,ids,4) && releasePlayer(players,ids,5) && releasePlayer(players,ids,6) && releasePlayer(players,ids,7) &&
+        resetPlayer(players,updated,keys,0) && resetPlayer(players,updated,keys,1) && resetPlayer(players,updated,keys,2) && resetPlayer(players,updated,keys,3) && resetPlayer(players,updated,keys,4) && resetPlayer(players,updated,keys,5) && resetPlayer(players,updated,keys,6) && resetPlayer(players,updated,keys,7);
+    }
+    function toggleAt(old, next, i) {
+      let keys = old.players.keys();
+      let uid = keys.size() > i ? keys[i] : '';
+      return keys.size() > i && uid in next.players && next.players.diff(old.players).affectedKeys().hasOnly([uid]) &&
+        next.players[uid].diff(old.players[uid]).affectedKeys().hasOnly(['participating','isReady']) &&
+        next.players[uid].participating is bool && next.players[uid].isReady == false;
+    }
+    function lobbyUpdate(old, next) {
+      let uid = request.auth.uid;
+      let changed = next.players.diff(old.players).affectedKeys();
+      return old.status == 'lobby' && next.status == 'lobby' && (
+        // A new member adds only their own entry.
+        (!(uid in old.players) && next.diff(old).affectedKeys().hasOnly(['players']) && changed.hasOnly([uid]) && next.players.size() == old.players.size() + 1 && next.players.size() <= 8 && member(next.players[uid],uid,false) && claimed(next,uid) && next.players[uid].participating && !next.players[uid].isReady) ||
+        // Members may change their own readiness or validated organization.
+        (uid in old.players && uid in next.players && next.diff(old).affectedKeys().hasOnly(['players']) && changed.hasOnly([uid]) &&
+          (next.players[uid].diff(old.players[uid]).affectedKeys().hasOnly(['isReady']) ?
+            (next.players[uid].isReady is bool && (!next.players[uid].isReady || next.players[uid].participating)) :
+            (next.players[uid].diff(old.players[uid]).affectedKeys().hasOnly(['organization','squad','teamName','icon','isReady']) && member(next.players[uid],uid,uid == old.hostId)))) ||
+        // Host can toggle another member's participation and reset their readiness.
+        (uid == old.hostId && next.diff(old).affectedKeys().hasOnly(['players']) && changed.size() == 1 && (toggleAt(old,next,0) || toggleAt(old,next,1) || toggleAt(old,next,2) || toggleAt(old,next,3) || toggleAt(old,next,4) || toggleAt(old,next,5) || toggleAt(old,next,6) || toggleAt(old,next,7)))
+      );
+    }
+    function departedPlayer(old, next, target, i) {
+      let keys = old.players.keys();
+      let uid = keys.size() > i ? keys[i] : '';
+      return keys.size() <= i || (uid == target ?
+        (old.status == 'lobby' && target != old.hostId ? !(uid in next.players) :
+         (next.players[uid].diff(old.players[uid]).affectedKeys().hasOnly(['left','isReady','isHost']) && next.players[uid].left == true && next.players[uid].isReady == false && next.players[uid].isHost == (old.status == 'lobby' && uid == old.hostId))) :
+        (uid in next.players && next.players[uid].diff(old.players[uid]).affectedKeys().hasOnly(['isHost']) && next.players[uid].isHost == (uid == next.hostId)));
+    }
+    function leftAt(r, i) { let keys = r.players.keys(); return keys.size() <= i || r.players[keys[i]].left; }
+    function departure(old, next) {
+      let d = next.lastDeparture;
+      let uid = d.uid;
+      let forfeiting = old.status == 'playing' && old.tournament.stage != 'won' && uid in old.tournament.participantUids;
+      return d is map && d.keys().hasOnly(['uid','reason']) && d.keys().hasAll(['uid','reason']) && d.reason in ['navigation','reload','closed','timeout'] &&
+        uid in old.players && !old.players[uid].left && (request.auth.uid == uid || expired(uid)) && !existsAfter(sessionPath(uid)) &&
+        next.diff(old).affectedKeys().hasOnly(['players','hostId','status','closedReason','tournament','lastDeparture']) &&
+        next.players.keys().toSet().difference(old.players.keys().toSet()).size() == 0 &&
+        departedPlayer(old,next,uid,0) && departedPlayer(old,next,uid,1) && departedPlayer(old,next,uid,2) && departedPlayer(old,next,uid,3) && departedPlayer(old,next,uid,4) && departedPlayer(old,next,uid,5) && departedPlayer(old,next,uid,6) && departedPlayer(old,next,uid,7) &&
+        (old.status == 'lobby' ?
+          (uid == old.hostId ? next.status == 'closed' && next.closedReason == 'host-left' && next.hostId == old.hostId && next.players.size() == old.players.size() : next.status == 'lobby' && next.hostId == old.hostId && next.players.size() == old.players.size() - 1) :
+          (old.status == 'playing' && next.players.size() == old.players.size() &&
+           (next.status == 'closed' ? next.closedReason == 'empty' && (old.tournament.stage == 'won' ? next.tournament.stage == 'won' : next.tournament.stage == 'cancelled') && leftAt(next,0) && leftAt(next,1) && leftAt(next,2) && leftAt(next,3) && leftAt(next,4) && leftAt(next,5) && leftAt(next,6) && leftAt(next,7) : next.status == 'playing' && next.hostId in next.players && !next.players[next.hostId].left) &&
+           (uid == old.hostId || next.hostId == old.hostId) && next.tournament.diff(old.tournament).affectedKeys().hasOnly(['abandonedUids','stage']) && (next.status == 'closed' || next.tournament.stage == old.tournament.stage) && next.tournament.tournamentId == old.tournament.tournamentId && next.tournament.participantUids == old.tournament.participantUids &&
+           (forfeiting ? ((!existsAfter(lockPath(old.players[uid].organization.id)) || getAfter(lockPath(old.players[uid].organization.id)).data.roomId != old.id || getAfter(lockPath(old.players[uid].organization.id)).data.tournamentId != old.tournament.tournamentId) && next.tournament.get('abandonedUids',[]).toSet() == old.tournament.get('abandonedUids',[]).toSet().union([uid].toSet()) &&
+             getAfter(eventPath(uid,old.tournament.tournamentId)).data == { 'ownerUid': uid, 'organizationId': old.players[uid].organization.id, 'roomId': old.id, 'tournamentId': old.tournament.tournamentId, 'reason': d.reason, 'at': request.time }) :
+             next.tournament.get('abandonedUids',[]) == old.tournament.get('abandonedUids',[]))));
+    }
+    match /rooms/{code} {
+      allow get: if signed();
+      allow list: if signed() && resource.data.visibility == 'public' && resource.data.status == 'lobby' && request.query.limit <= 50;
+      allow create: if signed() && code.matches('^[A-Z0-9]{4}$') && request.resource.data.keys().hasOnly(['id','hostId','status','visibility','players','schemaVersion','generation','createdAt']) &&
+        request.resource.data.id == code && request.resource.data.hostId == request.auth.uid && request.resource.data.schemaVersion == 3 &&
+        request.resource.data.status == 'lobby' && request.resource.data.visibility in ['public','private'] && request.resource.data.generation == 0 &&
+        request.resource.data.createdAt is string && request.resource.data.createdAt.size() <= 40 && request.resource.data.players.size() == 1 &&
+        request.auth.uid in request.resource.data.players && member(request.resource.data.players[request.auth.uid],request.auth.uid,true) &&
+        request.resource.data.players[request.auth.uid].participating && !request.resource.data.players[request.auth.uid].isReady && claimed(request.resource.data,request.auth.uid);
+      // shortcut: host controls simulation state, move advancement to a trusted server to verify every match.
+      allow update: if signed() && resource.data.schemaVersion == 3 && request.resource.data.schemaVersion == 3 &&
+        (((live(resource.data,request.auth.uid) || (resource.data.status == 'lobby' && !(request.auth.uid in resource.data.players) && claimed(request.resource.data,request.auth.uid))) && (resource.data.status == 'lobby' ?
+          (request.resource.data.status == 'lobby' ? lobbyUpdate(resource.data,request.resource.data) : start(resource.data,request.resource.data)) :
+          (request.resource.data.status == 'lobby' ? returning(resource.data,request.resource.data) :
+           (resource.data.status == 'playing' && request.resource.data.status == 'playing' && resource.data.hostId == request.auth.uid &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tournament']) &&
+            request.resource.data.tournament.tournamentId == resource.data.tournament.tournamentId &&
+            request.resource.data.tournament.participantUids == resource.data.tournament.participantUids &&
+            request.resource.data.tournament.get('abandonedUids',[]) == resource.data.tournament.get('abandonedUids',[]))))) || departure(resource.data,request.resource.data));
+      match /results/{resultId} {
+        function validMap(m, game) {
+          return m is map && m.keys().hasOnly(['map','scoreA','scoreB','winnerId']) && m.keys().hasAll(['map','scoreA','scoreB','winnerId']) &&
+            m.map == 'de_mirage' && m.scoreA is int && m.scoreB is int && m.scoreA >= 0 && m.scoreB >= 0 &&
+            ((m.scoreA > m.scoreB && m.winnerId == game.teamA.id) || (m.scoreB > m.scoreA && m.winnerId == game.teamB.id));
+        }
+        function mapsValid(maps, game, i) { return maps.size() <= i || validMap(maps[i], game); }
+        function mapWon(maps, i, id) { return maps.size() > i && maps[i].winnerId == id ? 1 : 0; }
+        function wins(maps, id) { return mapWon(maps,0,id) + mapWon(maps,1,id) + mapWon(maps,2,id) + mapWon(maps,3,id) + mapWon(maps,4,id); }
+        function bestOf(game) {
+          return game.round == 'Final' ? 5 : (game.round in ['Quarterfinals','Semifinals'] || game.teamA.get('wins',0) == 2 || game.teamA.get('losses',0) == 2 || game.teamB.get('wins',0) == 2 || game.teamB.get('losses',0) == 2 ? 3 : 1);
+        }
+        function validSeries(result, game) {
+          let n = bestOf(game);
+          let needed = n == 5 ? 3 : (n == 3 ? 2 : 1);
+          let a = wins(result.maps, game.teamA.id);
+          let b = result.maps.size() - a;
+          let last = result.maps[result.maps.size() - 1].winnerId;
+          return result.maps.size() <= n && (a == needed || b == needed) && a <= needed && b <= needed &&
+            ((last == game.teamA.id && a == needed) || (last == game.teamB.id && b == needed)) &&
+            (n == 1 ? (result.scoreA == result.maps[0].scoreA && result.scoreB == result.maps[0].scoreB) : (result.scoreA == a && result.scoreB == b));
+        }
+        function room() { return get(roomPath(code)).data; }
+        allow read: if signed() && (request.auth.uid in room().players || room().status == 'closed' || expired(room().hostId));
+        function canSubmit(r, d) {
+          let m = r.tournament.matches[d.matchIndex];
+          let result = d.result;
+          return r.schemaVersion == 3 && live(r,request.auth.uid) && r.status == 'playing' && r.tournament.stage in ['swiss','playoffs'] && r.tournament.matchesStarted == true &&
+          d.keys().hasOnly(['tournamentId','matchId','matchIndex','submittedBy','result']) && d.keys().hasAll(['tournamentId','matchId','matchIndex','submittedBy','result']) &&
+          d.tournamentId == r.tournament.tournamentId && d.matchId is string && d.matchId.size() <= 200 &&
+          resultId == d.tournamentId + '~' + d.matchId && d.submittedBy == request.auth.uid &&
+          d.matchIndex is int && d.matchIndex >= 0 && d.matchIndex < r.tournament.matches.size() &&
+          m.id == d.matchId && m.completed == false && !m.playerUids.toSet().hasAny(r.tournament.get('abandonedUids',[])) && request.auth.uid in m.playerUids && request.auth.uid in r.players &&
+          result.keys().hasOnly(['teamA','teamB','scoreA','scoreB','winner','maps']) && result.keys().hasAll(['teamA','teamB','scoreA','scoreB','winner','maps']) &&
+          result.teamA == m.teamA && result.teamB == m.teamB &&
+          result.maps is list && result.maps.size() >= 1 && result.maps.size() <= 5 && mapsValid(result.maps,m,0) && mapsValid(result.maps,m,1) && mapsValid(result.maps,m,2) && mapsValid(result.maps,m,3) && mapsValid(result.maps,m,4) &&
+          validSeries(result,m) && result.scoreA is int && result.scoreB is int && result.scoreA >= 0 && result.scoreB >= 0 &&
+          ((result.scoreA > result.scoreB && result.winner == m.teamA.id) ||
+           (result.scoreB > result.scoreA && result.winner == m.teamB.id));
+        }
+        allow create: if signed() && canSubmit(room(), request.resource.data);
+        allow delete: if signed() && (getAfter(roomPath(code)).data.status == 'closed' || (request.auth.uid in room().players && room().status == 'playing' && getAfter(roomPath(code)).data.status == 'lobby'));
+      }
+    }
+    match /roomSessions/{uid} {
+      allow get: if signed();
+      allow list: if signed() && request.query.limit <= 8 && request.auth.uid in get(roomPath(resource.data.roomId)).data.players;
+      allow create: if signed() && request.auth.uid == uid && request.resource.data.keys().hasOnly(['uid','roomId','pageId','tabId','heartbeat','leaving']) && request.resource.data.keys().hasAll(['uid','roomId','pageId','tabId','heartbeat','leaving']) &&
+        request.resource.data.uid == uid && request.resource.data.roomId is string && request.resource.data.pageId is string && request.resource.data.pageId.size() > 0 && request.resource.data.tabId is string && request.resource.data.tabId.size() > 0 && request.resource.data.heartbeat == request.time && request.resource.data.leaving == false &&
+        getAfter(roomPath(request.resource.data.roomId)).data.status == 'lobby' && uid in getAfter(roomPath(request.resource.data.roomId)).data.players && !getAfter(roomPath(request.resource.data.roomId)).data.players[uid].left && getAfter(roomPath(request.resource.data.roomId)).data.players[uid].sessionId == request.resource.data.pageId;
+      allow update: if signed() && request.auth.uid == uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['heartbeat','leaving']) && request.resource.data.heartbeat == request.time && request.resource.data.leaving is bool && !resource.data.leaving && resource.data.heartbeat > request.time - duration.value(180, 's');
+      allow delete: if signed() && (request.auth.uid == uid || get(roomPath(resource.data.roomId)).data.hostId == request.auth.uid || expired(uid) || get(roomPath(resource.data.roomId)).data.status == 'closed') &&
+        (!existsAfter(roomPath(resource.data.roomId)) || getAfter(roomPath(resource.data.roomId)).data.status == 'closed' || !(uid in getAfter(roomPath(resource.data.roomId)).data.players) || getAfter(roomPath(resource.data.roomId)).data.players[uid].left ||
+         (get(roomPath(resource.data.roomId)).data.status == 'playing' && getAfter(roomPath(resource.data.roomId)).data.status == 'lobby'));
+    }
+    match /users/{uid}/abandonments/{majorId} {
+      allow read: if signed() && request.auth.uid == uid;
+      allow create: if signed() && request.resource.data.keys().hasOnly(['ownerUid','organizationId','roomId','tournamentId','reason','at']) && request.resource.data.keys().hasAll(['ownerUid','organizationId','roomId','tournamentId','reason','at']) &&
+        request.resource.data.ownerUid == uid && request.resource.data.tournamentId == majorId && request.resource.data.at == request.time && request.resource.data.reason in ['navigation','reload','closed','timeout'] &&
+        get(roomPath(request.resource.data.roomId)).data.status == 'playing' && get(roomPath(request.resource.data.roomId)).data.tournament.stage != 'won' && get(roomPath(request.resource.data.roomId)).data.tournament.tournamentId == majorId &&
+        uid in get(roomPath(request.resource.data.roomId)).data.tournament.participantUids && !get(roomPath(request.resource.data.roomId)).data.players[uid].left && request.resource.data.organizationId == get(roomPath(request.resource.data.roomId)).data.players[uid].organization.id &&
+        (request.auth.uid == uid || expired(uid)) && getAfter(roomPath(request.resource.data.roomId)).data.lastDeparture == { 'uid': uid, 'reason': request.resource.data.reason } && (getAfter(roomPath(request.resource.data.roomId)).data.status == 'closed' || getAfter(roomPath(request.resource.data.roomId)).data.players[uid].left);
+    }
+    match /organizationSessions/{orgId} {
+      allow get: if signed();
+      allow create: if signed() && request.resource.data.keys().hasOnly(['ownerUid','roomId','tournamentId']) &&
+        request.resource.data.roomId is string && request.resource.data.ownerUid is string && request.resource.data.tournamentId is string &&
+        getAfter(roomPath(request.resource.data.roomId)).data.status == 'playing' &&
+        getAfter(roomPath(request.resource.data.roomId)).data.hostId == request.auth.uid &&
+        getAfter(roomPath(request.resource.data.roomId)).data.tournament.tournamentId == request.resource.data.tournamentId &&
+        request.resource.data.ownerUid in getAfter(roomPath(request.resource.data.roomId)).data.tournament.participantUids &&
+        getAfter(roomPath(request.resource.data.roomId)).data.players[request.resource.data.ownerUid].organization.id == orgId &&
+        get(roomPath(request.resource.data.roomId)).data.status == 'lobby';
+      allow delete: if signed() && get(roomPath(resource.data.roomId)).data.status == 'playing' && get(roomPath(resource.data.roomId)).data.tournament.tournamentId == resource.data.tournamentId &&
+        get(roomPath(resource.data.roomId)).data.players[resource.data.ownerUid].organization.id == orgId &&
+        ((getAfter(roomPath(resource.data.roomId)).data.status == 'lobby' && get(roomPath(resource.data.roomId)).data.hostId == request.auth.uid) ||
+         (getAfter(roomPath(resource.data.roomId)).data.lastDeparture.uid == resource.data.ownerUid && getAfter(roomPath(resource.data.roomId)).data.players[resource.data.ownerUid].left &&
+          (request.auth.uid == resource.data.ownerUid || expired(resource.data.ownerUid))));
+    }
+  }
+}

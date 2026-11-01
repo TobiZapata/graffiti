@@ -1,0 +1,38 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { roomDeparture, roomSessionExpired, SESSION_LEASE_MS } from '../src/lib/roomSession.mjs';
+
+const host = { uid: 'host', participating: true, isReady: true, isHost: true, left: false };
+const guest = { ...host, uid: 'guest', isHost: false };
+const room = { hostId: 'host', status: 'lobby', players: [host, guest] };
+test('lobby departures close for host, remove guests, and never count forfeits', () => {
+  const left = roomDeparture(room, 'guest', 'navigation');
+  assert.equal(left.forfeit, false);
+  assert.equal(left.closed, false);
+  assert.deepEqual(left.change.players, [host]);
+  const closed = roomDeparture(room, 'host', 'reload');
+  assert.equal(closed.closed, true);
+  assert.equal(closed.forfeit, false);
+  assert.equal(closed.change.status, 'closed');
+  assert.equal(host.left, false);
+});
+test('Major departure transfers host and records only a participating unfinished Major', () => {
+  const playing = { ...room, status: 'playing', tournament: { stage: 'swiss', abandonedUids: [] } };
+  const departure = roomDeparture(playing, 'host', 'reload');
+  assert.equal(departure.forfeit, true);
+  assert.equal(departure.change.hostId, 'guest');
+  assert.deepEqual(departure.change.tournament.abandonedUids, ['host']);
+  assert.equal(roomDeparture({ ...playing, ...departure.change }, 'host', 'reload'), null);
+  const empty = roomDeparture({ ...playing, ...departure.change }, 'guest', 'timeout');
+  assert.equal(empty.change.tournament.stage, 'cancelled');
+  assert.equal(empty.change.status, 'closed');
+  assert.equal(roomDeparture({ ...playing, tournament: { stage: 'won' } }, 'guest', 'navigation').forfeit, false);
+  assert.equal(roomDeparture({ ...playing, players: [host, { ...guest, participating: false }] }, 'guest', 'navigation').forfeit, false);
+});
+test('presence expires after the lease or an explicit leaving signal, not visibility', () => {
+  const now = 1000000;
+  assert.equal(roomSessionExpired({ heartbeat: { toMillis: () => now - SESSION_LEASE_MS + 1 } }, now), false);
+  assert.equal(roomSessionExpired({ heartbeat: { toMillis: () => now - SESSION_LEASE_MS } }, now), true);
+  assert.equal(roomSessionExpired({ heartbeat: { toMillis: () => now }, leaving: true }, now), true);
+  assert.equal(roomSessionExpired({ heartbeat: null }, now), false);
+});
