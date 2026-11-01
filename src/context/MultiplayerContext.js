@@ -304,6 +304,7 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
 
   const contextValue = {
     isMultiplayer: true,
+    playbackMode: room.playbackMode ?? "full",
     isHost,
     roomId,
     tournamentId,

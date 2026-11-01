@@ -1,5 +1,27 @@
 # Salas y abandonos
 
+## Modo de reproduccion
+
+El creador elige Full match o Highlights antes de crear la sala. El modo queda
+visible en el lobby y en la lista publica, y no se puede cambiar en esa sala.
+Las salas anteriores sin playbackMode conservan Full match.
+
+Highlights reproduce ceil(total de rondas / 3) por mapa: pistols 1 y 13, primera
+ronda que empieza en matchpoint, ultima ronda y un clutch ganado si existe.
+Las coincidencias cuentan una vez. Se completa al azar, favoreciendo una ronda
+no pistol de cada bando cuando hay cupo y candidatos. Matchpoint contempla OT.
+La seleccion se fija antes de reproducir cada mapa y usa una semilla independiente;
+reconstruir el mapa mantiene la seleccion y no modifica la simulacion.
+
+Se conserva el mapa completo para economia, marcador, estadisticas y resultados;
+solo se omite reproducir rondas. La UI indica las omitidas al llegar a la siguiente
+seleccionada y no enumera highlights futuros para evitar adelantar el desenlace.
+La ultima ronda dispara el mismo resumen y guardado que Full match.
+
+Antes de publicar esta funcionalidad hay que desplegar las reglas de Firestore
+de la misma branch: permiten playbackMode full/highlights al crear y lo mantienen
+inmutable. Las reglas anteriores rechazan el campo nuevo. No desplegar solo la web.
+
 ## Reglas de uso
 
 Cada usuario tiene una sola sala activa, reservada en roomSessions/{uid} al crear

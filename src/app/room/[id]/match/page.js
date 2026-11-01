@@ -7,7 +7,7 @@ import { MultiplayerProvider, useMultiplayerTournament } from "@/context/Multipl
 import { validSeriesProgress } from "@/lib/replaySeries.mjs";
 import HybridMatchPlayer from "@/components/HybridMatchPlayer";
 
-function RoomReplay({ match, roomId, tournamentId, userUid, completeMatch }) {
+function RoomReplay({ match, roomId, tournamentId, userUid, completeMatch, playbackMode }) {
   const key = `major-mvp:room-replay:${roomId}:${tournamentId}:${match.id}:${userUid}`;
   const [error, setError] = useState("");
   const [resume] = useState(() => {
@@ -25,7 +25,7 @@ function RoomReplay({ match, roomId, tournamentId, userUid, completeMatch }) {
   if (resume?.invalid && !match.completed) return <main className="p-6"><p role="alert">The saved progress for this match could not be read.</p>
     <button type="button" className="btn btn-secondary mt-4" onClick={() => { sessionStorage.removeItem(key); window.location.reload(); }}>Restart playback</button></main>;
   return <>{error && <p role="alert" className="p-4 text-negative">{error}</p>}
-    <HybridMatchPlayer match={match} tournamentId={`${roomId}:${tournamentId}`} initialProgress={resume} onSaveProgress={save}
+    <HybridMatchPlayer match={match} playbackMode={playbackMode} tournamentId={`${roomId}:${tournamentId}`} initialProgress={resume} onSaveProgress={save}
       backHref={`/room/${roomId}/simulation`} onFinish={async result => {
         const accepted = await completeMatch(match.id, result);
         try { sessionStorage.removeItem(key); } catch { /* A completed match no longer uses its saved playback. */ }
@@ -36,13 +36,13 @@ function RoomReplay({ match, roomId, tournamentId, userUid, completeMatch }) {
 
 function MatchContent({ roomId }) {
   const searchParams = useSearchParams();
-  const { matches, completeMatch, tournamentId, userUid, matchesStarted } = useMultiplayerTournament();
+  const { matches, completeMatch, tournamentId, userUid, matchesStarted, playbackMode } = useMultiplayerTournament();
   const match = matches.find(item => item.id === searchParams.get("id"));
   if (!match || !match.playerUids?.includes(userUid) || (!matchesStarted && !match.completed)) return <main className="p-6">
     <p>You have no match to play this round.</p>
     <Link href={`/room/${roomId}/simulation`} className="link mt-2 inline-block underline">Back to the Major</Link></main>;
   return <RoomReplay key={`${tournamentId}:${match.id}:${userUid}`} match={match} roomId={roomId}
-    tournamentId={tournamentId} userUid={userUid} completeMatch={completeMatch} />;
+    tournamentId={tournamentId} userUid={userUid} completeMatch={completeMatch} playbackMode={playbackMode} />;
 }
 
 export default function MatchPage({ params }) {

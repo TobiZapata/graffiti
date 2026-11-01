@@ -103,10 +103,11 @@ function ReplayKillFeed({ deaths, name, sides = {}, compact = false }) {
   </section>;
 }
 
-export default function RoundBankViewer({ catalog: suppliedCatalog = null, matchMode = false, onComplete, backHref = "/", teamA, teamB, seriesState, initialPlayback = null, onPlaybackChange }) {
+export default function RoundBankViewer({ catalog: suppliedCatalog = null, matchMode = false, onComplete, backHref = "/", teamA, teamB, seriesState, initialPlayback = null, onPlaybackChange, selectedRounds = null }) {
   const [fetchedCatalog, setCatalog] = useState(null);
   const catalog = suppliedCatalog ?? fetchedCatalog;
   const [selection, setSelection] = useState(Math.min(initialPlayback?.selection ?? 0, Math.max(0, (suppliedCatalog?.rounds.length ?? 1) - 1)));
+  const [furthestSelection, setFurthestSelection] = useState(selection);
   const [loaded, setLoaded] = useState(null);
   const [error, setError] = useState("");
   const [time, setTime] = useState(0);
@@ -119,6 +120,9 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
   const completed = useRef(false);
   const [retry, setRetry] = useState(0);
   const round = loaded?.selection === selection ? loaded.round : null;
+  const nextSelection = selectedRounds ? selectedRounds.find(index => index > selection) : selection + 1;
+  const previousSelection = selectedRounds?.filter(index => index < selection).at(-1) ?? -1;
+  const omittedRounds = selectedRounds ? selection - previousSelection - 1 : 0;
 
   useEffect(() => {
     if (suppliedCatalog) return;
@@ -164,10 +168,11 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
       setTime(Math.min(round.duration, position));
       if (position >= round.duration) {
         ended = true;
-        if (matchMode && selection < catalog.rounds.length - 1) {
+        if (matchMode && nextSelection !== undefined && nextSelection < catalog.rounds.length) {
           clock.current = nextReplayRound(clock.current, now, round.duration);
           continuing.current = true;
-          setSelection(selection + 1);
+          setSelection(nextSelection);
+          setFurthestSelection(previous => Math.max(previous, nextSelection));
         } else {
           clock.current = anchorReplay(round.duration, speed, now);
           setPlaying(false);
@@ -182,7 +187,7 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
     const timer = setInterval(tick, 1000), initial = setTimeout(tick, 0);
     document.addEventListener('visibilitychange', tick);
     return () => { clearTimeout(initial); clearInterval(timer); cancelAnimationFrame(request); document.removeEventListener('visibilitychange', tick); };
-  }, [playing, round, speed, matchMode, selection, catalog, onComplete]);
+  }, [playing, round, speed, matchMode, selection, nextSelection, catalog, onComplete]);
 
   const seek = (value) => { clock.current = anchorReplay(value, speed, performance.now()); setTime(value); };
   const sample = round ? sampleReplay(round, time) : null;
@@ -196,7 +201,8 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
       <button type="button" disabled={!round} onClick={() => { if (playing) seek(Math.min(round.duration, replayTime(clock.current, performance.now()))); else seek(time >= round?.duration ? 0 : time); setPlaying(!playing); }}>{playing ? "Pause" : "Play"}</button>
       <label>Round <select value={selection} disabled={!catalog} onChange={(e) => {
         continuing.current = false; setPlaying(false); setError(""); setSelection(Number(e.target.value));
-      }}>{catalog?.rounds.map((r, i) => <option key={`${r.round_id}:${i}`} value={i}>Round {r.round}{!matchMode && ` · ${r.win_condition}`}</option>)}</select></label>
+      }}>{catalog?.rounds.map((r, i) => (!selectedRounds || (selectedRounds.includes(i) && i <= furthestSelection)) && <option key={`${r.round_id}:${i}`} value={i}>Round {r.round}{!matchMode && ` · ${r.win_condition}`}</option>)}</select></label>
+      {selectedRounds && <span role="status">Highlights{omittedRounds > 0 && ` · ${omittedRounds} round${omittedRounds === 1 ? "" : "s"} omitted`}</span>}
       <button type="button" disabled={!round} onClick={() => { setPlaying(false); seek(0); }}>Restart round</button>
       <label>Speed <select value={speed} onChange={(e) => { const now = performance.now(); speedRef.current = Number(e.target.value); clock.current = anchorReplay(playing ? replayTime(clock.current, now) : time, speedRef.current, now); setSpeed(speedRef.current); }}>
         {[.5, 1, 2, 4, 8].map((s) => <option key={s} value={s}>{s}×</option>)}</select></label>

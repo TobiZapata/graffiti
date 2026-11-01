@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { selectHighlightRounds } from '../src/lib/replayHighlights.mjs';
+import { replayProgress } from '../src/lib/replayProgress.mjs';
 
 function map(winners, clutches = []) {
   let scoreTeam1 = 0, scoreTeam2 = 0;
@@ -53,4 +54,23 @@ test('empty and short maps respect exact quota and maps without clutches still f
     assert.equal(selectHighlightRounds(rounds, n).length, Math.ceil(n / 3));
   }
   assert.notDeepEqual(selectHighlightRounds(map('AB'.repeat(12)), 'a'), selectHighlightRounds(map('AB'.repeat(12)), 'b'));
+});
+
+test('jumping between highlights includes omitted rounds in score and player stats', () => {
+  const rounds = map('A'.repeat(13));
+  for (const info of rounds) {
+    info.assignments = [{ actorId: '1', playerUid: 'A:1', name: 'A', team: 'A' }];
+    info.actors = [{ actor_id: '1', kills: 1, deaths: 0, assists: 1, flash_assists: 1 }];
+    info.winner_side = info.macro.teamASide;
+  }
+  const selected = selectHighlightRounds(rounds, 'progress');
+  const index = selected.find((value, position) => position > 0 && value > selected[position - 1] + 1);
+  assert.ok(index > 0);
+  const round = { meta: rounds[index], sides: {} };
+  const progress = replayProgress(rounds, index, round, { events: [], result: null });
+  assert.deepEqual(progress.score, [index, 0]);
+  assert.equal(progress.players[0].kills, index);
+  assert.equal(progress.players[0].assists, index);
+  assert.equal(progress.players[0].flashAssists, index);
+  assert.deepEqual(replayProgress(rounds, index, round, { events: [], result: {} }).score, [index + 1, 0]);
 });

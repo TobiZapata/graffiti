@@ -8,6 +8,7 @@ import { readReplayJSON } from "@/lib/readReplayJSON.mjs";
 import { retryReplayAssembly } from "@/lib/retryReplayAssembly.mjs";
 import { replaySeriesResult } from "@/lib/replaySeries.mjs";
 import { createMapSummary, recoverMatchSummaryMaps } from "@/lib/matchSummary.mjs";
+import { selectHighlightRounds } from "@/lib/replayHighlights.mjs";
 import MatchSummary from "./MatchSummary";
 import RoundBankViewer from "./RoundBankViewer";
 
@@ -20,7 +21,7 @@ async function assembleMap(bank, match, tournamentId, index, signal) {
   }, seed);
 }
 
-export default function HybridMatchPlayer({ match, onFinish, backHref = "/simulation", tournamentId = "", initialProgress = null, onSaveProgress }) {
+export default function HybridMatchPlayer({ match, onFinish, backHref = "/simulation", tournamentId = "", initialProgress = null, onSaveProgress, playbackMode = "full" }) {
   const [history, setHistory] = useState(initialProgress?.history ?? []);
   const [loaded, setLoaded] = useState(null);
   const [error, setError] = useState(null);
@@ -37,6 +38,9 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
   const index = history.length;
   const series = useMemo(() => replaySeriesResult(match, history), [match, history]);
   const data = loaded?.index === index ? loaded.data : null;
+  const selectedRounds = useMemo(() => data && playbackMode === "highlights"
+    ? selectHighlightRounds(data.catalog.rounds, `${tournamentId}:${match.id}-map${index}:highlights`)
+    : null, [data, playbackMode, tournamentId, match.id, index]);
   const currentError = error?.index === index && error.retry === retry ? error.message : "";
   const watched = watchedMap === index;
   const finalized = match.completed ? match.result : confirmed || series.result;
@@ -131,7 +135,7 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
       <div className="mx-auto flex min-h-14 max-w-[1480px] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2 sm:px-6">
         <Link href={backHref} className="link">Back to the Major</Link>
         <p className="meta tabular">
-          Mirage · BO{series.bestOf} · map {index + 1}
+          Mirage · BO{series.bestOf} · map {index + 1}{playbackMode === "highlights" && " · Highlights"}
           {series.bestOf > 1 && <> · series {series.winsA}–{series.winsB}</>}
           {history.map((map, i) => <span key={i}> · map {i + 1} {map.scoreA}–{map.scoreB}</span>)}
         </p>
@@ -153,7 +157,7 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
     {currentError && <div role="alert" className="mx-auto max-w-[1480px] px-4 py-4 text-negative sm:px-6"><p>{currentError}</p>
       {!data && <button type="button" className="btn btn-secondary mt-3" onClick={() => setRetry(value => value + 1)}>Try again</button>}</div>}
     {!data && !currentError && <p role="status" className="mx-auto max-w-[1480px] px-4 py-6 text-ink-2 sm:px-6">Preparing Mirage…</p>}
-    {data && <RoundBankViewer key={`${match.id}:${index}`} catalog={data.catalog} matchMode
+    {data && <RoundBankViewer key={`${match.id}:${index}`} catalog={data.catalog} selectedRounds={selectedRounds} matchMode
       teamA={match.teamA} teamB={match.teamB} seriesState={{ ...series, mapsToWin: Math.ceil(series.bestOf / 2) }}
       initialPlayback={initialProgress?.history.length === index ? initialProgress.playback : null} onPlaybackChange={savePlayback}
       backHref={backHref} onComplete={markWatched} />}
