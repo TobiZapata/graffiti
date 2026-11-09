@@ -33,7 +33,7 @@ function MatchRow({ m, mine, onTeamClick }) {
 
 function Outcome({ label, tone, teams, onTeamClick }) {
   return (
-    <div className="mt-2 px-1">
+    <div className="my-2 px-1">
       <p className="meta flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full" style={{ background: tone }} aria-hidden="true" />{label}</p>
       <div className="mt-1 flex min-h-8 flex-wrap gap-1">
         {teams.length ? teams.map(t => <TeamMark key={t.id} team={t} size={20} onClick={onTeamClick} />) : <span className="meta leading-8">—</span>}
@@ -50,12 +50,15 @@ export default function SwissBoard({ matches, swissRound, isMine, onTeamClick })
         {SWISS_STRUCTURE.map(col => (
           <section key={col.round} aria-label={`Round ${col.round}`} className="flex flex-col gap-4">
             <h3 className={`text-[13px] ${col.round === swissRound ? "text-ink" : "text-ink-3"}`}>Round {col.round}</h3>
+            <div className="flex flex-1 flex-col justify-center gap-4">
             {col.pools.map(pool => {
               const poolMatches = pools[pool.record] || [];
               const played = poolMatches.filter(m => m.completed).length;
               const future = col.round > swissRound && poolMatches.length === 0;
               return (
                 <div key={pool.record}>
+                  {pool.advancing && <Outcome label="Advanced" tone="var(--positive)" onTeamClick={onTeamClick}
+                    teams={poolMatches.filter(m => m.completed && m.result).map(winnerOf)} />}
                   <div className={`card overflow-hidden ${future ? "opacity-50" : ""}`}>
                     <div className="flex h-10 items-center justify-between px-3">
                       <span className="tabular text-[16px] font-medium">{pool.record.replace("-", "–")}</span>
@@ -67,13 +70,12 @@ export default function SwissBoard({ matches, swissRound, isMine, onTeamClick })
                         : Array.from({ length: pool.matchCount }, (_, i) => <li key={i} className="flex h-11 items-center justify-center text-[13px] text-ink-3">—</li>)}
                     </ul>
                   </div>
-                  {pool.advancing && <Outcome label="Advanced" tone="var(--positive)" onTeamClick={onTeamClick}
-                    teams={poolMatches.filter(m => m.completed && m.result).map(winnerOf)} />}
                   {pool.eliminating && <Outcome label="Eliminated" tone="var(--negative)" onTeamClick={onTeamClick}
                     teams={poolMatches.filter(m => m.completed && m.result).map(loserOf)} />}
                 </div>
               );
             })}
+            </div>
           </section>
         ))}
       </div>
