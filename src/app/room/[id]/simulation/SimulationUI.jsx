@@ -105,7 +105,7 @@ export default function SimulationUI() {
       {hasPlayoffs
         ? <PlayoffBracket matches={matches} isMine={isMine} onTeamClick={setRosterTeam} />
         : <SwissBoard matches={matches} swissRound={swissRound} isMine={isMine} onTeamClick={setRosterTeam} />}
-      <StandingsTable standings={standings} isMine={isMineTeam} onTeamClick={setRosterTeam} />
+      <StandingsTable standings={standings} matches={matches} isMine={isMineTeam} onTeamClick={setRosterTeam} />
     </main>
     <TeamRosterModal team={rosterTeam} onClose={() => setRosterTeam(null)} />
   </>;
