@@ -10,6 +10,9 @@ import { useTournament } from "@/context/TournamentContext";
 import { organizationProfile } from "@/lib/organizationProfile.mjs";
 import { matchFormat, opponentOf, record, playerAttributes, ROLE_FIELDS } from "@/lib/majorDisplay.mjs";
 import TeamName from "@/components/major/TeamName";
+import DraftBoard from "@/components/play/DraftBoard";
+import teams from "@/data/teams.json";
+import { replacementOffer } from "@/lib/rosterLifecycle.mjs";
 
 const outcomes = { active: "In progress", champion: "Champion", finalist: "Runner-up", semifinal: "Semifinals", quarterfinal: "Quarterfinals", swiss: "Out in the Swiss stage" };
 const percentage = value => value === null ? "—" : `${Math.round(value)}%`;
@@ -20,7 +23,7 @@ function RoomReturnLink() {
   return /^[A-Z0-9]{4}$/.test(room || "") ? <Link href={`/room/${room}`} className="link">Back to room {room}</Link> : null;
 }
 
-function NextStep({ hasTournament, finished, stage, swissRound, standings, playerMatch, playHref, resuming, onStart, starting, lastOutcome }) {
+function NextStep({ hasTournament, finished, stage, swissRound, standings, playerMatch, playHref, resuming, onStart, starting, lastOutcome, canStart, rosterTarget }) {
   const me = standings.find(t => t.isPlayer);
   if (hasTournament && !finished) {
     const opponent = opponentOf(playerMatch, "player_team");
@@ -28,6 +31,7 @@ function NextStep({ hasTournament, finished, stage, swissRound, standings, playe
     return (
       <section className="card p-6" aria-labelledby="next-title">
         <p className="text-ink-2"><span>{phase}</span> · <span className="tabular">record {record(me)}</span></p>
+        {rosterTarget && <p className="meta mt-2">Roster objective: {outcomes[rosterTarget]}. Missing it increases the chance of player departures.</p>}
         {opponent ? <>
           <h2 id="next-title" className="mt-3 flex items-center gap-3 text-[24px] font-medium">
             <span className="text-ink-3">vs</span>
@@ -51,23 +55,26 @@ function NextStep({ hasTournament, finished, stage, swissRound, standings, playe
     <section className="card p-6" aria-labelledby="next-title">
       <h2 id="next-title" className="text-[24px] font-medium">{hasTournament ? "Ready for the next Major" : "No Major in progress"}</h2>
       <p className="mt-2 text-ink-2">16 teams play a Swiss stage to three wins or three losses. The top eight go to a single-elimination playoff.</p>
+      <p className="meta mt-2">After each Major, 0–3 starters may leave based on your result against the roster objective. You receive one bench token, up to a maximum of one.</p>
       {lastOutcome && <p className="mt-2 text-ink-2">Last Major: <span className="text-ink">{lastOutcome}</span>{me && <span className="tabular"> · {record(me)}</span>}</p>}
       <div className="mt-6 flex flex-wrap items-center gap-6">
-        <button type="button" className="btn btn-primary btn-lg" onClick={onStart} disabled={starting}>{starting ? "Starting…" : "Start Major"}</button>
+        <button type="button" className="btn btn-primary btn-lg" onClick={onStart} disabled={starting || !canStart}>{starting ? "Starting…" : "Start Major"}</button>
         {hasTournament && <Link href="/simulation" className="link">View last results</Link>}
       </div>
+      {!canStart && <p className="meta mt-3">Complete your five-player roster and finish any active room before starting.</p>}
     </section>
   );
 }
 
 export default function OrganizationPage() {
   const router = useRouter();
-  const { organization, ready, storageError, startOrganizationMajor, assignOrganizationRole, standings, matches, matchProgress, stage, swissRound, pendingResult, tournamentId } = useTournament();
+  const { organization, ready, storageError, startOrganizationMajor, assignOrganizationRole, standings, matches, matchProgress, stage, swissRound, pendingResult, tournamentId, rosterLocked, rosterTarget, benchPlayer, swapBenchPlayer, promoteBench, releaseBench, recruitPlayer, acknowledgeRosterNotice } = useTournament();
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(false);
   const [selectedRole, setSelectedRole] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const [roleNotice, setRoleNotice] = useState("");
+  const [confirmRelease, setConfirmRelease] = useState(false);
   const roleHelp = useRef(null);
 
   if (!ready) return <><AppBar /><main className="p-6 text-ink-2">Loading…</main></>;
@@ -87,6 +94,13 @@ export default function OrganizationPage() {
   const profile = organizationProfile(organization, { tournamentId, stage, pendingResult, matches, standings });
   const founded = new Date(organization.createdAt).getFullYear();
   const lastOutcome = finished ? outcomes[profile.recentMajors[0]?.outcome] : null;
+  const locked = rosterLocked || !!storageError || starting;
+  const benchUnlocked = (organization.majorHistory?.length ?? 0) > 0;
+
+  async function rosterAction(action, ...args) {
+    try { await action(...args); setError(""); }
+    catch (e) { setError(e.message || "Roster change failed. Try again."); }
+  }
 
   async function start() {
     setStarting(true); setError("");
@@ -119,11 +133,16 @@ export default function OrganizationPage() {
         </div>
       </header>
       {error && <p role="alert" className="mt-4 text-negative">{error}</p>}
+      {organization.rosterNotice && !organization.rosterNotice.acknowledged && <section className="card mt-4 p-6" aria-labelledby="departures-title">
+        <h2 id="departures-title" className="font-medium">Roster departures</h2>
+        <ul className="mt-2 text-ink-2">{organization.rosterNotice.departed.map((entry, index) => <li key={index}>{entry.name} — {entry.reason === "bench" ? "left after two consecutive Majors on the bench" : "left due to performance"}</li>)}</ul>
+        <button type="button" className="link mt-3" onClick={() => rosterAction(acknowledgeRosterNotice)}>Dismiss notice</button>
+      </section>}
 
       <div className="mt-8 grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="grid content-start gap-4">
           <NextStep hasTournament={hasTournament} finished={finished} stage={stage} swissRound={swissRound} standings={standings}
-            playerMatch={playerMatch} playHref={playHref} resuming={resuming} onStart={start} starting={starting} lastOutcome={lastOutcome} />
+            playerMatch={playerMatch} playHref={playHref} resuming={resuming} onStart={start} starting={starting} lastOutcome={lastOutcome} rosterTarget={rosterTarget} canStart={organization.squad.length === 5 && !rosterLocked && !storageError} />
 
           <section className="card p-6" aria-labelledby="active-roster">
             <header className="flex items-center justify-between gap-4">
@@ -134,7 +153,7 @@ export default function OrganizationPage() {
             <ul className="mt-4">{organization.squad.map((entry, index) => {
               const uid = String(index);
               return <li key={index}
-                className={`flex h-12 items-center gap-3 rounded-lg px-3 transition-colors ${dropTarget === uid ? "bg-control" : selectedRole ? "hover:bg-raised" : ""}`}
+                className={`flex min-h-16 items-center gap-3 rounded-lg px-3 py-2 transition-colors ${dropTarget === uid ? "bg-control" : selectedRole ? "hover:bg-raised" : ""}`}
                 data-player-uid={uid}
                 onDragOver={e => {
                   if (storageError || starting || !e.dataTransfer.types.includes("text/plain")) return;
@@ -165,6 +184,7 @@ export default function OrganizationPage() {
                       {label}
                     </button>)}
                 </span>
+                {benchUnlocked && (organization.bench ? <button type="button" className="link min-h-11 text-[13px]" disabled={locked} aria-label={`Swap ${entry.player.name} with ${organization.bench.player.name} on the bench`} onClick={() => rosterAction(swapBenchPlayer, index)}>Swap</button> : organization.squad.length === 5 && <button type="button" className="link min-h-11 text-[13px]" disabled={locked || !organization.benchTokens} aria-label={`Bench ${entry.player.name}`} onClick={() => rosterAction(benchPlayer, index)}>Bench</button>)}
               </li>;
             })}</ul>
             <div className="mt-3 min-h-5 text-[13px] text-ink-2" role="status">
@@ -180,12 +200,29 @@ export default function OrganizationPage() {
               <dl className="mt-4 grid gap-4">
                 <div><dt className="font-medium">AWPer</dt><dd className="mt-1 text-ink-2">Gets first claim on the AWP when the team can afford it.</dd></div>
                 <div><dt className="font-medium">IGL</dt><dd className="mt-1 text-ink-2">The in-game leader. Their leadership shifts the team&apos;s chances of winning.</dd></div>
-                <div><dt className="font-medium">Star player</dt><dd className="mt-1 text-ink-2">The face of your organization. They will be the protected player when roster changes arrive.</dd></div>
+                <div><dt className="font-medium">Star player</dt><dd className="mt-1 text-ink-2">The face of your organization. Your designated star never leaves in the post-Major departure draw.</dd></div>
               </dl>
               <p className="mt-4 text-ink-2">The AWPer and IGL can be the same player. The star can share either role.</p>
               <p className="meta mt-4">A Major in progress keeps the roles it started with.</p>
             </dialog>
           </section>
+          <section className="card p-6" aria-labelledby="bench-title">
+            <h2 id="bench-title" className="text-[16px] font-medium">Bench</h2>
+            <p className="meta mt-1">Bench tokens: {organization.benchTokens ?? 0}. Moving a player to an empty bench uses one token. Swaps and promotions are free between Majors.</p>
+            {!benchUnlocked ? <p className="mt-3 text-ink-2">The bench unlocks after your first completed Major.</p> : organization.bench ? <>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><div><PlayerIdentity player={organization.bench.player} /><p className="meta mt-1">{organization.bench.benchMajors ? "Will leave after the next Major if benched again." : "May remain benched for one Major."}</p></div>
+                <div className="flex flex-wrap gap-3">{organization.squad.length < 5 && <button type="button" className="link min-h-11" disabled={locked} aria-label={`Promote ${organization.bench.player.name} from the bench`} onClick={() => rosterAction(promoteBench)}>Promote</button>}
+                  {!confirmRelease && <button type="button" className="link min-h-11" disabled={locked} aria-label={`Release ${organization.bench.player.name}`} onClick={() => setConfirmRelease(true)}>Release</button>}</div>
+              </div>
+              {confirmRelease && <div className="mt-3" role="group" aria-label={`Confirm release of ${organization.bench.player.name}`}><p className="text-ink-2">Release {organization.bench.player.name} from your organization?</p><div className="mt-2 flex gap-4"><button type="button" className="link min-h-11 text-negative" disabled={locked} onClick={() => { rosterAction(releaseBench); setConfirmRelease(false); }}>Confirm release</button><button type="button" className="link min-h-11" onClick={() => setConfirmRelease(false)}>Cancel</button></div></div>}
+            </> : <p className="mt-3 text-ink-2">No player on the bench.</p>}
+            {locked && <p className="meta mt-3">Roster changes are locked during a Major or active room.</p>}
+          </section>
+          {organization.squad.length < 5 && <section aria-labelledby="recruit-title">
+            <h2 id="recruit-title" className="text-[16px] font-medium">Recruit a player</h2>
+            <p className="mt-1 text-ink-2">Choose a player to fill your roster. A new selection appears after each pick.</p>
+            {locked ? <p className="meta mt-3">Recruitment is locked during a Major or active room.</p> : <div className="mt-4"><DraftBoard teams={replacementOffer(organization, teams).map(id => teams.find(team => team.id === id)).filter(Boolean)} pickedPlayers={[...organization.squad, ...(organization.bench ? [organization.bench] : [])].map(entry => entry.player)} onPick={(player, team) => rosterAction(recruitPlayer, player, team)} /></div>}
+          </section>}
         </div>
 
         <div className="grid content-start gap-4">
@@ -213,8 +250,8 @@ export default function OrganizationPage() {
 
           <section className="card p-6" aria-labelledby="former-players">
             <h2 id="former-players" className="text-[16px] font-medium">Former players</h2>
-            <p className="mt-2 text-ink-2">Players who leave your roster will appear here with their organization stats.</p>
-            <p className="meta mt-3">No former players yet. Roster changes are not available yet.</p>
+            <p className="meta mt-1">The five former players with the most matches for your organization.</p>
+            {organization.formerPlayers?.length ? <ul className="mt-3">{organization.formerPlayers.map((entry, index) => <li key={index} className="flex min-h-11 items-center justify-between gap-3 border-t border-rule"><PlayerIdentity player={entry.player} /><span className="meta tabular">{entry.gamesPlayed} Matches</span></li>)}</ul> : <p className="mt-2 text-ink-2">Players who leave your roster will appear here with their organization stats.</p>}
           </section>
 
           <section className="card p-6" aria-labelledby="rivalries">

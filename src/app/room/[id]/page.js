@@ -54,7 +54,7 @@ export default function RoomPage({ params }) {
   const included = players.filter(p => p.participating && !p.left);
   const canStart = included.length > 0 && included.every(p => p.isReady);
   const inLobby = room.status === "lobby";
-  const canReady = validOrganization(organization);
+  const canReady = validOrganization(organization) && organization.squad.length === 5;
 
   return <>
     <AppBar />

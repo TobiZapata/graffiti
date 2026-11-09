@@ -16,13 +16,18 @@ const validTeam = team => {
   } catch { return false; }
 };
 
+const validSlot = s => validPlayer(s?.player) && (s.gamesPlayed === undefined || Number.isInteger(s.gamesPlayed) && s.gamesPlayed >= 0) && (s.benchMajors === undefined || s.benchMajors === 0 || s.benchMajors === 1);
+
 export function validOrganization(o) {
-  if (!o || !text(o.id) || !text(o.name) || !text(o.icon) || !text(o.createdAt) || !Array.isArray(o.colors) || o.colors.length !== 2 || !o.colors.every(c => /^#[0-9a-f]{6}$/i.test(c)) || !Array.isArray(o.squad) || o.squad.length !== 5 || !o.squad.every(s => validPlayer(s?.player))) return false;
+  if (!o || !text(o.id) || !text(o.name) || !text(o.icon) || !text(o.createdAt) || !Array.isArray(o.colors) || o.colors.length !== 2 || !o.colors.every(c => /^#[0-9a-f]{6}$/i.test(c)) || !Array.isArray(o.squad) || (o.rosterVersion === 1 ? o.squad.length < 2 || o.squad.length > 5 : o.squad.length !== 5) || !o.squad.every(s => o.rosterVersion === 1 ? validSlot(s) : validPlayer(s?.player))) return false;
   if (o.majorHistory !== undefined && (!Array.isArray(o.majorHistory) || !o.majorHistory.every(r => r && text(r.id) && ['champion','finalist','semifinal','quarterfinal','swiss'].includes(r.outcome) && typeof r.final === 'boolean' && r.final === ['champion','finalist'].includes(r.outcome) && Array.isArray(r.matches) && r.matches.every(m => m && text(m.name) && typeof m.major === 'string' && typeof m.won === 'boolean')) || new Set(o.majorHistory.map(r => r.id)).size !== o.majorHistory.length)) return false;
-  const names = o.squad.map(s => s.player.name.trim().toLowerCase());
-  const people = o.squad.map(s => s.player.personId).filter(text);
+  if (o.rosterVersion !== undefined && o.rosterVersion !== 1) return false;
+  if (o.rosterVersion === 1 && ((o.bench != null && !validSlot(o.bench)) || (o.benchTokens !== undefined && ![0, 1].includes(o.benchTokens)) || (o.formerPlayers !== undefined && (!Array.isArray(o.formerPlayers) || o.formerPlayers.length > 5 || !o.formerPlayers.every(s => validSlot(s) && s.gamesPlayed > 0))) || (o.rosterNotice != null && (!text(o.rosterNotice.majorId) || !Array.isArray(o.rosterNotice.departed) || o.rosterNotice.departed.length > 4 || !o.rosterNotice.departed.every(d => text(d?.name) && ['performance', 'bench'].includes(d.reason)) || typeof o.rosterNotice.acknowledged !== 'boolean')) || (o.rosterRevision !== undefined && (!Number.isInteger(o.rosterRevision) || o.rosterRevision < 0)))) return false;
+  const slots = o.rosterVersion === 1 ? [...o.squad, ...(o.bench ? [o.bench] : []), ...(o.formerPlayers || [])] : o.squad;
+  const names = slots.map(s => s.player.name.trim().toLowerCase());
+  const people = slots.map(s => s.player.personId).filter(text);
   const ids = o.squad.map((_, i) => String(i));
-  return new Set(names).size === 5 && new Set(people).size === people.length && ids.includes(o.mainAwperUid) && ids.includes(o.iglUid) && ids.includes(o.starUid);
+  return new Set(names).size === names.length && new Set(people).size === people.length && ids.includes(o.mainAwperUid) && ids.includes(o.iglUid) && ids.includes(o.starUid);
 }
 
 export function validCareer(data) {
@@ -31,7 +36,7 @@ export function validCareer(data) {
   if (t === null) return !!data.matchProgress && typeof data.matchProgress === 'object' && !Array.isArray(data.matchProgress) && Object.keys(data.matchProgress).length === 0;
   try { assertCompatibleSimulation(t?.simulation); } catch { return false; }
   if (!t || !text(t.tournamentId) || !Array.isArray(t.mySquad) || t.mySquad.length !== 5 || !text(t.teamName) || !['swiss','swiss_complete','playoffs','results_pending','eliminated','won'].includes(t.stage) || ![null,'eliminated','won'].includes(t.pendingResult) || (t.stage === 'results_pending' && !t.pendingResult) || !Number.isInteger(t.swissRound) || t.swissRound < 1 || !Array.isArray(t.standings) || t.standings.length !== 16 || !Array.isArray(t.matches) || !data.matchProgress || typeof data.matchProgress !== 'object' || Array.isArray(data.matchProgress)) return false;
-  if (!t.mySquad.every(s => validPlayer(s?.player))) return false;
+  if (!t.mySquad.every(s => validPlayer(s?.player)) || (t.rosterTarget !== undefined && !['champion', 'finalist', 'semifinal', 'quarterfinal', 'swiss'].includes(t.rosterTarget))) return false;
   const ids = new Set(t.standings.map(team => team?.id));
   if (ids.size !== 16 || !ids.has('player_team') || !t.standings.every(team => text(team.id) && validTeam(team) && team.isPlayer === (team.id === 'player_team'))) return false;
   const matchIds = new Set();

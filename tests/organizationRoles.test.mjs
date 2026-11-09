@@ -29,3 +29,9 @@ test('rejects invalid fields, targets and organizations', () => {
   for (const uid of ['5', '01', 1, null]) assert.throws(() => moveOrganizationRole(org, 'iglUid', uid));
   assert.throws(() => moveOrganizationRole({ ...org, squad: [] }, 'iglUid', '0'));
 });
+
+test('roles cannot target missing compact roster slots', () => {
+  const incomplete = {...org,rosterVersion:1,squad:org.squad.slice(0,2),starUid:'0',bench:null,benchTokens:0,formerPlayers:[],rosterNotice:{majorId:'m',departed:[],acknowledged:false}};
+  assert.equal(moveOrganizationRole(incomplete,'starUid','1').starUid,'1');
+  assert.throws(() => moveOrganizationRole(incomplete,'starUid','2'));
+});

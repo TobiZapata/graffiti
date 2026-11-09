@@ -1,7 +1,7 @@
 import { validOrganization } from './localCareer.mjs';
 
 export function organizationSnapshot(org) {
-  if (!validOrganization(org) || org.id.includes('/')) throw new Error('This organization is not valid.');
+  if (!validOrganization(org) || org.squad.length !== 5 || org.id.includes('/')) throw new Error('This organization is not valid.');
   const { id, name, icon, colors, squad, mainAwperUid, iglUid, starUid, createdAt } = org;
   return JSON.parse(JSON.stringify({ id, name, icon, colors, squad, mainAwperUid, iglUid, starUid, createdAt }));
 }
@@ -26,7 +26,7 @@ export function assertCanReady(player, ready) {
 export function readyPlayers(room) {
   lobby(room);
   const players = room.players.filter(p => p.participating);
-  if (!players.length || players.some(p => !p.isReady || !validOrganization(p.organization))) throw new Error('Everyone taking part has to be ready.');
+  if (!players.length || players.some(p => !p.isReady || !validOrganization(p.organization) || p.organization.squad.length !== 5)) throw new Error('Everyone taking part has to be ready.');
   if (new Set(players.map(p => p.organization.id)).size !== players.length) throw new Error('An organization cannot take part twice.');
   return players;
 }

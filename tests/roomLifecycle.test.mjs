@@ -31,6 +31,11 @@ test('start requires ready participating members and a lobby', () => {
   assert.throws(() => readyPlayers(room));
   assert.throws(() => readyPlayers({ ...room, status: 'playing' }));
 });
+test('multiplayer rejects incomplete organizations', () => {
+  const incomplete = {...org,rosterVersion:1,squad:org.squad.slice(0,2),starUid:'0',bench:null,benchTokens:0,formerPlayers:[],rosterNotice:{majorId:'m',departed:[],acknowledged:false}};
+  assert.throws(() => organizationSnapshot(incomplete));
+  assert.throws(() => readyPlayers({status:'lobby',players:[{participating:true,isReady:true,organization:incomplete}]}));
+});
 test('only a finished final can return to lobby', () => {
   const final = { round: 'Final', completed: true, teamA: { id: 'a' }, teamB: { id: 'b' }, result: { winner: 'a' } };
   const room = { status: 'playing', tournament: { stage: 'won', matches: [final] } };

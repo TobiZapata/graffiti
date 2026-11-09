@@ -199,7 +199,7 @@ export function RoomSessionProvider({ children }) {
     return () => { document.removeEventListener("click", click, true); window.removeEventListener("beforeunload", beforeUnload); window.removeEventListener("pagehide", pageHide); };
   }, [entry, uid, router]);
 
-  return <RoomSessionContext.Provider value={{ entry, notice, error }}>
+  return <RoomSessionContext.Provider value={{ entry, notice, error, room, activeMajor: !!activeMajor, userUid: uid }}>
     {notice && <div role="status" className="px-4 py-2 text-ink-2">{notice} <button type="button" className="link underline" onClick={() => setNotice("")}>Dismiss</button></div>}
     {error && <div role="alert" className="px-4 py-2 text-negative">{error} <button type="button" className="link underline" onClick={() => setError("")}>Dismiss</button></div>}
     {!initialized ? <main className="p-6 text-ink-2">Checking room session?</main> : /^\/room\/[^/]+/.test(pathname) && (!entry || !insideRoom(pathname, entry.roomId)) ? <main className="p-6">{otherTab ? "This room is active in another tab. " : "You do not have an active session in this room. "}<a href="/multiplayer" className="link underline">Return to multiplayer.</a></main> : children}

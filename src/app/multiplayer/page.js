@@ -12,7 +12,7 @@ import { validOrganization } from "@/lib/localCareer.mjs";
 export default function MultiplayerPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
-  const { organization, ready, storageError } = useTournament();
+  const { organization, ready, storageError, rosterLocked } = useTournament();
   const [name, setName] = useState("");
   const [roomCode, setRoomCode] = useState("");
   const [isPublic, setIsPublic] = useState(true);
@@ -33,7 +33,8 @@ export default function MultiplayerPage() {
 
   async function enter(code) {
     if (!user) return setError("You could not be signed in. Reload the page to try again.");
-    if (!validOrganization(organization)) return setError("You need a complete organization to join a room.");
+    if (!validOrganization(organization) || organization.squad.length !== 5) return setError("You need a complete organization to join a room.");
+    if (rosterLocked || storageError) return setError("Finish your current Major and save your organization before joining a room.");
     if (code !== null && !/^[A-Z0-9]{4}$/.test(code.trim().toUpperCase())) return setError("Room codes are 4 letters or numbers.");
     setError("");
     setBusy(code === null ? "create" : code);
