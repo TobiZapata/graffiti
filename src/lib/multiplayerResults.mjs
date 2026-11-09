@@ -1,9 +1,11 @@
 import { replayBestOf, replaySeriesResult } from './replaySeries.mjs';
-import { validMapPlayerStats } from './matchSummary.mjs';
+import { hasMapMetrics, summarizeMatchPlayers, validMapPlayerStats } from './matchSummary.mjs';
 
 export const matchResultId = (tournamentId, matchId) => `${tournamentId}~${matchId}`;
+export const validPlayerRatings = ratings => Array.isArray(ratings) && ratings.length === 10 && ratings.every(value => Number.isFinite(value) && value >= 0 && value <= 10);
 
 export function validMatchResult(match, result) {
+  if (result && Object.hasOwn(result, 'playerRatings') && !validPlayerRatings(result.playerRatings)) return false;
   if (!(!!result && result.teamA?.id === match.teamA.id && result.teamB?.id === match.teamB.id &&
     Number.isInteger(result.scoreA) && Number.isInteger(result.scoreB) &&
     result.scoreA >= 0 && result.scoreB >= 0 && result.scoreA !== result.scoreB &&
@@ -15,6 +17,20 @@ export function validMatchResult(match, result) {
   const outcome = replaySeriesResult(match, maps);
   return outcome.done && !replaySeriesResult(match, maps.slice(0, -1)).done &&
     outcome.result.scoreA === result.scoreA && outcome.result.scoreB === result.scoreB && outcome.result.winner === result.winner;
+}
+
+export function compactMatchResult(match, result) {
+  const compact = { teamA: match.teamA, teamB: match.teamB, scoreA: result.scoreA, scoreB: result.scoreB, winner: result.winner,
+    maps: result.maps.map(({ map, scoreA, scoreB, winnerId }) => ({ map, scoreA, scoreB, winnerId })) };
+  if (result.maps.every(hasMapMetrics)) {
+    const summary = summarizeMatchPlayers(match, result.maps);
+    if (summary.metricsComplete) {
+      // Ratings follow team A's five roster slots, then team B's five slots.
+      compact.playerRatings = [...summary.teamA, ...summary.teamB].map(player => player.rating);
+      if (!validPlayerRatings(compact.playerRatings)) throw new Error('Invalid player ratings.');
+    }
+  }
+  return compact;
 }
 
 // Results stay separate until the host advances; never count an incorporated result twice.

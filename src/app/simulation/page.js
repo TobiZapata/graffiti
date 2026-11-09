@@ -17,7 +17,7 @@ const isMine = m => Boolean(m.isPlayerMatch);
 const isMineTeam = t => Boolean(t?.isPlayer);
 
 export default function SimulationPage() {
-  const { ready, stage, swissRound, standings, matches, matchProgress, advanceRound, continueToPlayoffs, showFinalResult } = useTournament();
+  const { ready, stage, pendingResult, swissRound, standings, matches, matchProgress, advanceRound, continueToPlayoffs } = useTournament();
   const router = useRouter();
   const [rosterTeam, setRosterTeam] = useState(null);
 
@@ -54,15 +54,9 @@ export default function SimulationPage() {
       <p className="tabular mt-1 text-ink-2">{me.name} finished the Swiss stage {record(me)}.</p>
       <button type="button" onClick={continueToPlayoffs} className="btn btn-primary btn-lg mt-6">Continue to playoffs</button>
     </section>;
-  } else if (stage === "results_pending") {
-    lead = <section className="card p-6">
-      <h2 className="text-[24px] font-medium">Your Major is over</h2>
-      <p className="mt-1 text-ink-2">The last matches are in.</p>
-      <button type="button" onClick={showFinalResult} className="btn btn-primary btn-lg mt-6">See final result</button>
-    </section>;
-  } else if (["won", "eliminated"].includes(stage)) {
+  } else if (["results_pending", "won", "eliminated"].includes(stage)) {
     const place = placement(me, matches);
-    lead = <ResultPanel title={stage === "won" ? "Major champions" : place.text} teams={[{ ...me, placement: place }]}
+    lead = <ResultPanel title={stage === "won" || pendingResult === "won" ? "Major champions" : place.text} teams={[{ ...me, placement: place }]}
       onTeamClick={setRosterTeam}>
       <button type="button" onClick={() => router.push("/organization")} className="btn btn-primary btn-lg">Back to organization</button>
     </ResultPanel>;
@@ -79,7 +73,7 @@ export default function SimulationPage() {
       {hasPlayoffs
         ? <PlayoffBracket matches={matches} isMine={isMine} onTeamClick={setRosterTeam} />
         : <SwissBoard matches={matches} swissRound={swissRound} isMine={isMine} onTeamClick={setRosterTeam} />}
-      <StandingsTable standings={standings} isMine={isMineTeam} onTeamClick={setRosterTeam} />
+      <StandingsTable standings={standings} matches={matches} isMine={isMineTeam} onTeamClick={setRosterTeam} />
     </main>
     <TeamRosterModal team={rosterTeam} onClose={() => setRosterTeam(null)} />
   </>;

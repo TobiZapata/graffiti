@@ -11,10 +11,17 @@ sincronizacion, rivalidades entre usuarios, offseason ni disband.
 ## Flujo
 
 Inicio -> Mi organizacion (`/organization`) -> Crear organizacion (`/play`).
-El draft incorpora cada jugador con un clic. Al completar cinco se eligen nombre,
+Cada ronda del draft muestra equipos, Major completo y nombres sin estadisticas.
+Elegir un equipo bloquea las alternativas y los rerolls, incluso al recargar;
+entonces se revela una estadistica segun el rol natural y se elige un jugador.
+Los picks no se pueden quitar. Your squad aparece debajo de las ofertas.
+Al completar cinco se eligen nombre (maximo 28 caracteres),
 escudo geometrico, dos colores, AWPer principal, IGL y STAR. AWPer e IGL pueden
 coincidir; STAR puede coincidir con cualquiera. Se crea la organizacion y se vuelve
 al Hub sin iniciar automaticamente un torneo.
+
+El formulario de identidad esta centrado; debajo, el roster permite mover roles
+por arrastre o seleccion y clic, igual que en la organizacion.
 
 El Hub muestra identidad y plantilla, permite iniciar el primer Major y continuar
 el pendiente. Si existe progreso de un partido, continuar abre su reproductor;
@@ -99,9 +106,8 @@ Majors. Detalles y limites de la prueba local: `MULTIPLAYER_LOBBIES.md`.
 ## Draft y correcciones de UI
 
 La oferta del draft deriva de una semilla guardada en sessionStorage, la cantidad
-de picks y los rerolls restantes. Recargar o deshacer y repetir un pick conserva
-la oferta; no concede rerolls gratuitos. Quitar un jugador tambien quita los picks
-posteriores. Los rerolls gastados no se recuperan. Los drafts antiguos sin semilla
+de picks y los rerolls restantes. Recargar conserva la oferta y el equipo elegido;
+no concede rerolls gratuitos. Los rerolls gastados no se recuperan. Los drafts antiguos sin semilla
 conservan su plantilla valida y contador, y reciben una nueva oferta una sola vez.
 
 El cuadro Swiss reconstruye los balances de entrada desde los resultados de las
@@ -112,3 +118,22 @@ con atributos y nombre: no era una estadistica real del torneo.
 Chrome verifico estas correcciones, guardado y reanudacion del replay, roles del
 Major congelados y posicion final de semifinales sin MVP. Hub a 390 px sin
 desborde. Reporte: `../cs2-data-lab/output/ui-regressions.json`.
+
+## Record, Rivalries y rating de carrera
+
+Record y Rivalries tienen filtros independientes Offline/Online. Rivalries muestra
+los cinco rivales con mas series jugadas por modo, con escudo y Major completo
+debajo del nombre cuando corresponde. Cada edicion historica sigue siendo un rival
+distinto; las organizaciones online se identifican por UUID. Recent Majors muestra
+solo el resultado a la izquierda.
+
+Los registros anteriores sin modo se conservan en Offline: no contienen datos para
+reclasificarlos con certeza. Los nuevos resultados online se marcan explicitamente.
+Ambos modos incluyen partidos del Major en curso cuando estan incorporados al cuadro.
+
+Cada jugador muestra una estadistica segun su rol asignado: AWP, IGL o Rifler;
+AWP tiene prioridad si comparte ambos roles. STAR no altera la estadistica mostrada.
+El rating a su derecha es la media de los ratings reales por serie con metricas,
+incluyendo ambos modos. Se conserva en el banco y los exjugadores retenidos.
+No se inventan ratings para resultados antiguos sin metricas: se muestra un guion
+cuando no hay ninguno. El cierre del Major persiste los totales una sola vez.

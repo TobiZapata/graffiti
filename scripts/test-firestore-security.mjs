@@ -82,6 +82,27 @@ try {
   await check('identity control signed out', false, () => setDoc(doc(anonymous, 'control/check'), { ok: true }));
   await loadRules(fs.readFileSync('firestore.rules', 'utf8'));
 
+  for (const [id, title, allowed] of [['RN01', 'A'.repeat(35), true], ['RN02', 'A'.repeat(36), false], ['RN03', '', false], ['RN04', 123, false]]) {
+    const uid = `name-${id}`, db = client(uid);
+    await check(`room name ${id}`, allowed, async () => {
+      const batch = writeBatch(db);
+      batch.set(doc(db, `rooms/${id}`), { ...lobby(id), name: title, hostId: uid, players: { [uid]: member(uid, true) } });
+      batch.set(doc(db, `roomSessions/${uid}`), session(uid, id));
+      await batch.commit();
+    });
+    if (allowed) await check('room name remains fixed after creation', false, () => updateDoc(doc(db, `rooms/${id}`), { name: 'Changed' }));
+  }
+  for (const [id, length, allowed] of [['ON28', 28, true], ['ON29', 29, true], ['ON00', 100, true], ['ON01', 101, false]]) {
+    const uid = `org-${id}`, db = client(uid), player = member(uid, true);
+    player.organization.name = player.teamName = 'A'.repeat(length);
+    await check(`organization name ${length} characters`, allowed, async () => {
+      const batch = writeBatch(db);
+      batch.set(doc(db, `rooms/${id}`), { ...lobby(id), hostId: uid, players: { [uid]: player } });
+      batch.set(doc(db, `roomSessions/${uid}`), session(uid, id));
+      await batch.commit();
+    });
+  }
+
   for (const [id, mode, allowed] of [['MF01', 'full', true], ['MH01', 'highlights', true], ['MI01', 'invalid', false]]) {
     const uid = `mode-${id}`, db = client(uid);
     await check(`room playback mode ${mode}`, allowed, async () => {
@@ -317,6 +338,24 @@ try {
   await check('member reads result', true, () => getDoc(doc(guest, 'rooms/PLAYING/results/major1~match1')));
   await check('outsider cannot read result', false, () => getDoc(doc(outsider, 'rooms/PLAYING/results/major1~match1')));
   await check('immutable result', false, () => setDoc(doc(host, 'rooms/PLAYING/results/major1~match1'), submission));
+  for (const [name, ratings, allowed] of [
+    ['valid ratings including bounds', [0, 10, 1.25, 1, 1, 1, 1, 1, 1, 1], true],
+    ['short ratings', Array(9).fill(1), false],
+    ['long ratings', Array(11).fill(1), false],
+    ['ratings must be a list', '1,1,1,1,1,1,1,1,1,1', false],
+    ['non-numeric rating', ['1', ...Array(9).fill(1)], false],
+    ['boolean rating', [true, ...Array(9).fill(1)], false],
+    ['null rating', [null, ...Array(9).fill(1)], false],
+    ['negative rating', [-0.01, ...Array(9).fill(1)], false],
+    ['out-of-range rating', [10.01, ...Array(9).fill(1)], false],
+    ['NaN rating', [NaN, ...Array(9).fill(1)], false],
+    ['infinite rating', [Infinity, ...Array(9).fill(1)], false],
+  ]) {
+    await seed('rooms/RATINGS', playing('RATINGS'));
+    const response = await fetch(`${documents}/rooms/RATINGS/results/major1~match1`, { method: 'DELETE', headers: { Authorization: 'Bearer owner' } });
+    assert.ok(response.ok || response.status === 404, 'rating fixture reset');
+    await check(name, allowed, () => setDoc(doc(host, 'rooms/RATINGS/results/major1~match1'), { ...submission, result: { ...result, playerRatings: ratings } }));
+  }
   await check('host cannot change tournament ID', false, () => updateDoc(doc(host, 'rooms/PLAYING'), { 'tournament.tournamentId': 'other' }));
   await seed('rooms/RACE', playing('RACE'));
   await check('concurrent result creates exactly one winner', true, async () => {
@@ -338,7 +377,7 @@ try {
   for (const [round, scores] of [['Quarterfinals', [2, 0]], ['Final', [3, 0]]]) {
     const id = round === 'Final' ? 'BO5' : 'BO3';
     await seed(`rooms/${id}`, { ...playing(id), tournament: { ...tournament, matches: [{ ...match, round }] } });
-    const series = { ...submission, result: { ...result, scoreA: scores[0], scoreB: scores[1], maps: Array(scores[0]).fill(result.maps[0]) } };
+    const series = { ...submission, result: { ...result, playerRatings: Array(10).fill(1.2), scoreA: scores[0], scoreB: scores[1], maps: Array(scores[0]).fill(result.maps[0]) } };
     await check(`${id} valid series`, true, () => setDoc(doc(host, `rooms/${id}/results/major1~match1`), series));
     await seed(`rooms/${id}BAD`, { ...playing(`${id}BAD`), tournament: { ...tournament, matches: [{ ...match, round }] } });
     await check(`${id} inconsistent series`, false, () => setDoc(doc(host, `rooms/${id}BAD/results/major1~match1`), { ...series, result: { ...series.result, scoreA: 1 } }));

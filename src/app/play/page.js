@@ -1,5 +1,4 @@
 "use client";
-import { playerOptionLabel } from "@/lib/playerCountry.mjs";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -12,7 +11,8 @@ import SquadPanel from "@/components/play/SquadPanel";
 import LogoCreator from "@/components/play/LogoCreator";
 import { useTournament } from "@/context/TournamentContext";
 import { playerOverall } from "@/lib/majorDisplay.mjs";
-import { draftOffer, readDraft, removePick, sameDraftPlayer } from "@/lib/draftState.mjs";
+import { draftOffer } from "@/lib/draftState.mjs";
+import { restoreDraft, selectDraftTeam, pickDraftPlayer } from "@/components/play/draftFlow.mjs";
 
 const DRAFT_KEY = "major-mvp:draft:v1";
 const REROLLS = 3;
@@ -31,7 +31,7 @@ function suggestRoles(squad) {
 
 function loadDraft() {
   try {
-    return readDraft(JSON.parse(sessionStorage.getItem(DRAFT_KEY)), teams, legacyTeams);
+    return restoreDraft(JSON.parse(sessionStorage.getItem(DRAFT_KEY)), teams, legacyTeams);
   } catch { /* A missing or unreadable draft starts fresh. */ }
   return null;
 }
@@ -40,7 +40,7 @@ export default function PlayPage() {
   const router = useRouter();
   const { organization, ready, storageError, createOrganization } = useTournament();
   const [draft] = useState(() => typeof window === "undefined" ? null : loadDraft());
-  const [draftState, setDraftState] = useState(() => ({ squad: draft?.squad ?? [], rerollsLeft: draft?.rerollsLeft ?? REROLLS, seed: draft?.seed ?? Math.random().toString(36).slice(2) }));
+  const [draftState, setDraftState] = useState(() => ({ squad: draft?.squad ?? [], rerollsLeft: draft?.rerollsLeft ?? REROLLS, seed: draft?.seed ?? Math.random().toString(36).slice(2), selectedTeamId: draft?.selectedTeamId ?? null }));
   const { squad, rerollsLeft, seed } = draftState;
   const rolledTeams = draftOffer(seed, squad.length, rerollsLeft, teams).map(id => teams.find(team => team.id === id));
   const [roles, setRoles] = useState(() => draft?.squad?.length === 5 ? suggestRoles(draft.squad) : { mainAwperUid: "", iglUid: "", starUid: "" });
@@ -57,19 +57,14 @@ export default function PlayPage() {
   const complete = squad.length >= 5;
 
   function pick(player, team) {
-    if (squad.length >= 5 || squad.some(s => sameDraftPlayer(s.player, player))) return;
-    const next = [...squad, { player, team: { name: team.name, major: team.major } }];
-    setDraftState({ ...draftState, squad: next });
-    if (next.length === 5) setRoles(suggestRoles(next));
-  }
-
-  function remove(index) {
-    setDraftState(removePick(draftState, index));
-    setRoles({ mainAwperUid: "", iglUid: "", starUid: "" });
+    const next = pickDraftPlayer(draftState, player, team);
+    if (next === draftState) return;
+    setDraftState(next);
+    if (next.squad.length === 5) setRoles(suggestRoles(next.squad));
   }
 
   function reroll() {
-    if (rerollsLeft < 1) return;
+    if (rerollsLeft < 1 || draftState.selectedTeamId != null) return;
     setDraftState({ ...draftState, rerollsLeft: rerollsLeft - 1 });
   }
 
@@ -100,30 +95,19 @@ export default function PlayPage() {
   return (
     <>
       <AppBar />
-      <main className="mx-auto grid w-full max-w-[1440px] gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <main className="mx-auto grid w-full max-w-[1440px] gap-8 px-4 py-8 sm:px-6">
         <div className="min-w-0">
           {complete ? (
-            <section aria-labelledby="org-title" className="max-w-[560px]">
+            <section aria-labelledby="org-title" className="mx-auto w-full max-w-[640px]">
               <h1 id="org-title" className="text-[20px] font-medium">Name your organization</h1>
               <p className="mt-1 text-ink-2">Roles are suggested from your players. You can change them later from the organization page.</p>
 
               <div className="card mt-6 grid gap-6 p-6">
                 <div>
                   <label htmlFor="team-name" className="label">Name</label>
-                  <input id="team-name" type="text" value={teamName} onChange={e => setTeamName(e.target.value)} maxLength={20} className="field" autoComplete="off" />
+                  <input id="team-name" type="text" value={teamName} onChange={e => setTeamName(e.target.value)} maxLength={28} className="field" autoComplete="off" />
                 </div>
                 <LogoCreator onChange={setTeamIcon} onColorsChange={setColors} />
-                <div className="grid gap-4 sm:grid-cols-3">
-                  {[["mainAwperUid", "AWPer"], ["iglUid", "IGL"], ["starUid", "Star player"]].map(([field, label]) => (
-                    <label key={field}>
-                      <span className="label">{label}</span>
-                      <select value={roles[field]} onChange={e => { const value = e.target.value; setRoles(current => ({ ...current, [field]: value })); }} className="field">
-                        <option value="">Choose</option>
-                        {squad.map((entry, index) => <option key={entry.player.name} value={String(index)}>{playerOptionLabel(entry.player)}</option>)}
-                      </select>
-                    </label>
-                  ))}
-                </div>
               </div>
 
               <div className="mt-6 flex flex-wrap items-center gap-4">
@@ -137,22 +121,21 @@ export default function PlayPage() {
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <div>
                   <h1 id="draft-title" className="text-[20px] font-medium">Draft · <span className="tabular">player {squad.length + 1} of 5</span></h1>
-                  <p className="mt-1 text-ink-2">Pick one player from any of these rosters. A new set of teams comes up after each pick.</p>
+                  <p className="mt-1 text-ink-2">Choose a team, then pick one of its players. A new set of teams comes up after each pick.</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="meta tabular">{rerollsLeft} {rerollsLeft === 1 ? "reroll" : "rerolls"} left for this draft</span>
-                  <button type="button" onClick={reroll} disabled={rerollsLeft < 1} className="btn btn-secondary">Reroll teams</button>
+                  <button type="button" onClick={reroll} disabled={rerollsLeft < 1 || draftState.selectedTeamId != null} className="btn btn-secondary">Reroll teams</button>
                 </div>
               </div>
               <div className="mt-6">
-                <DraftBoard teams={rolledTeams} pickedPlayers={squad.map(s => s.player)} onPick={pick} />
+                <DraftBoard selectedTeamId={draftState.selectedTeamId} onSelectTeam={id => setDraftState(current => selectDraftTeam(current, id, teams))} teams={rolledTeams} pickedPlayers={squad.map(s => s.player)} onPick={pick} />
               </div>
-              <p className="meta mt-3">Compare AWP, Rifler, IGL and Clutch. The AWPer and IGL can be the same player.</p>
             </section>
           )}
         </div>
 
-        <SquadPanel squad={squad} roles={complete ? roles : {}} onRemove={remove} />
+        <div className={complete ? "mx-auto w-full max-w-[640px]" : ""}><SquadPanel squad={squad} roles={complete ? roles : null} onRoleChange={complete ? (field, uid) => setRoles(current => ({ ...current, [field]: uid })) : null} /></div>
       </main>
     </>
   );

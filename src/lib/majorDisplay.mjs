@@ -40,6 +40,12 @@ export function playerAttributes(player) {
   return [roleLabel(player?.role), playerOverall(player) === null ? '' : `Overall ${playerOverall(player)}`].filter(Boolean).join(' · ');
 }
 
+export function rosterPlayerAttribute(player, organization, uid) {
+  const field = organization.mainAwperUid === uid ? 'awp' : organization.iglUid === uid ? 'igl' : 'rifler';
+  const label = { awp: 'AWP', igl: 'IGL', rifler: 'Rifler' }[field];
+  return `${label} ${Number.isFinite(player?.[field]) ? player[field] : '—'}`;
+}
+
 export function record(team) {
   return `${team?.wins ?? 0}–${team?.losses ?? 0}`;
 }

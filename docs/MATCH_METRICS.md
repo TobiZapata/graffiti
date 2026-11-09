@@ -104,3 +104,9 @@ backward-compatible saved results and round-weighted series aggregation. Build
 passes; lint has zero errors and the existing thirteen unrelated warnings.
 Chrome smoke tested draft through match completion, metric persistence/reload,
 and 1440/768/390 widths; Firebase endpoints were blocked. No cloud deployment.
+
+Career roster ratings now average completed series ratings. Offline results retain
+map metrics; online submissions retain ten compact `playerRatings` values ordered
+by team A's five roster slots followed by team B's five slots. Firestore validates
+the optional array and accepts legacy submissions without it. Full online display
+metrics still regenerate from replay data. Missing historical ratings remain unknown.

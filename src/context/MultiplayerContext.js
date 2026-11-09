@@ -9,7 +9,7 @@ import { useAuth } from "@/context/AuthContext";
 import { generateSwissPairings } from "@/lib/tournamentService";
 import { decodeRoom } from "@/lib/roomStorage.mjs";
 import { applyForfeits } from "@/lib/roomForfeit.mjs";
-import { applySubmittedResults, matchResultId, validMatchResult } from "@/lib/multiplayerResults.mjs";
+import { applySubmittedResults, compactMatchResult, matchResultId, validMatchResult } from "@/lib/multiplayerResults.mjs";
 
 import { assertCompatibleSimulation } from "@/lib/simulationVersion.mjs";
 import { simulateNpcMatch } from "@/lib/simulateNpcMatch.mjs";
@@ -107,8 +107,7 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
       if (!t.matchesStarted || !validMatchResult(match, result)) throw new Error("Invalid match result.");
       // shortcut: rebuild display stats from the replay; persist separately if cross-version match history is needed.
       tx.set(ref, { tournamentId, matchId, matchIndex: index, submittedBy: user.uid,
-        result: { ...result, teamA: match.teamA, teamB: match.teamB,
-          maps: result.maps.map(({ map, scoreA, scoreB, winnerId }) => ({ map, scoreA, scoreB, winnerId })) } });
+        result: compactMatchResult(match, result) });
       return result;
     });
   };

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import AppBar from "@/components/AppBar";
+import PlayerIdentity from "@/components/PlayerIdentity";
 import RoomRolesDialog from "@/components/RoomRolesDialog";
 import { useAuth } from "@/context/AuthContext";
 import { useTournament } from "@/context/TournamentContext";
@@ -61,7 +62,8 @@ export default function RoomPage({ params }) {
     <main className="mx-auto w-full max-w-[1440px] px-4 py-8 sm:px-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-[20px] font-medium">Room <span className="tabular tracking-[0.1em]">{roomId}</span></h1>
+          <h1 className="text-[20px] font-medium break-words">{room.name || `Room ${roomId}`}</h1>
+          <p className="meta mt-2">Room code: <span className="tabular tracking-[0.1em]">{roomId}</span></p>
           <p className="meta mt-2">{room.playbackMode === "highlights" ? "Highlights · one third of rounds, rounded up. All rounds count." : "Full match · every round."}</p>
           <p className="mt-1 text-ink-2">{inLobby ? "Share the code. The host starts the Major once everyone taking part is ready." : "A Major is being played in this room."}</p>
         </div>
@@ -98,7 +100,7 @@ export default function RoomPage({ params }) {
               </div>
               {org?.squad && <ul className="mt-3 grid gap-1 text-[13px]">{org.squad.map((entry, i) => {
                 const tags = Object.entries(ROLE_FIELDS).filter(([field]) => org[field] === String(i)).map(([, label]) => label);
-                return <li key={i} className="flex justify-between gap-2"><span>{entry.player?.name}</span><span className="text-ink-3">{tags.join(" · ")}</span></li>;
+                return <li key={i} className="flex justify-between gap-2"><PlayerIdentity player={entry.player} /><span className="shrink-0 text-ink-3">{tags.join(" · ")}</span></li>;
               })}</ul>}
               {isHost && inLobby && !p.left && <button type="button" disabled={!!busy} className="link mt-3 text-[13px] underline disabled:opacity-40"
                 onClick={() => run(`participation-${p.uid}`, () => setRoomParticipation(roomId, user.uid, p.uid, !p.participating))}>

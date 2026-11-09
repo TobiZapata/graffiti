@@ -17,7 +17,7 @@ export default function SimulationUI() {
   const [rosterTeam, setRosterTeam] = useState(null);
   const [actionError, setActionError] = useState(null);
   const {
-    stage, swissRound, standings, matches, advanceRound, continueToPlayoffs, showFinalResult,
+    stage, swissRound, standings, matches, advanceRound, continueToPlayoffs,
     isHost, roomId, userUid, matchesStarted, startMatches, returnToLobby, isArchived,
   } = useMultiplayerTournament();
   const router = useRouter();
@@ -79,12 +79,7 @@ export default function SimulationUI() {
         ? <button type="button" onClick={run(continueToPlayoffs)} className="btn btn-primary btn-lg mt-6">Continue to playoffs</button>
         : <p role="status" className="mt-6 text-ink-2">Waiting for the host to continue to playoffs.</p>}
     </section>;
-  } else if (stage === "results_pending") {
-    lead = <section className="card p-6">
-      <h2 className="text-[24px] font-medium">The Major is over</h2>
-      <button type="button" onClick={showFinalResult} className="btn btn-primary btn-lg mt-6">See final result</button>
-    </section>;
-  } else if (["won", "eliminated"].includes(stage)) {
+  } else if (["results_pending", "won", "eliminated"].includes(stage)) {
     const humans = standings.filter(t => t.isPlayer).map(t => ({ ...t, placement: placement(t, matches) }))
       .sort((a, b) => a.placement.weight - b.placement.weight);
     const final = matches.find(m => m.round === "Final" && m.completed);
@@ -105,7 +100,7 @@ export default function SimulationUI() {
       {hasPlayoffs
         ? <PlayoffBracket matches={matches} isMine={isMine} onTeamClick={setRosterTeam} />
         : <SwissBoard matches={matches} swissRound={swissRound} isMine={isMine} onTeamClick={setRosterTeam} />}
-      <StandingsTable standings={standings} isMine={isMineTeam} onTeamClick={setRosterTeam} />
+      <StandingsTable standings={standings} matches={matches} isMine={isMineTeam} onTeamClick={setRosterTeam} />
     </main>
     <TeamRosterModal team={rosterTeam} onClose={() => setRosterTeam(null)} />
   </>;

@@ -29,7 +29,8 @@ service cloud.firestore {
     }
     function validNewRoom(code, r) {
       let uid = request.auth.uid;
-      return code.matches('^[A-Z0-9]{4}$') && r.keys().hasOnly(['id','hostId','status','visibility','playbackMode','players','schemaVersion','generation','createdAt']) &&
+      return code.matches('^[A-Z0-9]{4}$') && r.keys().hasOnly(['id','name','hostId','status','visibility','playbackMode','players','schemaVersion','generation','createdAt']) &&
+        r.get('name','Room').matches('(?s)^.{1,35}$') &&
         r.get('playbackMode','full') in ['full','highlights'] && r.id == code && r.hostId == uid && r.schemaVersion == 3 &&
         r.status == 'lobby' && r.visibility in ['public','private'] && r.generation == 0 &&
         r.createdAt is string && r.createdAt.size() <= 40 && r.players.size() == 1 && uid in r.players &&
@@ -186,6 +187,14 @@ service cloud.firestore {
         }
         function room() { return get(roomPath(code)).data; }
         allow read: if signed() && (request.auth.uid in room().players || room().status == 'closed' || expired(room().hostId));
+        // Numeric comparisons also reject other types, keeping BO5 writes within the evaluation budget.
+        function validRating(value) { return value >= 0 && value <= 10; }
+        function validRatings(result) {
+          let values = result.get('playerRatings', []);
+          return !('playerRatings' in result) || (values is list && values.size() == 10 &&
+            validRating(values[0]) && validRating(values[1]) && validRating(values[2]) && validRating(values[3]) && validRating(values[4]) &&
+            validRating(values[5]) && validRating(values[6]) && validRating(values[7]) && validRating(values[8]) && validRating(values[9]));
+        }
         function canSubmit(r, d) {
           let m = r.tournament.matches[d.matchIndex];
           let result = d.result;
@@ -195,7 +204,7 @@ service cloud.firestore {
           resultId == d.tournamentId + '~' + d.matchId && d.submittedBy == request.auth.uid &&
           d.matchIndex is int && d.matchIndex >= 0 && d.matchIndex < r.tournament.matches.size() &&
           m.id == d.matchId && m.completed == false && !m.playerUids.toSet().hasAny(r.tournament.get('abandonedUids',[])) && request.auth.uid in m.playerUids && request.auth.uid in r.players &&
-          result.keys().hasOnly(['teamA','teamB','scoreA','scoreB','winner','maps']) && result.keys().hasAll(['teamA','teamB','scoreA','scoreB','winner','maps']) &&
+          result.keys().hasOnly(['teamA','teamB','scoreA','scoreB','winner','maps','playerRatings']) && result.keys().hasAll(['teamA','teamB','scoreA','scoreB','winner','maps']) && validRatings(result) &&
           result.teamA == m.teamA && result.teamB == m.teamB &&
           result.maps is list && result.maps.size() >= 1 && result.maps.size() <= 5 && mapsValid(result.maps,m,0) && mapsValid(result.maps,m,1) && mapsValid(result.maps,m,2) && mapsValid(result.maps,m,3) && mapsValid(result.maps,m,4) &&
           validSeries(result,m) && result.scoreA is int && result.scoreB is int && result.scoreA >= 0 && result.scoreB >= 0 &&
