@@ -144,8 +144,9 @@ export function RoomSessionProvider({ children }) {
         router.replace("/multiplayer");
       } catch (err) { report(err); }
     }
-    const unsubscribeRoom = onSnapshot(doc(db, "rooms", entry.roomId), snapshot => {
-      if (stopped) return;
+    const unsubscribeRoom = onSnapshot(doc(db, "rooms", entry.roomId), { includeMetadataChanges: true }, snapshot => {
+      // The directory can cache the lobby before this user's join is confirmed.
+      if (stopped || snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return;
       const data = snapshot.exists() ? decodeRoom(snapshot.data()) : null;
       setRoom(data);
       if (!data || data.status === "closed") endSession("This room was closed. You have returned to multiplayer.");

@@ -1,0 +1,38 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+// Uses isolated browser contexts and TEST organizations; a running Chrome CDP endpoint is required.
+const base=process.env.ROOMS_TEST_BASE;
+if (!base) throw new Error('Set ROOMS_TEST_BASE to the app URL to test.');
+const teams=JSON.parse(fs.readFileSync(new URL('../src/data/teams.json', import.meta.url),'utf8'));
+const report={base,success:false,steps:[],rooms:[],exceptions:[]};
+const contexts=[],pages=[],sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function connect(url){const socket=new WebSocket(url);await new Promise((r,j)=>{socket.addEventListener('open',r,{once:true});socket.addEventListener('error',j,{once:true})});let serial=0;const pending=new Map();socket.addEventListener('message',event=>{const m=JSON.parse(event.data);if(m.method==='Runtime.exceptionThrown')report.exceptions.push(m.params.exceptionDetails);if(m.id&&pending.has(m.id)){const p=pending.get(m.id);clearTimeout(p.timer);pending.delete(m.id);m.error?p.reject(Error(m.error.message)):p.resolve(m.result)}});return {socket,call:(method,params={})=>new Promise((resolve,reject)=>{const id=++serial;const timer=setTimeout(()=>reject(Error(method+' timeout')),20000);pending.set(id,{resolve,reject,timer});socket.send(JSON.stringify({id,method,params}))})};}
+const version=await(await fetch('http://127.0.0.1:9223/json/version')).json();
+const browser=await connect(version.webSocketDebuggerUrl);
+function org(role,index){return {id:crypto.randomUUID(),name:'TEST Rooms '+role,icon:'/favicon.ico',colors:['#123456','#abcdef'],createdAt:new Date().toISOString(),squad:teams[index].players.map(player=>({player,team:{name:teams[index].name,major:teams[index].major},gamesPlayed:0,benchMajors:0})),mainAwperUid:'0',iglUid:'0',starUid:'2',rosterVersion:1,bench:null,benchTokens:0,formerPlayers:[]};}
+async function page(organization){const {browserContextId}=await browser.call('Target.createBrowserContext');contexts.push(browserContextId);const {targetId}=await browser.call('Target.createTarget',{url:'about:blank',browserContextId});let target;for(let i=0;i<50;i++){target=(await(await fetch('http://127.0.0.1:9223/json/list')).json()).find(t=>t.id===targetId);if(target)break;await sleep(50)}const c=await connect(target.webSocketDebuggerUrl);pages.push(c);await c.call('Runtime.enable');await c.call('Page.enable');
+ async function evaluate(expression){const r=await c.call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value;}
+ async function wait(expression){for(let i=0;i<250;i++){if(await evaluate(`Boolean(document.body && (${expression}))`))return;await sleep(100)}throw Error('Wait: '+expression+'\n'+await evaluate('location.href+"\\n"+document.body?.innerText.slice(0,2300)'));}
+ async function click(text){await wait(`[...document.querySelectorAll('button,a')].some(e=>e.textContent.trim()===${JSON.stringify(text)}&&!e.disabled)`);await evaluate(`[...document.querySelectorAll('button,a')].find(e=>e.textContent.trim()===${JSON.stringify(text)}&&!e.disabled).click()`);}
+ async function set(selector,value){await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(e.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`);await sleep(80);}
+ await c.call('Page.addScriptToEvaluateOnNewDocument',{source:`if(location.origin===${JSON.stringify(base)}&&!localStorage.getItem('major-mvp:career:v1'))localStorage.setItem('major-mvp:career:v1',${JSON.stringify(JSON.stringify({version:1,organization,tournament:null,matchProgress:{}}))});`});
+ await c.call('Page.navigate',{url:base+'/multiplayer'});await wait("[...document.querySelectorAll('button')].some(e=>e.textContent.trim()==='Create room')");
+ return {...c,evaluate,wait,click,set};
+}
+async function step(name,action){console.log(name);await action();report.steps.push(name);}
+let h,g;
+async function leave(p){if(p&&await p.evaluate("/^\\/room\\//.test(location.pathname)")){await p.click('Leave room');await p.wait("location.pathname==='/multiplayer'");}}
+try{
+ h=await page(org('Host',0));g=await page(org('Guest',1));
+ let code;
+ await step('create public room with shared AWPer and IGL',async()=>{await h.click('Create room');await h.wait("/^\\/room\\/[A-Z0-9]{4}$/.test(location.pathname)");code=await h.evaluate("location.pathname.split('/')[2]");report.rooms.push(code);});
+ await step('other user joins from public directory',async()=>{await g.click('Refresh');await g.wait(`document.querySelector('section[aria-labelledby=rooms-title]')?.innerText.includes(${JSON.stringify(code)})`);await g.evaluate(`[...document.querySelectorAll('section[aria-labelledby=rooms-title] li')].find(e=>e.textContent.includes(${JSON.stringify(code)})).querySelector('button').click()`);await g.wait(`location.pathname==='/room/${code}'`);await h.wait("document.body.innerText.includes('TEST Rooms Guest')");await g.wait("document.body.innerText.includes('TEST Rooms Host')");});
+ await step('both members can ready; editing roles clears readiness',async()=>{await g.click("I'm ready");await g.click('Edit roles');await g.wait("document.querySelector('dialog[open]')");await g.set('dialog select','1');await g.set('dialog select','0');await g.click('Done');await g.wait("[...document.querySelectorAll('button')].some(e=>e.textContent.trim()===\"I'm ready\")");await h.click("I'm ready");await g.click("I'm ready");await h.wait("[...document.querySelectorAll('button')].some(e=>e.textContent.trim()==='Start Major'&&!e.disabled)");});
+ await step('guest leave updates host; host close frees sessions',async()=>{await leave(g);await h.wait("!document.body.innerText.includes('TEST Rooms Guest')");await leave(h);});
+ await step('create private room in highlights mode',async()=>{await h.evaluate("document.querySelector('input[type=checkbox]').click()");await h.set('#playback-mode','highlights');await h.click('Create room');await h.wait("/^\\/room\\/[A-Z0-9]{4}$/.test(location.pathname)");code=await h.evaluate("location.pathname.split('/')[2]");report.rooms.push(code);await g.click('Refresh');await g.wait("!document.querySelector('section[aria-labelledby=rooms-title]')?.innerText.includes('Loading rooms')");assert.equal(await g.evaluate(`document.querySelector('section[aria-labelledby=rooms-title]')?.innerText.includes(${JSON.stringify(code)})`),false);});
+ await step('other user joins private room by lowercase code',async()=>{await g.set('input[aria-label="Room code"]',code.toLowerCase());await g.click('Join');await g.wait(`location.pathname==='/room/${code}'`);await h.wait("document.body.innerText.includes('TEST Rooms Guest')");await g.wait("document.body.innerText.includes('Highlights')");});
+ await step('both users leave private room and can create again',async()=>{await leave(g);await leave(h);await g.click('Create room');await g.wait("/^\\/room\\/[A-Z0-9]{4}$/.test(location.pathname)");report.rooms.push(await g.evaluate("location.pathname.split('/')[2]"));await leave(g);});
+ report.success=true;
+}catch(error){report.error=error.message;console.error(error.message);process.exitCode=1;}
+finally{for(const p of [g,h]){try{await leave(p)}catch(e){report.cleanupError=e.message}}for(const browserContextId of contexts){await browser.call('Target.disposeBrowserContext',{browserContextId}).catch(()=>{});}for(const p of pages)p.socket.close();browser.socket.close();console.log(JSON.stringify(report));}
+assert.equal(report.exceptions.length,0);

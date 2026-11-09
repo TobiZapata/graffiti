@@ -32,6 +32,11 @@ o entrar. Otra pestana no puede abrir una segunda sala ni tomar la sesion origin
 La navegacion dentro de /room/{code} conserva la sesion entre lobby, cuadro y replay.
 Salir de ese conjunto de pantallas, recargar o cerrar termina la participacion.
 
+La membresia y el cierre de sala se confirman con snapshots del servidor, sin
+escrituras pendientes. El lobby guardado en cache por la lista publica puede ser
+anterior al ingreso del invitado y no debe expulsarlo. Se escuchan tambien cambios
+de metadata para recibir esa confirmacion aunque los datos no hayan cambiado.
+
 Al completarse un match, el reproductor muestra un resumen con marcador, ganador y
 estadisticas de jugadores y equipos por mapa y para toda la serie. La pantalla
 conserva la sesion de sala, tambien si el rival confirma primero el resultado.
@@ -58,8 +63,8 @@ La navegacion atras o una direccion escrita directamente tambien termina la sesi
 El boton Leave room sigue disponible; no es la unica forma de salir.
 
 Edit roles abre un dialogo dentro del lobby: desmarca listo, edita AWPer/IGL/STAR
-y guarda el snapshot sin navegar a la organizacion. AWPer e IGL se intercambian si
-se asignan al mismo jugador. El Major fija los roles al arrancar; no hay offseason.
+y guarda el snapshot sin navegar a la organizacion. AWPer e IGL pueden compartir
+el mismo jugador. El Major fija los roles al arrancar.
 
 ## Presencia y desconexiones
 
@@ -138,6 +143,16 @@ Sin esa variable se utiliza graffity-major y .next; con ella, Auth 9098, Firesto
 8088 y .next-emulator. Reporte de navegador:
 ../cs2-data-lab/output/room-lifecycle-browser.json. Detalles de datos, despliegue
 y pruebas cloud en FIREBASE_STORAGE.md.
+
+Para repetir la regresion de ingreso desde la lista publica, con Chrome abierto
+en modo DevTools remoto en el puerto 9223 y la app en la URL indicada:
+
+    $env:ROOMS_TEST_BASE='http://127.0.0.1:3001'
+    node scripts/check-room-membership.mjs
+
+La prueba usa dos contextos aislados con organizaciones TEST, comprueba salas
+publicas/privadas y roles compartidos, y sale de sus salas al terminar. La URL
+selecciona el backend: usar una app conectada al emulador para no escribir en cloud.
 
 ## Limites
 
