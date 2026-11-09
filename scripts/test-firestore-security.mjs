@@ -255,7 +255,39 @@ try {
   await seed('roomSessions/host', session('host', 'PRIVATE', new Date()));
   await seed('roomSessions/guest', session('guest', 'PRIVATE', new Date()));
   await check('guest participation change', false, () => updateDoc(doc(guest, 'rooms/PRIVATE'), { 'players.guest.participating': false }));
-  await check('host participation change', true, () => updateDoc(doc(host, 'rooms/PRIVATE'), { 'players.guest.participating': false }));
+  await check('host participation change', false, () => updateDoc(doc(host, 'rooms/PRIVATE'), { 'players.guest.participating': false }));
+  await seed('rooms/LEGACY', { ...lobby('LEGACY'), players: { host: hostMember, guest: { ...guestMember, participating: false } } });
+  await check('legacy guest restores participation while readying', true, () => updateDoc(doc(guest, 'rooms/LEGACY'), { 'players.guest.participating': true, 'players.guest.isReady': true }));
+  await seed('rooms/LEGACYORG', { ...lobby('LEGACYORG'), players: { host: hostMember, guest: { ...guestMember, participating: false } } });
+  const updatedGuest = member('guest');
+  updatedGuest.organization.name = 'Updated organization';
+  updatedGuest.teamName = updatedGuest.organization.name;
+  await check('legacy guest updates organization and restores participation', true, () => updateDoc(doc(guest, 'rooms/LEGACYORG'), { 'players.guest': { ...updatedGuest, isReady: true } }));
+  await seed('rooms/KICK', lobby('KICK'));
+  const kick = (db, uid = 'guest', changes = {}) => depart(db, 'KICK', uid, { [`players.${uid}`]: deleteField(), ...changes }, 'kicked', false);
+  await check('guest cannot kick', false, () => kick(guest, 'host'));
+  await check('outsider cannot kick', false, () => kick(outsider));
+  await check('host cannot kick self', false, () => kick(host, 'host'));
+  await check('kick needs session removal', false, () => updateDoc(doc(host, 'rooms/KICK'), { 'players.guest': deleteField(), lastDeparture: { uid: 'guest', reason: 'kicked' } }));
+  await check('kick rejects collateral changes', false, () => kick(host, 'guest', { visibility: 'public' }));
+  await check('kick rejects changes to another member', false, () => kick(host, 'guest', { 'players.host.name': 'changed' }));
+  await check('kick rejects wrong departure metadata', false, () => depart(host, 'KICK', 'guest', { 'players.guest': deleteField() }, 'timeout', false));
+  await seed('roomSessions/guest', { ...session('guest', 'KICK', new Date()), pageId: 'wrong-page' });
+  await check('kick rejects session from another page', false, () => kick(host));
+  await seed('roomSessions/guest', session('guest', 'KICK', new Date()));
+  await check('host kicks active guest', true, () => kick(host));
+  await check('kick releases guest session', true, async () => assert.equal((await getDoc(doc(guest, 'roomSessions/guest'))).exists(), false));
+  await seed('rooms/JOIN', { ...lobby('JOIN'), players: { host: hostMember } });
+  await check('kicked guest can join another room', true, async () => {
+    const batch = writeBatch(guest);
+    batch.update(doc(guest, 'rooms/JOIN'), { 'players.guest': guestMember });
+    batch.set(doc(guest, 'roomSessions/guest'), session('guest', 'JOIN'));
+    await batch.commit();
+  });
+  await seed('rooms/KPLAY', playing('KPLAY'));
+  await check('host cannot kick during Major', false, () => depart(host, 'KPLAY', 'guest', { 'players.guest': deleteField() }, 'kicked', false));
+  await seed('roomSessions/host', session('host', 'PRIVATE', new Date()));
+  await seed('roomSessions/guest', session('guest', 'PRIVATE', new Date()));
   await check('guest start', false, () => updateDoc(doc(guest, 'rooms/PRIVATE'), { status: 'playing', generation: 1, tournament }));
   await seed('rooms/PLAYING', playing('PLAYING'));
   await check('join during Major', false, () => updateDoc(doc(outsider, 'rooms/PLAYING'), { 'players.outsider': member('outsider') }));
@@ -413,6 +445,50 @@ try {
     const candidate = { ...submission, ...changes };
     await check(name, false, () => setDoc(doc(db, `rooms/RESULT/results/${candidate.tournamentId}~${candidate.matchId}`), candidate));
   }
+  await seed('rooms/CHAT', lobby('CHAT'));
+  const signal = db => doc(db, 'rooms/CHAT/chatSignals/guest');
+  const offer = () => ({ guestUid: 'guest', hostUid: 'host', guestPageId: 'page-guest', connectionId: 'connection', offer: 'sdp', createdAt: serverTimestamp() });
+  await check('guest creates chat offer', true, () => setDoc(signal(guest), offer()));
+  await check('host reads chat offer', true, () => getDoc(signal(host)));
+  await check('guest reads own chat offer', true, () => getDoc(signal(guest)));
+  await check('outsider cannot read chat offer', false, () => getDoc(signal(outsider)));
+  await check('anonymous cannot read chat offer', false, () => getDoc(signal(anonymous)));
+  await check('host lists chat offers with limit', true, () => getDocs(query(collection(host, 'rooms/CHAT/chatSignals'), limit(8))));
+  await check('host cannot list without limit', false, () => getDocs(collection(host, 'rooms/CHAT/chatSignals')));
+  await check('host cannot list above limit', false, () => getDocs(query(collection(host, 'rooms/CHAT/chatSignals'), limit(9))));
+  await check('guest cannot list chat offers', false, () => getDocs(query(collection(guest, 'rooms/CHAT/chatSignals'), limit(8))));
+  await check('guest cannot answer offer', false, () => updateDoc(signal(guest), { answer: 'sdp', hostPageId: 'page-host' }));
+  await check('host cannot modify offer', false, () => updateDoc(signal(host), { offer: 'changed', answer: 'sdp', hostPageId: 'page-host' }));
+  await check('host cannot answer from stale page', false, () => updateDoc(signal(host), { answer: 'sdp', hostPageId: 'stale' }));
+  await check('host cannot answer with oversized SDP', false, () => updateDoc(signal(host), { answer: 'x'.repeat(32001), hostPageId: 'page-host' }));
+  await check('host answers chat offer', true, () => updateDoc(signal(host), { answer: 'sdp', hostPageId: 'page-host' }));
+  await check('host cannot replace answer', false, () => updateDoc(signal(host), { answer: 'changed' }));
+  await check('guest replaces answered offer', true, () => setDoc(signal(guest), { ...offer(), connectionId: 'next' }));
+  for (const [name, changes] of [
+    ['extra field', { extra: true }], ['answer', { answer: 'sdp' }], ['host page', { hostPageId: 'page-host' }],
+    ['wrong guest', { guestUid: 'host' }], ['wrong host', { hostUid: 'guest' }], ['stale guest page', { guestPageId: 'stale' }],
+    ['empty connection', { connectionId: '' }], ['long connection', { connectionId: 'x'.repeat(101) }],
+    ['non-string SDP', { offer: 1 }], ['empty SDP', { offer: '' }], ['oversized SDP', { offer: 'x'.repeat(32001) }],
+    ['client timestamp', { createdAt: new Date() }],
+  ]) await check(`chat rejects ${name}`, false, () => setDoc(signal(guest), { ...offer(), ...changes }));
+  await check('outsider cannot write chat offer', false, () => setDoc(signal(outsider), offer()));
+  await check('anonymous cannot write chat offer', false, () => setDoc(signal(anonymous), offer()));
+  await seed('roomSessions/guest', { ...session('guest', 'CHAT', new Date()), pageId: 'stale' });
+  await check('stale guest session cannot write', false, () => setDoc(signal(guest), offer()));
+  await check('host cannot answer stale guest session', false, () => updateDoc(signal(host), { answer: 'sdp', hostPageId: 'page-host' }));
+  await seed('roomSessions/guest', session('guest', 'CHAT', new Date()));
+  await seed('roomSessions/host', { ...session('host', 'CHAT', new Date()), pageId: 'stale' });
+  await check('stale host session cannot answer', false, () => updateDoc(signal(host), { answer: 'sdp', hostPageId: 'page-host' }));
+  await check('guest cannot offer to stale host', false, () => setDoc(signal(guest), offer()));
+  await seed('roomSessions/host', session('host', 'CHAT', new Date()));
+  await check('outsider cannot delete chat offer', false, () => deleteDoc(signal(outsider)));
+  await check('host deletes chat offer', true, () => deleteDoc(signal(host)));
+  await check('guest recreates chat offer', true, () => setDoc(signal(guest), offer()));
+  await check('guest deletes chat offer', true, () => deleteDoc(signal(guest)));
+  await seed('rooms/CHAT', { ...lobby('CHAT'), status: 'closed' });
+  await check('closed room rejects chat offer', false, () => setDoc(signal(guest), offer()));
+  await check('closed room rejects chat list', false, () => getDocs(query(collection(host, 'rooms/CHAT/chatSignals'), limit(8))));
+
 } finally {
   for (const { app, db } of clients) { await terminate(db); await deleteApp(app); }
   const response = await fetch(`${origin}/emulator/v1/projects/${project}/databases/(default)/documents`, { method: 'DELETE', signal: AbortSignal.timeout(10000) });

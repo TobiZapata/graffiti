@@ -11,7 +11,7 @@ import RoomRolesDialog from "@/components/RoomRolesDialog";
 import { useAuth } from "@/context/AuthContext";
 import { useTournament } from "@/context/TournamentContext";
 import { validOrganization } from "@/lib/localCareer.mjs";
-import { leaveRoom, setRoomParticipation, setRoomReady, startRoomMajor } from "@/lib/roomService";
+import { kickRoomMember, leaveRoom, setRoomReady, startRoomMajor } from "@/lib/roomService";
 import { ROLE_FIELDS } from "@/lib/majorDisplay.mjs";
 import { decodeRoom } from "@/lib/roomStorage.mjs";
 
@@ -52,7 +52,7 @@ export default function RoomPage({ params }) {
   const players = room.players || [];
   const me = players.find(p => p.uid === user.uid && !p.left);
   const isHost = room.hostId === user.uid;
-  const included = players.filter(p => p.participating && !p.left);
+  const included = players.filter(p => !p.left);
   const canStart = included.length > 0 && included.every(p => p.isReady);
   const inLobby = room.status === "lobby";
   const canReady = validOrganization(organization) && organization.squad.length === 5;
@@ -65,7 +65,7 @@ export default function RoomPage({ params }) {
           <h1 className="text-[20px] font-medium break-words">{room.name || `Room ${roomId}`}</h1>
           <p className="meta mt-2">Room code: <span className="tabular tracking-[0.1em]">{roomId}</span></p>
           <p className="meta mt-2">{room.playbackMode === "highlights" ? "Highlights · one third of rounds, rounded up. All rounds count." : "Full match · every round."}</p>
-          <p className="mt-1 text-ink-2">{inLobby ? "Share the code. The host starts the Major once everyone taking part is ready." : "A Major is being played in this room."}</p>
+          <p className="mt-1 text-ink-2">{inLobby ? "Share the code. The host starts the Major once everyone in the room is ready." : "A Major is being played in this room."}</p>
         </div>
         {me && inLobby && <button type="button" disabled={!!busy} className="link disabled:opacity-40"
           onClick={() => run("leave", async () => { await leaveRoom(roomId, user.uid); router.push("/multiplayer"); })}>
@@ -84,7 +84,7 @@ export default function RoomPage({ params }) {
           <ul className="mt-4 grid gap-4 sm:grid-cols-2">{players.map(p => {
             const org = p.organization;
             const playing = room.status === "playing" && room.tournament?.participantUids?.includes(p.uid);
-            const state = p.left ? "Left the Major" : !p.participating ? "Sitting out" : playing ? "In the Major" : p.isReady ? "Ready" : "Getting ready";
+            const state = p.left ? "Left the Major" : playing ? "In the Major" : p.isReady ? "Ready" : "Getting ready";
             return <li key={p.uid} className="rounded-xl bg-raised p-4">
               <div className="flex items-center gap-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -93,8 +93,8 @@ export default function RoomPage({ params }) {
                   <p className="truncate font-medium">{org?.name || p.teamName}</p>
                   <p className="meta truncate">{p.name}{p.uid === user.uid ? " · you" : ""}{p.uid === room.hostId ? " · host" : ""}</p>
                 </div>
-                <span className={`flex items-center gap-2 text-[13px] ${p.isReady && p.participating ? "text-ink" : "text-ink-2"}`}>
-                  <span className="h-1.5 w-1.5 rounded-full" aria-hidden="true" style={{ background: p.isReady && p.participating ? "var(--positive)" : "var(--ink-3)" }} />
+                <span className={`flex items-center gap-2 text-[13px] ${p.isReady ? "text-ink" : "text-ink-2"}`}>
+                  <span className="h-1.5 w-1.5 rounded-full" aria-hidden="true" style={{ background: p.isReady ? "var(--positive)" : "var(--ink-3)" }} />
                   {state}
                 </span>
               </div>
@@ -102,9 +102,10 @@ export default function RoomPage({ params }) {
                 const tags = Object.entries(ROLE_FIELDS).filter(([field]) => org[field] === String(i)).map(([, label]) => label);
                 return <li key={i} className="flex justify-between gap-2"><PlayerIdentity player={entry.player} /><span className="shrink-0 text-ink-3">{tags.join(" · ")}</span></li>;
               })}</ul>}
-              {isHost && inLobby && !p.left && <button type="button" disabled={!!busy} className="link mt-3 text-[13px] underline disabled:opacity-40"
-                onClick={() => run(`participation-${p.uid}`, () => setRoomParticipation(roomId, user.uid, p.uid, !p.participating))}>
-                {p.participating ? "Leave out of the next Major" : "Include in the next Major"}
+              {isHost && inLobby && !p.left && p.uid !== user.uid && <button type="button" disabled={!!busy} className="link mt-3 text-[13px] underline disabled:opacity-40"
+                aria-label={`Kick ${p.teamName || p.name} from the lobby`}
+                onClick={() => run(`kick-${p.uid}`, () => kickRoomMember(roomId, user.uid, p.uid))}>
+                {busy === `kick-${p.uid}` ? "Removing…" : "Kick player"}
               </button>}
             </li>;
           })}</ul>
@@ -116,7 +117,7 @@ export default function RoomPage({ params }) {
             <p className="mt-1 text-ink-2">It lives on this device. Marking yourself ready shares its current roster and roles with the room.</p>
             {!canReady && <p className="mt-2 text-negative">Your organization needs a full roster and valid roles before you can be ready.</p>}
             <div className="mt-6 flex flex-wrap gap-3">
-              <button type="button" disabled={!!busy || !me.participating || (!me.isReady && !canReady)} className="btn btn-primary"
+              <button type="button" disabled={!!busy || (!me.isReady && !canReady)} className="btn btn-primary"
                 onClick={() => run("ready", () => setRoomReady(roomId, user.uid, organization, !me.isReady))}>
                 {busy === "ready" ? "Saving…" : me.isReady ? "Not ready" : "I'm ready"}
               </button>
@@ -128,7 +129,7 @@ export default function RoomPage({ params }) {
 
           {isHost && inLobby && <section className="card p-6" aria-labelledby="host-title">
             <h2 id="host-title" className="text-[16px] font-medium">Host</h2>
-            <p className="mt-1 text-ink-2">{canStart ? "Everyone taking part is ready." : "Everyone taking part has to be ready first."}</p>
+            <p className="mt-1 text-ink-2">{canStart ? "Everyone in the room is ready." : "Everyone in the room has to be ready first."}</p>
             <button type="button" disabled={!!busy || !canStart} className="btn btn-primary btn-lg mt-6"
               onClick={() => run("start", () => startRoomMajor(roomId, user.uid))}>{busy === "start" ? "Starting…" : "Start Major"}</button>
           </section>}

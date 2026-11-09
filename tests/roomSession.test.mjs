@@ -29,6 +29,16 @@ test('Major departure transfers host and records only a participating unfinished
   assert.equal(roomDeparture({ ...playing, tournament: { stage: 'won' } }, 'guest', 'navigation').forfeit, false);
   assert.equal(roomDeparture({ ...playing, players: [host, { ...guest, participating: false }] }, 'guest', 'navigation').forfeit, false);
 });
+
+test('a lobby kick removes only its target and never records an abandonment', () => {
+  const departure = roomDeparture(room, 'guest', 'kicked');
+  assert.deepEqual(departure.change.players, [host]);
+  assert.deepEqual(departure.change.lastDeparture, { uid: 'guest', reason: 'kicked' });
+  assert.equal(departure.change.hostId, 'host');
+  assert.equal(departure.forfeit, false);
+  assert.equal(departure.closed, false);
+  assert.deepEqual(room.players, [host, guest]);
+});
 test('presence expires after the lease or an explicit leaving signal, not visibility', () => {
   const now = 1000000;
   assert.equal(roomSessionExpired({ heartbeat: { toMillis: () => now - SESSION_LEASE_MS + 1 } }, now), false);

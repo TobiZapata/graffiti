@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { collection, doc, getDoc, limit, onSnapshot, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocFromServer, limit, onSnapshot, query, where } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { decodeRoom } from "@/lib/roomStorage.mjs";
@@ -116,10 +116,10 @@ export function RoomSessionProvider({ children }) {
 
   useEffect(() => {
     if (!entry || !uid) return;
-    let stopped = false;
+    let stopped = false, ended = false;
     let sessions = null;
     let reconciling = null;
-    const report = err => { if (!stopped) setError(err.message || "Could not update the room session."); };
+    const report = err => { if (!stopped && !ended) setError(err.message || "Could not update the room session."); };
     const heartbeat = () => heartbeatRoomSession(uid, entry.pageId).catch(report);
     const reconcile = () => {
       if (!reconciling) reconciling = reconcileRoomSessions(entry.roomId).catch(report).finally(() => { reconciling = null; });
@@ -133,13 +133,13 @@ export function RoomSessionProvider({ children }) {
     const heartTimer = setInterval(heartbeat, SESSION_HEARTBEAT_MS);
     // Check elapsed leases even when no peer sends another snapshot after a crash.
     const reconcileTimer = setInterval(checkSessions, 30000);
-    let ended = false;
     function endSession(message) {
       if (stopped || ended || leaving.current) return;
       ended = true;
       leaving.current = true;
       try {
         if (readRoomSession()?.pageId === entry.pageId) clearRoomSession();
+        setError("");
         setNotice(message);
         router.replace("/multiplayer");
       } catch (err) { report(err); }
@@ -150,10 +150,16 @@ export function RoomSessionProvider({ children }) {
       const data = snapshot.exists() ? decodeRoom(snapshot.data()) : null;
       setRoom(data);
       if (!data || data.status === "closed") endSession("This room was closed. You have returned to multiplayer.");
-      else if (!data.players?.some(p => p.uid === uid && !p.left)) endSession("You have left this room. An active Major may have been forfeited.");
+      else if (!data.players?.some(p => p.uid === uid && !p.left)) endSession(data.lastDeparture?.uid === uid && data.lastDeparture.reason === "kicked" ? "The host removed you from the lobby." : "You have left this room. An active Major may have been forfeited.");
     }, report);
     const unsubscribeOwn = onSnapshot(doc(db, "roomSessions", uid), snapshot => {
-      if (!snapshot.metadata.fromCache && (!snapshot.exists() || snapshot.data().pageId !== entry.pageId)) endSession("Your room session ended. You have returned to multiplayer.");
+      if (snapshot.metadata.fromCache || stopped || ended) return;
+      if (!snapshot.exists()) {
+        getDocFromServer(doc(db, "rooms", entry.roomId)).then(room => {
+          const departure = room.data()?.lastDeparture;
+          endSession(departure?.uid === uid && departure.reason === "kicked" ? "The host removed you from the lobby." : "Your room session ended. You have returned to multiplayer.");
+        }).catch(() => endSession("Your room session ended. You have returned to multiplayer."));
+      } else if (snapshot.data().pageId !== entry.pageId) endSession("Your room session ended. You have returned to multiplayer.");
     }, report);
     const unsubscribePeers = onSnapshot(query(collection(db, "roomSessions"), where("roomId", "==", entry.roomId), limit(8)), { includeMetadataChanges: true }, snapshot => {
       if (stopped) return;

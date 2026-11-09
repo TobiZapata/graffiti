@@ -2,7 +2,7 @@ import catalog from '../data/teams.json';
 import { upgradeOrganization } from './upgradeOrganization.mjs';
 import { auth, db } from './firebase';
 import { collection, doc, FieldPath, getDoc, getDocFromServer, getDocs, limit, query, runTransaction, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
-import { assertCanReady, completedFinal, lobby, member, participation, readyPlayers } from './roomLifecycle.mjs';
+import { completedFinal, lobby, member, readyPlayers } from './roomLifecycle.mjs';
 import { decodeRoom, encodePlayers } from './roomStorage.mjs';
 import { clearRoomSession, getPageSession, readRoomSession, rememberRoomSession, roomDeparture, roomSessionExpired } from './roomSession.mjs';
 import { initializeMultiplayerTournament } from './tournamentService';
@@ -82,20 +82,23 @@ export async function setRoomReady(code, uid, organization, ready) {
     const room = await readRoom(tx, ref);
     lobby(room); ownPage(room, uid);
     const player = room.players.find(p => p.uid === uid);
-    assertCanReady(player, ready);
-    tx.update(ref, new FieldPath('players', uid), { ...player, organization: updated.organization, squad: updated.squad, teamName: updated.teamName, icon: updated.icon, isReady: ready });
+    tx.update(ref, new FieldPath('players', uid), { ...player, organization: updated.organization, squad: updated.squad, teamName: updated.teamName, icon: updated.icon, participating: true, isReady: ready });
   });
 }
 
-export async function setRoomParticipation(code, uid, targetUid, participating) {
+export async function kickRoomMember(code, uid, targetUid) {
   authenticate(uid);
-  if (typeof participating !== 'boolean') throw new Error('Invalid state.');
   const ref = roomRef(code);
   await runTransaction(db, async tx => {
     const room = await readRoom(tx, ref);
     lobby(room); host(room, uid); ownPage(room, uid);
-    if (!room.players.some(p => p.uid === targetUid)) throw new Error('Player not found.');
-    tx.update(ref, { players: encodePlayers(room.players.map(p => p.uid === targetUid ? participation(p, participating) : p)) });
+    if (targetUid === uid) throw new Error('Use Leave room to leave your own lobby.');
+    const departure = roomDeparture(room, targetUid, 'kicked');
+    if (!departure) throw new Error('This player is no longer in the lobby.');
+    const session = await tx.get(sessionRef(targetUid));
+    if (!session.exists() || session.data().uid !== targetUid || session.data().roomId !== room.id || session.data().pageId !== departure.target.sessionId) throw new Error('This player’s room session has changed. Refresh the lobby.');
+    tx.delete(session.ref);
+    tx.update(ref, { ...departure.change, players: encodePlayers(departure.change.players) });
   });
 }
 
