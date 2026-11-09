@@ -6,6 +6,18 @@ const slot = i => ({player: catalog[i].players[0], team: {name: `T${i}`, major: 
 const org = () => ({id: 'club', squad: [0,1,2,3,4].map(slot), starUid: '4', iglUid: '1', mainAwperUid: '0', benchTokens: 1});
 const major = id => ({tournamentId: id, stage: 'won', rosterTarget: 'champion', matches: [{completed: true, isPlayerMatch: true, round: 'Final', teamA: {isPlayer: true}, teamB: {name: 'Other'}, result: {winner: 'player_team'}}]});
 
+test('departing assigned specialists pass each role to the highest matching score', () => {
+ const current = { ...org(), mainAwperUid: '0', iglUid: '0', squad: org().squad.map((slot, i) => ({ ...slot, player: { ...slot.player, awp: [99,50,90,70,60][i], igl: [99,80,40,95,50][i] } })) };
+ const benched = benchRosterPlayer(current, 0);
+ assert.equal(benched.mainAwperUid, '1'); assert.equal(benched.iglUid, '2'); assert.equal(benched.starUid, '3');
+ const swapped = swapBenchPlayer({ ...current, bench: { player: { name: 'Incoming', awp: 30, igl: 30 } } }, 0);
+ assert.equal(swapped.mainAwperUid, '2'); assert.equal(swapped.iglUid, '3');
+ const retained = benchRosterPlayer({ ...current, iglUid: '1' }, 0);
+ assert.equal(retained.iglUid, '0');
+ const tied = benchRosterPlayer({ ...current, squad: current.squad.map(slot => ({ ...slot, player: { ...slot.player, awp: 50, igl: 50 } })) }, 0);
+ assert.equal(tied.mainAwperUid, '0'); assert.equal(tied.iglUid, '0');
+});
+
 test('incoming natural specialists receive missing roles through recruitment, promotion and swaps', () => {
  const specialists = catalog.map(team => team.id === 5 ? { ...team, mainAwperUid: '5', iglUid: '5' } : team);
  const short = { ...org(), squad: [0,1,2,3].map(slot), starUid: '3', mainAwperUid: '0', iglUid: '1' };

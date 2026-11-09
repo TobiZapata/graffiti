@@ -16,6 +16,9 @@ Major snapshots are separate: changing a player never rewrites an old match.
   automatically receives that role if no other starter has that natural role.
   Natural roles come from the player's original Major roster; a dual AWPer/IGL
   can receive both. Existing specialists and the Star assignment are preserved.
+- When an assigned AWPer or IGL leaves the active roster, that role moves to the
+  remaining starter with the highest AWP or IGL score, respectively. Ties keep
+  roster order; roles whose holder remains active are unchanged.
 - Vacancies use the existing three-team draft. Offers are deterministic across
   reloads, exclude teams with no eligible players and change after a signing.
   There is no replacement currency or paid reroll system in this version.

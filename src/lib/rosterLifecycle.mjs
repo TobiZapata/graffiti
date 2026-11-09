@@ -27,7 +27,10 @@ function remap(org, squad) {
     const oldIndex = Number(org[role]);
     const old = Number.isInteger(oldIndex) && String(oldIndex) === org[role] ? org.squad[oldIndex] : null;
     const index = old ? squad.indexOf(old) : -1;
-    result[role] = String(index < 0 ? 0 : index);
+    const field = role === 'mainAwperUid' ? 'awp' : role === 'iglUid' ? 'igl' : null;
+    const replacement = field ? squad.reduce((best, slot, candidate) =>
+      (Number.isFinite(slot.player[field]) ? slot.player[field] : -1) > (Number.isFinite(squad[best].player[field]) ? squad[best].player[field] : -1) ? candidate : best, 0) : 0;
+    result[role] = String(index < 0 ? replacement : index);
   }
   return result;
 }
