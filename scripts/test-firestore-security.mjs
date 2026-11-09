@@ -382,6 +382,24 @@ try {
     await seed(`rooms/${id}BAD`, { ...playing(`${id}BAD`), tournament: { ...tournament, matches: [{ ...match, round }] } });
     await check(`${id} inconsistent series`, false, () => setDoc(doc(host, `rooms/${id}BAD/results/major1~match1`), { ...series, result: { ...series.result, scoreA: 1 } }));
   }
+  for (const [round, winners] of [['Quarterfinals', ['a', 'b', 'a']], ['Quarterfinals', ['b', 'a', 'b']], ['Final', ['a', 'b', 'a', 'b', 'a']], ['Final', ['b', 'a', 'b', 'a', 'b']], ['Final', ['a', 'a', 'b', 'a']], ['Final', ['b', 'b', 'a', 'b']]]) {
+    const id = `LONG${round}${winners.length}${winners.at(-1)}`;
+    await seed(`rooms/${id}`, { ...playing(id), tournament: { ...tournament, matches: [{ ...match, round }] } });
+    const maps = winners.map(winnerId => ({ map: 'de_mirage', scoreA: winnerId === 'a' ? 13 : 7, scoreB: winnerId === 'b' ? 13 : 7, winnerId }));
+    const scoreA = winners.filter(winner => winner === 'a').length;
+    const series = { ...submission, result: { ...result, playerRatings: Array(10).fill(1.2), scoreA, scoreB: winners.length - scoreA, winner: winners.at(-1), maps } };
+    await check(`${id} full-length series with ratings`, true, () => setDoc(doc(host, `rooms/${id}/results/major1~match1`), series));
+    const realMatch = { ...match, round, teamA: { ...teams[0], id: 'a' }, teamB: { ...teams[1], id: 'b' } };
+    await seed(`rooms/${id}REAL`, { ...playing(`${id}REAL`), tournament: { ...tournament, matches: [realMatch] } });
+    await check(`${id} real teams with ratings`, true, () => setDoc(doc(host, `rooms/${id}REAL/results/major1~match1`), { ...series, result: { ...series.result, teamA: realMatch.teamA, teamB: realMatch.teamB } }));
+    const lastMap = maps.at(-1);
+    for (const field of ['map', 'scoreA', 'scoreB', 'winnerId', 'extra']) {
+      const invalid = { ...lastMap, extra: true };
+      if (field !== 'extra') { delete invalid.extra; delete invalid[field]; }
+      await seed(`rooms/${id}BADMAP`, { ...playing(`${id}BADMAP`), tournament: { ...tournament, matches: [{ ...match, round }] } });
+      await check(`${id} rejects map ${field}`, false, () => setDoc(doc(host, `rooms/${id}BADMAP/results/major1~match1`), { ...series, result: { ...series.result, maps: [...maps.slice(0, -1), invalid] } }));
+    }
+  }
   for (const [name, db, changes] of [
     ['outsider result', outsider, { submittedBy: 'outsider' }],
     ['other match', host, { matchId: 'other' }],

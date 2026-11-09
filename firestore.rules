@@ -165,13 +165,19 @@ service cloud.firestore {
             request.resource.data.tournament.get('abandonedUids',[]) == resource.data.tournament.get('abandonedUids',[]))))) || departure(resource.data,request.resource.data));
       match /results/{resultId} {
         function validMap(m, game) {
-          return m is map && m.keys().hasOnly(['map','scoreA','scoreB','winnerId']) && m.keys().hasAll(['map','scoreA','scoreB','winnerId']) &&
-            m.map == 'de_mirage' && m.scoreA is int && m.scoreB is int && m.scoreA >= 0 && m.scoreB >= 0 &&
-            ((m.scoreA > m.scoreB && m.winnerId == game.teamA.id) || (m.scoreB > m.scoreA && m.winnerId == game.teamB.id));
+          let a = m.scoreA;
+          let b = m.scoreB;
+          let winner = m.winnerId;
+          return m.keys().hasOnly(['map','scoreA','scoreB','winnerId']) &&
+            m.map == 'de_mirage' && a is int && b is int && a >= 0 && b >= 0 &&
+            (a > b ? winner == game.teamA.id : b > a && winner == game.teamB.id);
         }
-        function mapsValid(maps, game, i) { return maps.size() <= i || validMap(maps[i], game); }
-        function mapWon(maps, i, id) { return maps.size() > i && maps[i].winnerId == id ? 1 : 0; }
-        function wins(maps, id) { return mapWon(maps,0,id) + mapWon(maps,1,id) + mapWon(maps,2,id) + mapWon(maps,3,id) + mapWon(maps,4,id); }
+        function wins(maps, id) {
+          let count = maps.size();
+          let winners = [maps[0].winnerId, count > 1 ? maps[1].winnerId : '', count > 2 ? maps[2].winnerId : '',
+            count > 3 ? maps[3].winnerId : '', count > 4 ? maps[4].winnerId : ''];
+          return (id == '' ? count : 5) - winners.removeAll([id]).size();
+        }
         function bestOf(game) {
           return game.round == 'Final' ? 5 : (game.round in ['Quarterfinals','Semifinals'] || game.teamA.get('wins',0) == 2 || game.teamA.get('losses',0) == 2 || game.teamB.get('wins',0) == 2 || game.teamB.get('losses',0) == 2 ? 3 : 1);
         }
@@ -181,32 +187,35 @@ service cloud.firestore {
           let a = wins(result.maps, game.teamA.id);
           let b = result.maps.size() - a;
           let last = result.maps[result.maps.size() - 1].winnerId;
-          return result.maps.size() <= n && (a == needed || b == needed) && a <= needed && b <= needed &&
-            ((last == game.teamA.id && a == needed) || (last == game.teamB.id && b == needed)) &&
+          return result.maps.size() <= n &&
+            (last == game.teamA.id ? a == needed && b < needed : b == needed && a < needed) &&
             (n == 1 ? (result.scoreA == result.maps[0].scoreA && result.scoreB == result.maps[0].scoreB) : (result.scoreA == a && result.scoreB == b));
         }
         function room() { return get(roomPath(code)).data; }
         allow read: if signed() && (request.auth.uid in room().players || room().status == 'closed' || expired(room().hostId));
         // Numeric comparisons also reject other types, keeping BO5 writes within the evaluation budget.
-        function validRating(value) { return value >= 0 && value <= 10; }
         function validRatings(result) {
           let values = result.get('playerRatings', []);
           return !('playerRatings' in result) || (values is list && values.size() == 10 &&
-            validRating(values[0]) && validRating(values[1]) && validRating(values[2]) && validRating(values[3]) && validRating(values[4]) &&
-            validRating(values[5]) && validRating(values[6]) && validRating(values[7]) && validRating(values[8]) && validRating(values[9]));
+            values[0] >= 0 && values[0] <= 10 && values[1] >= 0 && values[1] <= 10 && values[2] >= 0 && values[2] <= 10 && values[3] >= 0 && values[3] <= 10 && values[4] >= 0 && values[4] <= 10 &&
+            values[5] >= 0 && values[5] <= 10 && values[6] >= 0 && values[6] <= 10 && values[7] >= 0 && values[7] <= 10 && values[8] >= 0 && values[8] <= 10 && values[9] >= 0 && values[9] <= 10);
         }
         function canSubmit(r, d) {
-          let m = r.tournament.matches[d.matchIndex];
+          let t = r.tournament;
+          let m = t.matches[d.matchIndex];
           let result = d.result;
-          return r.schemaVersion == 3 && live(r,request.auth.uid) && r.status == 'playing' && r.tournament.stage in ['swiss','playoffs'] && r.tournament.matchesStarted == true &&
-          d.keys().hasOnly(['tournamentId','matchId','matchIndex','submittedBy','result']) && d.keys().hasAll(['tournamentId','matchId','matchIndex','submittedBy','result']) &&
-          d.tournamentId == r.tournament.tournamentId && d.matchId is string && d.matchId.size() <= 200 &&
+          let maps = result.maps;
+          return r.schemaVersion == 3 && live(r,request.auth.uid) && r.status == 'playing' && t.stage in ['swiss','playoffs'] && t.matchesStarted == true &&
+          d.keys().hasOnly(['tournamentId','matchId','matchIndex','submittedBy','result']) &&
+          d.tournamentId == t.tournamentId && d.matchId is string && d.matchId.size() <= 200 &&
           resultId == d.tournamentId + '~' + d.matchId && d.submittedBy == request.auth.uid &&
-          d.matchIndex is int && d.matchIndex >= 0 && d.matchIndex < r.tournament.matches.size() &&
-          m.id == d.matchId && m.completed == false && !m.playerUids.toSet().hasAny(r.tournament.get('abandonedUids',[])) && request.auth.uid in m.playerUids && request.auth.uid in r.players &&
-          result.keys().hasOnly(['teamA','teamB','scoreA','scoreB','winner','maps','playerRatings']) && result.keys().hasAll(['teamA','teamB','scoreA','scoreB','winner','maps']) && validRatings(result) &&
+          d.matchIndex is int && d.matchIndex >= 0 && d.matchIndex < t.matches.size() &&
+          m.id == d.matchId && m.completed == false && !m.playerUids.toSet().hasAny(t.get('abandonedUids',[])) && request.auth.uid in m.playerUids && request.auth.uid in r.players &&
+          result.keys().hasOnly(['teamA','teamB','scoreA','scoreB','winner','maps','playerRatings']) && validRatings(result) &&
           result.teamA == m.teamA && result.teamB == m.teamB &&
-          result.maps is list && result.maps.size() >= 1 && result.maps.size() <= 5 && mapsValid(result.maps,m,0) && mapsValid(result.maps,m,1) && mapsValid(result.maps,m,2) && mapsValid(result.maps,m,3) && mapsValid(result.maps,m,4) &&
+          maps is list && maps.size() >= 1 && maps.size() <= 5 && validMap(maps[0],m) &&
+          (maps.size() < 2 || validMap(maps[1],m)) && (maps.size() < 3 || validMap(maps[2],m)) &&
+          (maps.size() < 4 || validMap(maps[3],m)) && (maps.size() < 5 || validMap(maps[4],m)) &&
           validSeries(result,m) && result.scoreA is int && result.scoreB is int && result.scoreA >= 0 && result.scoreB >= 0 &&
           ((result.scoreA > result.scoreB && result.winner == m.teamA.id) ||
            (result.scoreB > result.scoreA && result.winner == m.teamB.id));
