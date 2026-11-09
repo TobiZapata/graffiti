@@ -2,7 +2,7 @@ import { record } from "@/lib/majorDisplay.mjs";
 import TeamMark from "./TeamMark";
 import { swissRoundResult } from "@/lib/swissStandings.mjs";
 
-const status = t => t.wins >= 3 ? ["Qualified", "text-positive"] : t.losses >= 3 ? ["Eliminated", "text-ink-3"] : ["Playing", "text-ink-2"];
+const status = t => t.wins >= 3 ? ["Qualified", "text-positive"] : t.losses >= 3 ? ["Eliminated", "text-negative"] : ["Playing", "text-ink-2"];
 
 export default function StandingsTable({ standings, matches = [], isMine, onTeamClick }) {
   const rows = [...standings].sort((a, b) => b.wins - a.wins || a.losses - b.losses);
