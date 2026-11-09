@@ -14,8 +14,8 @@ export default function DraftBoard({ teams, pickedPlayers, onPick, selectedTeamI
             className="card flex h-full w-full cursor-pointer flex-col p-6 text-left transition-colors hover:bg-raised focus-visible:outline-2 focus-visible:outline-ink">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={team.icon} alt="" width="56" height="56" className="mb-5 h-14 w-14 self-center object-contain" />
-            <span className="text-[24px] font-medium leading-tight">{team.name}</span>
-            <span className="meta mt-2">{team.major}</span>
+            <span className="w-full text-center text-[24px] font-medium leading-tight">{team.name}</span>
+            <span className="meta mt-2 w-full text-center">{team.major}</span>
             <span className="mt-6 grid gap-2 text-[13px] text-ink-2">{team.players.map(player => <span key={player.id} className={pickedPlayers.some(other => sameDraftPlayer(player, other)) ? "opacity-40" : ""}><PlayerIdentity player={player} /></span>)}</span>
           </button> : <>
           <div className="flex items-center gap-3">
