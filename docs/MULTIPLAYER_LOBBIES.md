@@ -33,6 +33,13 @@ inmutables. Las reglas anteriores rechazan el campo nuevo. No desplegar solo la 
 
 ## Reglas de uso
 
+El host puede expulsar a otro jugador con Kick player solo mientras la sala esta
+en el lobby. La expulsión retira su membresia y libera su sesion atomicamente,
+lo devuelve a multiplayer y desconecta su chat. No cuenta como abandono ni borra
+su organizacion o historial. No es un bloqueo permanente: puede volver a entrar.
+Todos los miembros del lobby participan en el proximo Major; ya no existe la
+opcion de dejar a alguien fuera sin retirarlo de la sala.
+
 Cada usuario tiene una sola sala activa, reservada en roomSessions/{uid} al crear
 o entrar. Otra pestana no puede abrir una segunda sala ni tomar la sesion original.
 La navegacion dentro de /room/{code} conserva la sesion entre lobby, cuadro y replay.

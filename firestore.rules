@@ -52,7 +52,7 @@ service cloud.firestore {
     }
     function member(p, uid, host) {
       return p is map && p.keys().hasOnly(['uid','name','isHost','organization','participating','isReady','squad','teamName','icon','sessionId','left']) &&
-        p.uid == uid && p.sessionId is string && p.sessionId.size() > 0 && p.left == false && p.name is string && p.name.size() <= 100 && p.isHost == host && p.participating is bool && p.isReady is bool &&
+        p.uid == uid && p.sessionId is string && p.sessionId.size() > 0 && p.left == false && p.name is string && p.name.size() <= 100 && p.isHost == host && p.participating == true && p.isReady is bool &&
         (!p.isReady || p.participating) && validOrganization(p.organization) && p.squad == p.organization.squad && p.teamName == p.organization.name && p.icon == p.organization.icon;
     }
     function locked(r, uid) {
@@ -62,8 +62,7 @@ service cloud.firestore {
     }
     function startPlayer(old, next, i) {
       let keys = old.players.keys();
-      return keys.size() <= i || (old.players[keys[i]].participating ?
-        (keys[i] in next.tournament.participantUids && locked(next, keys[i])) : !(keys[i] in next.tournament.participantUids));
+      return keys.size() <= i || (keys[i] in next.tournament.participantUids && locked(next, keys[i]));
     }
     function releasePlayer(players, ids, i) {
       return ids.size() <= i || players[ids[i]].left || !existsAfter(lockPath(players[ids[i]].organization.id));
@@ -99,13 +98,6 @@ service cloud.firestore {
         releasePlayer(players,ids,0) && releasePlayer(players,ids,1) && releasePlayer(players,ids,2) && releasePlayer(players,ids,3) && releasePlayer(players,ids,4) && releasePlayer(players,ids,5) && releasePlayer(players,ids,6) && releasePlayer(players,ids,7) &&
         resetPlayer(players,updated,keys,0) && resetPlayer(players,updated,keys,1) && resetPlayer(players,updated,keys,2) && resetPlayer(players,updated,keys,3) && resetPlayer(players,updated,keys,4) && resetPlayer(players,updated,keys,5) && resetPlayer(players,updated,keys,6) && resetPlayer(players,updated,keys,7);
     }
-    function toggleAt(old, next, i) {
-      let keys = old.players.keys();
-      let uid = keys.size() > i ? keys[i] : '';
-      return keys.size() > i && uid in next.players && next.players.diff(old.players).affectedKeys().hasOnly([uid]) &&
-        next.players[uid].diff(old.players[uid]).affectedKeys().hasOnly(['participating','isReady']) &&
-        next.players[uid].participating is bool && next.players[uid].isReady == false;
-    }
     function lobbyUpdate(old, next) {
       let uid = request.auth.uid;
       let changed = next.players.diff(old.players).affectedKeys();
@@ -114,11 +106,9 @@ service cloud.firestore {
         (!(uid in old.players) && next.diff(old).affectedKeys().hasOnly(['players']) && changed.hasOnly([uid]) && next.players.size() == old.players.size() + 1 && next.players.size() <= 8 && member(next.players[uid],uid,false) && next.players[uid].participating && !next.players[uid].isReady) ||
         // Members may change their own readiness or validated organization.
         (uid in old.players && uid in next.players && next.diff(old).affectedKeys().hasOnly(['players']) && changed.hasOnly([uid]) &&
-          (next.players[uid].diff(old.players[uid]).affectedKeys().hasOnly(['isReady']) ?
-            (next.players[uid].isReady is bool && (!next.players[uid].isReady || next.players[uid].participating)) :
-            (next.players[uid].diff(old.players[uid]).affectedKeys().hasOnly(['organization','squad','teamName','icon','isReady']) && member(next.players[uid],uid,uid == old.hostId)))) ||
-        // Host can toggle another member's participation and reset their readiness.
-        (uid == old.hostId && next.diff(old).affectedKeys().hasOnly(['players']) && changed.size() == 1 && (toggleAt(old,next,0) || toggleAt(old,next,1) || toggleAt(old,next,2) || toggleAt(old,next,3) || toggleAt(old,next,4) || toggleAt(old,next,5) || toggleAt(old,next,6) || toggleAt(old,next,7)))
+          (next.players[uid].diff(old.players[uid]).affectedKeys().hasOnly(['participating','isReady']) ?
+            (next.players[uid].isReady is bool && next.players[uid].participating == true) :
+            (next.players[uid].diff(old.players[uid]).affectedKeys().hasOnly(['organization','squad','teamName','icon','participating','isReady']) && member(next.players[uid],uid,uid == old.hostId))))
       );
     }
     function departedPlayer(old, next, target, i) {
@@ -134,8 +124,11 @@ service cloud.firestore {
       let d = next.lastDeparture;
       let uid = d.uid;
       let forfeiting = old.status == 'playing' && old.tournament.stage != 'won' && uid in old.tournament.participantUids;
-      return d is map && d.keys().hasOnly(['uid','reason']) && d.keys().hasAll(['uid','reason']) && d.reason in ['navigation','reload','closed','timeout'] &&
-        uid in old.players && !old.players[uid].left && (request.auth.uid == uid || expired(uid)) && !existsAfter(sessionPath(uid)) &&
+      return d is map && d.keys().hasOnly(['uid','reason']) && d.keys().hasAll(['uid','reason']) && d.reason in ['navigation','reload','closed','timeout','kicked'] &&
+        uid in old.players && !old.players[uid].left && (d.reason == 'kicked' ?
+          (old.status == 'lobby' && request.auth.uid == old.hostId && uid != old.hostId && live(old,request.auth.uid) &&
+           get(sessionPath(uid)).data.uid == uid && get(sessionPath(uid)).data.roomId == old.id && get(sessionPath(uid)).data.pageId == old.players[uid].sessionId &&
+           next.diff(old).affectedKeys().hasOnly(['players','lastDeparture'])) : (request.auth.uid == uid || expired(uid))) && !existsAfter(sessionPath(uid)) &&
         next.diff(old).affectedKeys().hasOnly(['players','hostId','status','closedReason','tournament','lastDeparture']) &&
         next.players.keys().toSet().difference(old.players.keys().toSet()).size() == 0 &&
         departedPlayer(old,next,uid,0) && departedPlayer(old,next,uid,1) && departedPlayer(old,next,uid,2) && departedPlayer(old,next,uid,3) && departedPlayer(old,next,uid,4) && departedPlayer(old,next,uid,5) && departedPlayer(old,next,uid,6) && departedPlayer(old,next,uid,7) &&
@@ -163,6 +156,30 @@ service cloud.firestore {
             request.resource.data.tournament.participantUids == resource.data.tournament.participantUids &&
             request.resource.data.tournament.get('simulation',null) == resource.data.tournament.get('simulation',null) &&
             request.resource.data.tournament.get('abandonedUids',[]) == resource.data.tournament.get('abandonedUids',[]))))) || departure(resource.data,request.resource.data));
+      match /chatSignals/{guestUid} {
+        function room() { return get(roomPath(code)).data; }
+        function active(r) { return r.status in ['lobby','playing'] && live(r,request.auth.uid); }
+        function guestOffer(r, s) {
+          return request.auth.uid == guestUid && guestUid != r.hostId && live(r,r.hostId) &&
+            s.keys().hasOnly(['guestUid','hostUid','guestPageId','connectionId','offer','createdAt']) &&
+            s.guestUid == guestUid && s.hostUid == r.hostId && s.guestPageId == r.players[guestUid].sessionId &&
+            s.connectionId is string && s.connectionId.size() > 0 && s.connectionId.size() <= 100 &&
+            s.offer is string && s.offer.size() > 0 && s.offer.size() <= 32000 && s.createdAt == request.time;
+        }
+        function hostAnswer(r, s) {
+          return request.auth.uid == r.hostId && guestUid != r.hostId && live(r,guestUid) &&
+            resource.data.guestUid == guestUid && resource.data.hostUid == r.hostId &&
+            resource.data.guestPageId == r.players[guestUid].sessionId &&
+            !('answer' in resource.data) && !('hostPageId' in resource.data) &&
+            s.diff(resource.data).affectedKeys().hasOnly(['answer','hostPageId']) &&
+            s.answer is string && s.answer.size() > 0 && s.answer.size() <= 32000 &&
+            s.hostPageId == r.players[r.hostId].sessionId;
+        }
+        allow get: if signed() && active(room()) && (request.auth.uid == guestUid || request.auth.uid == room().hostId);
+        allow list: if signed() && active(room()) && request.auth.uid == room().hostId && request.query.limit <= 8;
+        allow create, update: if signed() && active(room()) && (guestOffer(room(),request.resource.data) || hostAnswer(room(),request.resource.data));
+        allow delete: if signed() && active(room()) && (request.auth.uid == guestUid || request.auth.uid == room().hostId);
+      }
       match /results/{resultId} {
         function validMap(m, game) {
           let a = m.scoreA;

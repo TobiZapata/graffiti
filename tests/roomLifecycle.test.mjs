@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertCanReady, member, organizationSnapshot, participation, readyPlayers, completedFinal } from '../src/lib/roomLifecycle.mjs';
+import { member, organizationSnapshot, readyPlayers, completedFinal } from '../src/lib/roomLifecycle.mjs';
 
 const org = { id: 'org', name: 'Team', icon: '/icon', colors: ['#123456', '#abcdef'], squad: Array.from({ length: 5 }, (_, i) => ({ player: { name: `P${i}` } })), mainAwperUid: '0', iglUid: '1', starUid: '2', createdAt: '2026-01-01', majorHistory: [] };
 test('snapshots validate and do not share history or roster references', () => {
@@ -21,14 +21,15 @@ test('v2 snapshots retain scores, images and shared roles without mutating the o
   assert.equal(next.squad[0].player.clutch,90);
   assert.throws(()=>organizationSnapshot({...next,squad:squad.map((s,i)=>i ? s : {player:{...s.player,firepower:101}})}));
 });
-test('start requires ready participating members and a lobby', () => {
+test('start requires every lobby member to be ready, including previously excluded members', () => {
   const player = member('one', 'One', org, true);
   const room = { status: 'lobby', players: [player, { ...player, uid: 'two', participating: false }] };
   assert.throws(() => readyPlayers(room));
   room.players[0].isReady = true;
-  assert.deepEqual(readyPlayers(room).map(p => p.uid), ['one']);
-  room.players[1].participating = true;
   assert.throws(() => readyPlayers(room));
+  room.players[1].isReady = true;
+  room.players[1].organization = { ...org, id: 'second-org' };
+  assert.deepEqual(readyPlayers(room).map(p => p.uid), ['one', 'two']);
   assert.throws(() => readyPlayers({ ...room, status: 'playing' }));
 });
 test('multiplayer rejects incomplete organizations', () => {
@@ -43,12 +44,7 @@ test('only a finished final can return to lobby', () => {
   assert.throws(() => completedFinal({ ...room, status: 'lobby' }));
   assert.throws(() => completedFinal({ ...room, tournament: { stage: 'won', matches: [{ ...final, result: { winner: 'other' } }] } }));
 });
-test('changing participation clears readiness and excluded members cannot ready', () => {
-  const player = { participating: true, isReady: true };
-  assert.equal(participation(player, true), player);
-  const excluded = participation(player, false);
-  assert.equal(excluded.isReady, false);
-  assert.throws(() => assertCanReady(excluded, true));
-  assert.doesNotThrow(() => assertCanReady(excluded, false));
-  assert.equal(participation({ ...excluded, isReady: true }, true).isReady, false);
+test('departed members do not block the next Major', () => {
+  const player = { ...member('one', 'One', org, true), isReady: true };
+  assert.deepEqual(readyPlayers({ status: 'lobby', players: [player, { ...player, uid: 'gone', left: true, isReady: false }] }), [player]);
 });

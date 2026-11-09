@@ -15,18 +15,10 @@ export function lobby(room) {
   if (!room || room.status !== 'lobby') throw new Error('The room is not in the lobby.');
 }
 
-export function participation(player, participating) {
-  return player.participating === participating ? player : { ...player, participating, isReady: false };
-}
-
-export function assertCanReady(player, ready) {
-  if (ready && !player.participating) throw new Error('A player who is sitting out cannot be ready.');
-}
-
 export function readyPlayers(room) {
   lobby(room);
-  const players = room.players.filter(p => p.participating);
-  if (!players.length || players.some(p => !p.isReady || !validOrganization(p.organization) || p.organization.squad.length !== 5)) throw new Error('Everyone taking part has to be ready.');
+  const players = room.players.filter(p => !p.left);
+  if (!players.length || players.some(p => !p.isReady || !validOrganization(p.organization) || p.organization.squad.length !== 5)) throw new Error('Everyone in the room has to be ready.');
   if (new Set(players.map(p => p.organization.id)).size !== players.length) throw new Error('An organization cannot take part twice.');
   return players;
 }
