@@ -31,6 +31,17 @@ function remap(org, squad) {
   }
   return result;
 }
+function assignIncomingRoles(org, index, catalog) {
+  const naturalRole = (slot, field) => {
+    const team = catalog.find(team => team.name === slot.team?.name && team.major === slot.team?.major);
+    return team?.[field] === String(slot.player.id) || String(slot.player.role || '').toUpperCase() === (field === 'mainAwperUid' ? 'AWPER' : 'IGL');
+  };
+  const result = { ...org };
+  for (const field of ['mainAwperUid', 'iglUid']) {
+    if (naturalRole(org.squad[index], field) && !org.squad.some((slot, other) => other !== index && naturalRole(slot, field))) result[field] = String(index);
+  }
+  return result;
+}
 function archive(former, slot) {
   const existing = former.find(s => identityConflict(s.player, slot.player));
   const remaining = former.filter(s => !identityConflict(s.player, slot.player));
@@ -90,16 +101,16 @@ export function benchRosterPlayer(org, index) {
   if (org.squad.length !== 5 || org.bench || org.benchTokens !== 1) throw new Error('Cannot bench player');
   return { ...remap(org, org.squad.filter((_, i) => i !== index)), bench: { ...org.squad[index], benchMajors: org.squad[index].benchMajors || 0 }, benchTokens: 0, rosterRevision: revision(org) };
 }
-export function swapBenchPlayer(org, index) {
+export function swapBenchPlayer(org, index, catalog = []) {
   checkIndex(org, index);
   if (!org.bench) throw new Error('No bench player');
   const squad = [...org.squad]; squad[index] = org.bench;
-  return { ...remap(org, squad), bench: org.squad[index] };
+  return assignIncomingRoles({ ...remap(org, squad), bench: org.squad[index] }, index, catalog);
 }
-export function promoteBenchPlayer(org) {
+export function promoteBenchPlayer(org, catalog = []) {
   checkOrg(org);
   if (!org.bench || org.squad.length >= 5) throw new Error('Cannot promote player');
-  return { ...org, squad: [...org.squad, org.bench], bench: null };
+  return assignIncomingRoles({ ...org, squad: [...org.squad, org.bench], bench: null }, org.squad.length, catalog);
 }
 export function releaseBenchPlayer(org) {
   checkOrg(org);
@@ -123,7 +134,7 @@ export function recruitRosterPlayer(org, player, team, catalog) {
   const former = org.formerPlayers || [];
   // shortcut: only the five retained former players recover past stats; add a separate ledger if every return must retain them.
   const previous = former.find(slot => sameDraftPlayer(slot.player, foundPlayer));
-  return { ...org, squad: [...org.squad, { player: foundPlayer, team: { name: foundTeam.name, major: foundTeam.major }, gamesPlayed: previous?.gamesPlayed || 0, ratingTotal: previous?.ratingTotal || 0, ratingMatches: previous?.ratingMatches || 0, benchMajors: 0 }], formerPlayers: former.filter(slot => !identityConflict(slot.player, foundPlayer)), rosterRevision: revision(org) };
+  return assignIncomingRoles({ ...org, squad: [...org.squad, { player: foundPlayer, team: { name: foundTeam.name, major: foundTeam.major }, gamesPlayed: previous?.gamesPlayed || 0, ratingTotal: previous?.ratingTotal || 0, ratingMatches: previous?.ratingMatches || 0, benchMajors: 0 }], formerPlayers: former.filter(slot => !identityConflict(slot.player, foundPlayer)), rosterRevision: revision(org) }, org.squad.length, catalog);
 }
 export function assertFullRoster(org) {
   checkOrg(org);

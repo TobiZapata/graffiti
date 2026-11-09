@@ -130,8 +130,8 @@ export function TournamentProvider({ children }) {
     commitOrganization(action(organizationRef.current, ...args));
   };
   const benchPlayer = index => changeRoster(benchRosterPlayer, index);
-  const swapBenchPlayer = index => changeRoster(swapRosterBench, index);
-  const promoteBench = () => changeRoster(promoteBenchPlayer);
+  const swapBenchPlayer = index => changeRoster(swapRosterBench, index, catalog);
+  const promoteBench = () => changeRoster(promoteBenchPlayer, catalog);
   const releaseBench = () => changeRoster(releaseBenchPlayer);
   const recruitPlayer = (player, team) => changeRoster(recruitRosterPlayer, player, team, catalog);
   const acknowledgeRosterNotice = () => {

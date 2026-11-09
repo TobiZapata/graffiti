@@ -5,6 +5,29 @@ const catalog = Array.from({length: 6}, (_, i) => ({id: i, name: `T${i}`, major:
 const slot = i => ({player: catalog[i].players[0], team: {name: `T${i}`, major: 'M'}, gamesPlayed: i});
 const org = () => ({id: 'club', squad: [0,1,2,3,4].map(slot), starUid: '4', iglUid: '1', mainAwperUid: '0', benchTokens: 1});
 const major = id => ({tournamentId: id, stage: 'won', rosterTarget: 'champion', matches: [{completed: true, isPlayerMatch: true, round: 'Final', teamA: {isPlayer: true}, teamB: {name: 'Other'}, result: {winner: 'player_team'}}]});
+
+test('incoming natural specialists receive missing roles through recruitment, promotion and swaps', () => {
+ const specialists = catalog.map(team => team.id === 5 ? { ...team, mainAwperUid: '5', iglUid: '5' } : team);
+ const short = { ...org(), squad: [0,1,2,3].map(slot), starUid: '3', mainAwperUid: '0', iglUid: '1' };
+ const recruited = recruitRosterPlayer(short, specialists[5].players[0], specialists[5], [specialists[5]]);
+ const promoted = promoteBenchPlayer({ ...short, bench: slot(5) }, specialists);
+ for (const updated of [recruited, promoted]) {
+  assert.equal(updated.mainAwperUid, '4'); assert.equal(updated.iglUid, '4'); assert.equal(updated.starUid, '3');
+ }
+ const swapped = swapBenchPlayer({ ...org(), bench: slot(5) }, 2, specialists);
+ assert.equal(swapped.mainAwperUid, '2'); assert.equal(swapped.iglUid, '2'); assert.equal(swapped.starUid, '4');
+});
+
+test('incoming specialists do not replace roles when another natural specialist remains', () => {
+ const specialists = catalog.map(team => [0,5].includes(team.id) ? { ...team, mainAwperUid: String(team.id), iglUid: String(team.id) } : team);
+ const current = { ...org(), squad: [0,1,2,3].map(slot), starUid: '3', bench: slot(5) };
+ const updated = promoteBenchPlayer(current, specialists);
+ assert.equal(updated.mainAwperUid, current.mainAwperUid); assert.equal(updated.iglUid, current.iglUid);
+ const replaced = swapBenchPlayer({ ...org(), bench: slot(5) }, 0, specialists);
+ assert.equal(replaced.mainAwperUid, '0'); assert.equal(replaced.iglUid, '0');
+ const rifler = promoteBenchPlayer({ ...current, bench: slot(4) }, specialists);
+ assert.equal(rifler.mainAwperUid, current.mainAwperUid); assert.equal(rifler.iglUid, current.iglUid);
+});
 test('bench, remap roles, swap and promote', () => {
  const b = benchRosterPlayer(org(), 1); assert.equal(b.benchTokens, 0); assert.equal(b.iglUid, '0'); assert.equal(b.starUid, '3');
  assert.throws(() => benchRosterPlayer(b, 0)); assert.throws(() => assertFullRoster(b));

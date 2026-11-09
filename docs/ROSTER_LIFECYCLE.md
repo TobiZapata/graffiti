@@ -12,6 +12,10 @@ Major snapshots are separate: changing a player never rewrites an old match.
   A full bench must be emptied by promoting or releasing its player first.
 - Swapping a starter with the substitute is unlimited and free. Promoting the
   substitute into a vacancy and releasing the substitute are also free.
+- On signing, promotion or a bench swap, an incoming natural AWPer or IGL
+  automatically receives that role if no other starter has that natural role.
+  Natural roles come from the player's original Major roster; a dual AWPer/IGL
+  can receive both. Existing specialists and the Star assignment are preserved.
 - Vacancies use the existing three-team draft. Offers are deterministic across
   reloads, exclude teams with no eligible players and change after a signing.
   There is no replacement currency or paid reroll system in this version.
