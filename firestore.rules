@@ -44,7 +44,7 @@ service cloud.firestore {
     }
     function validOrganization(o) {
       return o.id.matches('^[^/]{1,150}$') &&
-        o.name.matches('(?s)^.{1,28}$') && o.icon is string && o.icon.size() > 0 && o.icon.size() <= 100000 &&
+        o.name.matches('(?s)^.{1,100}$') && o.icon is string && o.icon.size() > 0 && o.icon.size() <= 100000 &&
         o.createdAt.matches('(?s)^.{1,100}$') &&
         o.colors is list && o.colors.size() == 2 && o.colors[0].matches('^#[0-9a-fA-F]{6}$') && o.colors[1].matches('^#[0-9a-fA-F]{6}$') &&
         o.squad is list && o.squad.size() == 5 && validPlayer(o.squad[0]) && validPlayer(o.squad[1]) && validPlayer(o.squad[2]) && validPlayer(o.squad[3]) && validPlayer(o.squad[4]) &&

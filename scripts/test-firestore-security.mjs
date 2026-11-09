@@ -92,7 +92,7 @@ try {
     });
     if (allowed) await check('room name remains fixed after creation', false, () => updateDoc(doc(db, `rooms/${id}`), { name: 'Changed' }));
   }
-  for (const [id, length, allowed] of [['ON28', 28, true], ['ON29', 29, false]]) {
+  for (const [id, length, allowed] of [['ON28', 28, true], ['ON29', 29, true], ['ON00', 100, true], ['ON01', 101, false]]) {
     const uid = `org-${id}`, db = client(uid), player = member(uid, true);
     player.organization.name = player.teamName = 'A'.repeat(length);
     await check(`organization name ${length} characters`, allowed, async () => {
