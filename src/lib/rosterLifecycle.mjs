@@ -1,6 +1,6 @@
 import seedrandom from 'seedrandom';
 import { draftOffer, sameDraftPlayer } from './draftState.mjs';
-import { buildMajorRecord } from './organizationProfile.mjs';
+import { buildMajorRecord, playerRatingTotals } from './organizationProfile.mjs';
 import { isV2Player, PLAYER_SCORES } from './playerModel.mjs';
 
 const outcomes = ['champion', 'finalist', 'semifinal', 'quarterfinal', 'swiss'];
@@ -73,12 +73,12 @@ export function finishRosterMajor(org, tournament) {
   const departed = [];
   const survivors = org.squad.filter((slot, index) => {
     if (!departing.has(index)) return true;
-    former = archive(former, { ...slot, gamesPlayed: (slot.gamesPlayed ?? baseline) + games, benchMajors: 0 });
+    former = archive(former, { ...slot, ...playerRatingTotals(slot, tournament.matches), gamesPlayed: (slot.gamesPlayed ?? baseline) + games, benchMajors: 0 });
     departed.push({ name: slot.player.name, reason: 'performance' });
     return false;
   });
   const mapped = remap(org, survivors);
-  mapped.squad = survivors.map(slot => ({ ...slot, gamesPlayed: (slot.gamesPlayed ?? baseline) + games, benchMajors: 0 }));
+  mapped.squad = survivors.map(slot => ({ ...slot, ...playerRatingTotals(slot, tournament.matches), gamesPlayed: (slot.gamesPlayed ?? baseline) + games, benchMajors: 0 }));
   if (bench) {
     bench = { ...bench, benchMajors: (bench.benchMajors || 0) + 1 };
     if (bench.benchMajors >= 2) { former = archive(former, bench); departed.push({ name: bench.player.name, reason: 'bench' }); bench = null; }
@@ -123,7 +123,7 @@ export function recruitRosterPlayer(org, player, team, catalog) {
   const former = org.formerPlayers || [];
   // shortcut: only the five retained former players recover past stats; add a separate ledger if every return must retain them.
   const previous = former.find(slot => sameDraftPlayer(slot.player, foundPlayer));
-  return { ...org, squad: [...org.squad, { player: foundPlayer, team: { name: foundTeam.name, major: foundTeam.major }, gamesPlayed: previous?.gamesPlayed || 0, benchMajors: 0 }], formerPlayers: former.filter(slot => !identityConflict(slot.player, foundPlayer)), rosterRevision: revision(org) };
+  return { ...org, squad: [...org.squad, { player: foundPlayer, team: { name: foundTeam.name, major: foundTeam.major }, gamesPlayed: previous?.gamesPlayed || 0, ratingTotal: previous?.ratingTotal || 0, ratingMatches: previous?.ratingMatches || 0, benchMajors: 0 }], formerPlayers: former.filter(slot => !identityConflict(slot.player, foundPlayer)), rosterRevision: revision(org) };
 }
 export function assertFullRoster(org) {
   checkOrg(org);

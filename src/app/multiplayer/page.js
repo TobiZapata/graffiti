@@ -15,8 +15,9 @@ export default function MultiplayerPage() {
   const { organization, ready, storageError, rosterLocked } = useTournament();
   const [name, setName] = useState("");
   const [roomCode, setRoomCode] = useState("");
+  const [roomName, setRoomName] = useState(null);
   const [isPublic, setIsPublic] = useState(true);
-  const [playbackMode, setPlaybackMode] = useState("full");
+  const [playbackMode, setPlaybackMode] = useState("highlights");
   const [rooms, setRooms] = useState([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
@@ -41,7 +42,7 @@ export default function MultiplayerPage() {
     try {
       const displayName = name.trim() || user.displayName || organization.name;
       const joinedCode = code === null
-        ? await createRoom(user.uid, displayName, organization, isPublic ? "public" : "private", playbackMode)
+        ? await createRoom(user.uid, displayName, organization, isPublic ? "public" : "private", playbackMode, roomName)
         : await joinRoom(code.trim().toUpperCase(), user.uid, displayName, organization);
       router.push(`/room/${joinedCode}`);
     } catch (err) {
@@ -77,14 +78,17 @@ export default function MultiplayerPage() {
         <div className="grid content-start gap-4">
           <section className="card p-6" aria-labelledby="create-title">
             <h2 id="create-title" className="text-[16px] font-medium">Create a room</h2>
+            <label className="mt-4 block" htmlFor="room-name"><span className="label">Room name</span></label>
+            <input id="room-name" value={roomName ?? `${organization.name}'s Room`.slice(0, 35)} onChange={e => setRoomName(e.target.value)} maxLength={35} disabled={!!busy} className="field" />
             <label className="mt-4 block" htmlFor="nickname"><span className="label">Display name (optional)</span></label>
             <input id="nickname" value={name} onChange={e => setName(e.target.value)} placeholder={user.displayName || organization.name} maxLength={15} className="field" />
-            <label className="mt-4 block" htmlFor="playback-mode"><span className="label">Match playback</span></label>
-            <select id="playback-mode" value={playbackMode} onChange={e => setPlaybackMode(e.target.value)} disabled={!!busy} className="field" aria-describedby="playback-help">
-              <option value="full">Full match</option>
-              <option value="highlights">Highlights · one third of rounds</option>
-            </select>
-            <p id="playback-help" className="meta mt-2">Highlights shows pistols, a clutch when available, match point and the finish, plus random rounds. All rounds count. Fixed for this room.</p>
+            <fieldset className="mt-4">
+              <legend className="label">Match playback</legend>
+              <div className="mt-2 flex gap-2">{[["highlights", "Highlights"], ["full", "Full match"]].map(([mode, label]) =>
+                <button key={mode} type="button" aria-pressed={playbackMode === mode} onClick={() => setPlaybackMode(mode)} disabled={!!busy}
+                  className={`btn btn-secondary flex-1 border ${playbackMode === mode ? "border-white" : "border-transparent"}`}>{label}</button>
+              )}</div>
+            </fieldset>
             <label className="mt-4 flex items-center gap-2 text-ink-2">
               <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} className="accent-[var(--ink)]" />
               List it in public rooms
@@ -109,9 +113,11 @@ export default function MultiplayerPage() {
           </div>
           {refreshing ? <p className="mt-4 text-ink-2">Loading rooms…</p> : rooms.length === 0 ? <p className="mt-4 text-ink-2">No public rooms right now. Create one and share its code.</p> : (
             <ul className="mt-2">{rooms.map(room => (
-              <li key={room.id} className="flex h-12 items-center gap-4 border-t border-rule first:border-t-0">
-                <span className="tabular font-medium tracking-[0.1em]">{room.id}</span>
-                <span className="flex-1 text-ink-2">{room.players?.length || 0} of 8 players · {room.playbackMode === "highlights" ? "Highlights" : "Full match"}</span>
+              <li key={room.id} className="flex min-h-16 items-center gap-4 border-t border-rule py-2 first:border-t-0">
+                <div className="min-w-0 flex-1">
+                  <p className="break-words font-medium">{room.name || room.id}</p>
+                  <p className="meta">{room.id} · {room.players?.length || 0} of 8 players · {room.playbackMode === "highlights" ? "Highlights" : "Full match"}</p>
+                </div>
                 <button type="button" onClick={() => enter(room.id)} disabled={!!busy} className="btn btn-secondary">Join</button>
               </li>
             ))}</ul>

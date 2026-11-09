@@ -103,6 +103,7 @@ export function TournamentProvider({ children }) {
   /* eslint-enable react-hooks/set-state-in-effect */
   const createOrganization = input => {
     if (organizationRef.current || writesBlocked.current) throw new Error("An organization already exists, or the saved game could not be read.");
+    if (typeof input.name !== "string" || !input.name.trim() || input.name.trim().length > 28) throw new Error("Organization names must contain 1–28 characters.");
     const org = { ...input, id: crypto.randomUUID(), createdAt: new Date().toISOString(), rosterVersion: 1, bench: null, benchTokens: 0, formerPlayers: [] };
     if (!validOrganization(org)) throw new Error("The organization or its roles are not valid.");
     commitOrganization(org);

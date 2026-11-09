@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMajorRecord, organizationProfile } from '../src/lib/organizationProfile.mjs';
+import { buildMajorRecord, organizationProfile, careerPlayerRating, playerRatingTotals } from '../src/lib/organizationProfile.mjs';
 import { loadCareer, validOrganization } from '../src/lib/localCareer.mjs';
 
 const player = { id: 'player_team', isPlayer: true };
@@ -42,4 +42,32 @@ test('history validation accepts old saves and preserves malformed saves', () =>
   const store = { getItem: () => raw, setItem: () => { throw Error('must not write'); } };
   assert.ok(loadCareer(store).error);
   assert.equal(store.getItem(), raw);
+});
+
+test('separates offline and online history and limits rivals to five by played matches', () => {
+  const records = Array.from({ length: 7 }, (_, i) => ({ id: `offline-${i}`, outcome: 'swiss', final: false,
+    matches: Array.from({ length: i + 1 }, () => ({ name: `Team ${i}`, major: 'Major 2014', won: true, icon: `/team-${i}.png` })) }));
+  const online = { ...records[0], id: 'online', mode: 'online', matches: [{ name: 'Club', major: '', won: false, icon: '/club.svg', organizationId: 'club' }] };
+  const club = { majorHistory: [...records, online] };
+  const offlineProfile = organizationProfile(club, {}, 'offline');
+  assert.equal(offlineProfile.matchesPlayed, 28);
+  assert.deepEqual(offlineProfile.rivals.map(r => r.name), ['Team 6', 'Team 5', 'Team 4', 'Team 3', 'Team 2']);
+  assert.equal(offlineProfile.rivals[0].icon, '/team-6.png');
+  assert.equal(organizationProfile(club, {}, 'online').matchesPlayed, 1);
+  assert.equal(organizationProfile(club, {}, 'online').rivals[0].key, 'club');
+  assert.equal(organizationProfile(club).matchesPlayed, 29);
+  assert.equal(buildMajorRecord({ ...tournament('online-new', 'won', [match('Final', true)]), mode: 'online' }).mode, 'online');
+});
+
+test('career ratings use real series metrics, either side, and skip legacy or forfeited matches', () => {
+  const team = (id, isPlayer) => ({ id, name: id, isPlayer, players: Array.from({ length: 5 }, (_, i) => ({ uid: String(i), name: `${id}-${i}` })) });
+  const event = { teamA: team('other', false), teamB: team('player_team', true), completed: true, isPlayerMatch: true };
+  event.result = { maps: [{ scoreA: 13, scoreB: 9, playerStats: ['A', 'B'].flatMap(side => Array.from({ length: 5 }, (_, i) => ({ uid: `${side}:${i}`, kills: 15, deaths: 14, assists: 4, flashAssists: 1, damage: 1650, kastRounds: 16, swingTotal: 0 }))) }] };
+  const slot = { player: event.teamB.players[0], ratingTotal: 2, ratingMatches: 2 };
+  const totals = playerRatingTotals(slot, [event]);
+  assert.equal(totals.ratingMatches, 3);
+  assert.ok(totals.ratingTotal > 2.9 && totals.ratingTotal < 3.1);
+  assert.equal(careerPlayerRating(slot, [event]), totals.ratingTotal / 3);
+  assert.deepEqual(playerRatingTotals(slot, [{ ...event, result: { maps: [{}] } }, { ...event, result: { ...event.result, forfeit: true } }]), { ratingTotal: 2, ratingMatches: 2 });
+  assert.equal(careerPlayerRating({ player: slot.player }), null);
 });

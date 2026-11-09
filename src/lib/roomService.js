@@ -34,8 +34,10 @@ async function availableSession(tx, uid) {
   if ((await tx.get(sessionRef(uid))).exists()) throw new Error('You already have an active room. Leave it in the original tab before joining another.');
 }
 
-export async function createRoom(uid, name, organization, visibility = 'public', playbackMode = 'full') {
+export async function createRoom(uid, name, organization, visibility = 'public', playbackMode = 'highlights', roomName = '') {
   authenticate(uid);
+  const title = roomName?.trim() || `${organization.name}'s Room`.slice(0, 35);
+  if (title.length > 35) throw new Error('Room names must be at most 35 characters.');
   if (!['public', 'private'].includes(visibility)) throw new Error('Invalid room visibility.');
   if (!['full', 'highlights'].includes(playbackMode)) throw new Error('Invalid playback mode.');
   const identity = getPageSession(), player = newMember(uid, name, organization, true);
@@ -46,7 +48,7 @@ export async function createRoom(uid, name, organization, visibility = 'public',
     const created = await runTransaction(db, async tx => {
       await availableSession(tx, uid);
       if ((await tx.get(ref)).exists()) return false;
-      tx.set(ref, { id: code, hostId: uid, status: 'lobby', visibility, playbackMode, players: encodePlayers([player]), schemaVersion: 3, generation: 0, createdAt: new Date().toISOString() });
+      tx.set(ref, { id: code, name: title, hostId: uid, status: 'lobby', visibility, playbackMode, players: encodePlayers([player]), schemaVersion: 3, generation: 0, createdAt: new Date().toISOString() });
       tx.set(sessionRef(uid), sessionData(uid, code, identity));
       return true;
     });

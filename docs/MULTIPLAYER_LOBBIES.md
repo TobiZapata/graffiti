@@ -5,9 +5,15 @@ Las referencias a atributos anteriores describen el camino legacy.
 
 ## Modo de reproduccion
 
-El creador elige Full match o Highlights antes de crear la sala. El modo queda
+El creador elige Full match o Highlights con dos botones; Highlights es la opcion
+inicial. El modo queda
 visible en el lobby y en la lista publica, y no se puede cambiar en esa sala.
 Las salas anteriores sin playbackMode conservan Full match.
+
+El nombre editable de la sala tiene un maximo de 35 caracteres y aparece en la
+lista publica. Si queda vacio, se usa "[Organizacion]'s Room" (hasta 35 caracteres).
+El nombre queda fijo al crear la sala; las salas antiguas sin nombre muestran su
+codigo. Las organizaciones nuevas admiten hasta 28 caracteres de nombre.
 
 Highlights reproduce ceil(total de rondas / 3) por mapa: pistols 1 y 13, primera
 ronda que empieza en matchpoint, ultima ronda y un clutch ganado si existe.
@@ -22,8 +28,8 @@ seleccionada y no enumera highlights futuros para evitar adelantar el desenlace.
 La ultima ronda dispara el mismo resumen y guardado que Full match.
 
 Antes de publicar esta funcionalidad hay que desplegar las reglas de Firestore
-de la misma branch: permiten playbackMode full/highlights al crear y lo mantienen
-inmutable. Las reglas anteriores rechazan el campo nuevo. No desplegar solo la web.
+de la misma branch: permiten el nombre de sala y playbackMode full/highlights al crear y los mantienen
+inmutables. Las reglas anteriores rechazan el campo nuevo. No desplegar solo la web.
 
 ## Reglas de uso
 

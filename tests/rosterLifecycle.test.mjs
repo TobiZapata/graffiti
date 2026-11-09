@@ -128,3 +128,22 @@ test('forfeits do not add games and token cannot exceed one', () => {
  assert.throws(() => finishRosterMajor(o, { ...event, matches: [] }));
  assert.throws(() => finishRosterMajor(o, { ...event, stage: 'swiss' }));
 });
+
+test('rating totals survive Major closure, benching, release and recruitment without double counting', () => {
+ const initial = validOrg(), event = major('rating-major');
+ const team = (id, players, isPlayer = false) => ({ id, name: id, isPlayer, players: players.map((player, index) => ({ ...player, uid: String(index) })) });
+ const match = event.matches[0];
+ match.teamA = team('player_team', initial.squad.map(slot => slot.player), true);
+ match.teamB = team('other', Array.from({ length: 5 }, (_, i) => ({ name: `Opponent ${i}` })));
+ match.result.maps = [{ scoreA: 13, scoreB: 9, playerStats: ['A', 'B'].flatMap(side => Array.from({ length: 5 }, (_, i) => ({ uid: `${side}:${i}`, kills: 15, deaths: 14, assists: 4, flashAssists: 1, damage: 1650, kastRounds: 16, swingTotal: 0 }))) }];
+ const closed = completed(initial, 'rating', id => ({ ...event, tournamentId: id }));
+ assert.ok(validOrganization(closed));
+ for (const slot of closed.squad) { assert.equal(slot.ratingMatches, 1); assert.ok(slot.ratingTotal > 0); }
+ assert.strictEqual(finishRosterMajor(closed, { ...event, tournamentId: closed.majorHistory[0].id }), closed);
+ const old = closed.squad[0], benched = benchRosterPlayer(closed, 0), released = releaseBenchPlayer(benched);
+ const returning = catalog[0], recruited = recruitRosterPlayer(released, returning.players[0], returning, [returning]);
+ assert.equal(recruited.squad.at(-1).ratingTotal, old.ratingTotal);
+ assert.equal(recruited.squad.at(-1).ratingMatches, 1);
+ assert.ok(validOrganization(recruited));
+ assert.equal(validOrganization({ ...closed, squad: closed.squad.map((slot, i) => i ? slot : { ...slot, ratingMatches: -1 }) }), false);
+});

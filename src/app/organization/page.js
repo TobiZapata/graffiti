@@ -7,16 +7,24 @@ import { useRouter, useSearchParams } from "next/navigation";
 import AppBar from "@/components/AppBar";
 import OrganizationAbandonments from "@/components/OrganizationAbandonments";
 import { useTournament } from "@/context/TournamentContext";
-import { organizationProfile } from "@/lib/organizationProfile.mjs";
-import { matchFormat, opponentOf, record, playerAttributes, ROLE_FIELDS } from "@/lib/majorDisplay.mjs";
+import { organizationProfile, careerPlayerRating } from "@/lib/organizationProfile.mjs";
+import { matchFormat, opponentOf, record, rosterPlayerAttribute, ROLE_FIELDS } from "@/lib/majorDisplay.mjs";
 import TeamName from "@/components/major/TeamName";
 import DraftBoard from "@/components/play/DraftBoard";
 import teams from "@/data/teams.json";
 import { replacementOffer } from "@/lib/rosterLifecycle.mjs";
+import { useRoomSession } from "@/context/RoomSessionContext";
+import { rosterMajorFromRoom } from "@/lib/rosterRoom.mjs";
 
 const outcomes = { active: "In progress", champion: "Champion", finalist: "Runner-up", semifinal: "Semifinals", quarterfinal: "Quarterfinals", swiss: "Out in the Swiss stage" };
 const percentage = value => value === null ? "—" : `${Math.round(value)}%`;
 const roleDragPrefix = "major-mvp-role:";
+
+function ModeTabs({ value, onChange, label }) {
+  return <div className="mt-3 flex gap-2" role="group" aria-label={label}>
+    {[["offline", "Offline"], ["online", "Online"]].map(([mode, text]) => <button key={mode} type="button" aria-pressed={value === mode} onClick={() => onChange(mode)} className={`min-h-11 rounded-md border px-3 text-[13px] ${value === mode ? "border-white text-ink" : "border-transparent text-ink-3 hover:text-ink"}`}>{text}</button>)}
+  </div>;
+}
 
 function RoomReturnLink() {
   const room = useSearchParams().get("room");
@@ -68,6 +76,7 @@ function NextStep({ hasTournament, finished, stage, swissRound, standings, playe
 
 export default function OrganizationPage() {
   const router = useRouter();
+  const roomSession = useRoomSession();
   const { organization, ready, storageError, startOrganizationMajor, assignOrganizationRole, standings, matches, matchProgress, stage, swissRound, pendingResult, tournamentId, rosterLocked, rosterTarget, benchPlayer, swapBenchPlayer, promoteBench, releaseBench, recruitPlayer, acknowledgeRosterNotice } = useTournament();
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(false);
@@ -75,6 +84,8 @@ export default function OrganizationPage() {
   const [dropTarget, setDropTarget] = useState(null);
   const [roleNotice, setRoleNotice] = useState("");
   const [confirmRelease, setConfirmRelease] = useState(false);
+  const [recordMode, setRecordMode] = useState("offline");
+  const [rivalMode, setRivalMode] = useState("offline");
   const roleHelp = useRef(null);
 
   if (!ready) return <><AppBar /><main className="p-6 text-ink-2">Loading…</main></>;
@@ -92,6 +103,10 @@ export default function OrganizationPage() {
   const playHref = playerMatch ? `/simulation/match?id=${encodeURIComponent(playerMatch.id)}` : "/simulation";
   const resuming = Boolean(playerMatch && matchProgress?.[playerMatch.id]);
   const profile = organizationProfile(organization, { tournamentId, stage, pendingResult, matches, standings });
+  const onlineMajor = rosterMajorFromRoom(roomSession?.room, roomSession?.userUid, organization, { includeActive: true });
+  const recordProfile = organizationProfile(organization, recordMode === "online" ? onlineMajor || {} : { tournamentId, stage, pendingResult, matches, standings }, recordMode);
+  const rivalProfile = organizationProfile(organization, rivalMode === "online" ? onlineMajor || {} : { tournamentId, stage, pendingResult, matches, standings }, rivalMode);
+  const currentRatingMatches = [...(organization.majorHistory?.some(major => major.id === tournamentId) ? [] : matches), ...(onlineMajor?.matches || [])];
   const founded = new Date(organization.createdAt).getFullYear();
   const lastOutcome = finished ? outcomes[profile.recentMajors[0]?.outcome] : null;
   const locked = rosterLocked || !!storageError || starting;
@@ -153,7 +168,7 @@ export default function OrganizationPage() {
             <ul className="mt-4">{organization.squad.map((entry, index) => {
               const uid = String(index);
               return <li key={index}
-                className={`flex min-h-16 items-center gap-3 rounded-lg px-3 py-2 transition-colors ${dropTarget === uid ? "bg-control" : selectedRole ? "hover:bg-raised" : ""}`}
+                className={`grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-lg px-3 py-2 transition-colors sm:flex ${dropTarget === uid ? "bg-control" : selectedRole ? "hover:bg-raised" : ""}`}
                 data-player-uid={uid}
                 onDragOver={e => {
                   if (storageError || starting || !e.dataTransfer.types.includes("text/plain")) return;
@@ -171,9 +186,9 @@ export default function OrganizationPage() {
                   aria-label={selectedRole ? `Make ${entry.player.name} the ${ROLE_FIELDS[selectedRole]}` : entry.player.name}
                   onClick={() => moveRole(selectedRole, uid)}>
                   <span className="block truncate"><PlayerIdentity player={entry.player} /></span>
-                  <span className="block text-[11px] tabular font-normal text-ink-3">{playerAttributes(entry.player)}</span>
+                  <span className="block text-[12px] tabular font-normal text-ink-3">{rosterPlayerAttribute(entry.player, organization, uid)}</span>
                 </button>
-                <span className="flex shrink-0 flex-wrap justify-end gap-1">
+                <span className="col-start-1 row-start-2 flex shrink-0 flex-wrap gap-1 sm:justify-end">
                   {Object.entries(ROLE_FIELDS).filter(([field]) => organization[field] === uid).map(([field, label]) =>
                     <button type="button" key={field} data-role={field} draggable={!storageError && !starting} disabled={!!storageError || starting}
                       className={`h-7 cursor-grab rounded-md px-2 text-[12px] font-medium transition-colors active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50 ${selectedRole === field ? "bg-ink text-black" : "bg-control hover:bg-[#363636]"} ${field === "starUid" && selectedRole !== field ? "text-accent" : ""}`}
@@ -184,7 +199,8 @@ export default function OrganizationPage() {
                       {label}
                     </button>)}
                 </span>
-                {benchUnlocked && (organization.bench ? <button type="button" className="link min-h-11 text-[13px]" disabled={locked} aria-label={`Swap ${entry.player.name} with ${organization.bench.player.name} on the bench`} onClick={() => rosterAction(swapBenchPlayer, index)}>Swap</button> : organization.squad.length === 5 && <button type="button" className="link min-h-11 text-[13px]" disabled={locked || !organization.benchTokens} aria-label={`Bench ${entry.player.name}`} onClick={() => rosterAction(benchPlayer, index)}>Bench</button>)}
+                <span className="col-start-2 row-start-1 shrink-0 text-right tabular text-[13px]" aria-label={`${entry.player.name} average rating`} title="Average match rating">{careerPlayerRating(entry, currentRatingMatches)?.toFixed(2) ?? "—"}<span className="block text-[11px] text-ink-3">Rating</span></span>
+                {benchUnlocked && (organization.bench ? <button type="button" className="link col-start-2 row-start-2 min-h-11 text-[13px]" disabled={locked} aria-label={`Swap ${entry.player.name} with ${organization.bench.player.name} on the bench`} onClick={() => rosterAction(swapBenchPlayer, index)}>Swap</button> : organization.squad.length === 5 && <button type="button" className="link col-start-2 row-start-2 min-h-11 text-[13px]" disabled={locked || !organization.benchTokens} aria-label={`Bench ${entry.player.name}`} onClick={() => rosterAction(benchPlayer, index)}>Bench</button>)}
               </li>;
             })}</ul>
             <div className="mt-3 min-h-5 text-[13px] text-ink-2" role="status">
@@ -228,23 +244,23 @@ export default function OrganizationPage() {
         <div className="grid content-start gap-4">
           <section className="card p-6" aria-labelledby="record-title">
             <h2 id="record-title" className="text-[16px] font-medium">Record</h2>
-            <dl className="mt-4"><OrganizationAbandonments organizationId={organization.id} /></dl>
-            {profile.matchesPlayed === 0 ? (
+            <ModeTabs value={recordMode} onChange={setRecordMode} label="Record mode" />
+            {recordMode === "online" && <dl className="mt-4"><OrganizationAbandonments organizationId={organization.id} /></dl>}
+            {recordProfile.matchesPlayed === 0 ? (
               <p className="mt-2 text-ink-2">No matches played yet. Your record starts with your first match.</p>
             ) : <>
               <dl className="mt-4 grid grid-cols-3 gap-4">
-                <div><dt className="meta">Win rate</dt><dd className="tabular mt-1 text-[24px] font-medium">{percentage(profile.winrate)}</dd></div>
-                <div><dt className="meta">Matches</dt><dd className="tabular mt-1 text-[24px] font-medium">{profile.matchesPlayed}</dd></div>
-                <div><dt className="meta">Titles</dt><dd className={`tabular mt-1 text-[24px] font-medium ${profile.championships ? "text-accent" : ""}`}>{profile.championships}</dd></div>
+                <div><dt className="meta">Win rate</dt><dd className="tabular mt-1 text-[24px] font-medium">{percentage(recordProfile.winrate)}</dd></div>
+                <div><dt className="meta">Matches</dt><dd className="tabular mt-1 text-[24px] font-medium">{recordProfile.matchesPlayed}</dd></div>
+                <div><dt className="meta">Titles</dt><dd className={`tabular mt-1 text-[24px] font-medium ${recordProfile.championships ? "text-accent" : ""}`}>{recordProfile.championships}</dd></div>
               </dl>
               <h3 className="meta mt-6">Recent Majors</h3>
-              <ol className="mt-2">{profile.recentMajors.map((major, index) => (
-                <li key={major.id} className="flex h-9 items-center justify-between border-t border-rule">
-                  <span className="tabular text-ink-2">Major {profile.majorsPlayed - index}</span>
+              <ol className="mt-2">{recordProfile.recentMajors.map(major => (
+                <li key={major.id} className="flex h-9 items-center border-t border-rule">
                   <span className={major.outcome === "champion" ? "text-accent" : ""}>{outcomes[major.outcome]}</span>
                 </li>
               ))}</ol>
-              <p className="meta mt-3 tabular">{profile.finals} {profile.finals === 1 ? "final" : "finals"} reached</p>
+              <p className="meta mt-3 tabular">{recordProfile.finals} {recordProfile.finals === 1 ? "final" : "finals"} reached</p>
             </>}
           </section>
 
@@ -256,12 +272,17 @@ export default function OrganizationPage() {
 
           <section className="card p-6" aria-labelledby="rivalries">
             <h2 id="rivalries" className="text-[16px] font-medium">Rivalries</h2>
-            {profile.rivals.length ? <div className="mt-2 overflow-x-auto"><table className="w-full text-left">
+            <ModeTabs value={rivalMode} onChange={setRivalMode} label="Rivalries mode" />
+            {rivalProfile.rivals.length ? <div className="mt-2 overflow-x-auto"><table className="w-full text-left">
               <thead><tr className="meta h-9"><th scope="col" className="font-normal">Team</th><th scope="col" className="text-right font-normal">Played</th><th scope="col" className="text-right font-normal">Win rate</th></tr></thead>
-              <tbody>{profile.rivals.map(rival => <tr key={rival.key} className="h-10 border-t border-rule">
-                <th scope="row" className="font-normal"><TeamName team={rival} /></th><td className="tabular text-right">{rival.matches}</td><td className="tabular text-right">{percentage(rival.winrate)}</td>
+              <tbody>{rivalProfile.rivals.map(rival => <tr key={rival.key} className="border-t border-rule">
+                <th scope="row" className="py-3 pr-3 font-normal"><span className="flex items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={rival.icon || teams.find(team => team.name === rival.name && team.major === rival.major)?.icon || "/favicon.ico"} alt="" width="28" height="28" className="h-7 w-7 shrink-0 object-contain" />
+                  <span>{rival.name}{rival.major && <span className="mt-1 block text-[12px] text-ink-3">{rival.major}</span>}</span>
+                </span></th><td className="tabular text-right">{rival.matches}</td><td className="tabular text-right">{percentage(rival.winrate)}</td>
               </tr>)}</tbody>
-            </table></div> : <p className="mt-2 text-ink-2">Teams you face in single-player Majors show up here after your first match.</p>}
+            </table></div> : <p className="mt-2 text-ink-2">Your five most-played opponents in this mode will appear here.</p>}
           </section>
         </div>
       </div>
