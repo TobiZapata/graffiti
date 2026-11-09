@@ -39,7 +39,7 @@ export default function StandingsTable({ standings, matches = [], isMine, onTeam
                     const result = swissRoundResult(matches, t.id, round);
                     return <td key={round} className="px-3 text-center">
                       {result ? <span className="flex items-center justify-center gap-1" title={`Round ${round} vs ${result.opponent.name}${result.completed ? `: ${result.score}` : ': pending'}`}>
-                        <TeamMark team={result.opponent} size={16} onClick={onTeamClick} />
+                        <TeamMark team={result.opponent} size={22} onClick={onTeamClick} />
                         <span className={`tabular text-[12px] ${!result.completed ? "text-ink-3" : result.won ? "text-positive" : "text-negative"}`}>{result.score}</span>
                       </span> : <span className="text-ink-3">—</span>}
                     </td>;
