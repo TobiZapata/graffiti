@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import AppBar from "@/components/AppBar";
 import OrganizationAbandonments from "@/components/OrganizationAbandonments";
 import { useTournament } from "@/context/TournamentContext";
-import { organizationProfile, careerPlayerRating } from "@/lib/organizationProfile.mjs";
+import { organizationProfile, careerPlayerRating, careerPlayerMatches } from "@/lib/organizationProfile.mjs";
 import { matchFormat, opponentOf, record, rosterPlayerAttribute, ROLE_FIELDS } from "@/lib/majorDisplay.mjs";
 import TeamName from "@/components/major/TeamName";
 import DraftBoard from "@/components/play/DraftBoard";
@@ -199,7 +199,10 @@ export default function OrganizationPage() {
                       {label}
                     </button>)}
                 </span>
-                <span className="col-start-2 row-start-1 shrink-0 text-right tabular text-[13px]" aria-label={`${entry.player.name} average rating`} title="Average match rating">{careerPlayerRating(entry, currentRatingMatches)?.toFixed(2) ?? "—"}<span className="block text-[11px] text-ink-3">Rating</span></span>
+                <span className="col-start-2 row-start-1 flex shrink-0 items-center gap-3 text-right tabular text-[13px]">
+                  <span className="meta" aria-label={`${entry.player.name} matches played`}>{careerPlayerMatches(entry, currentRatingMatches)} Matches</span>
+                  <span aria-label={`${entry.player.name} average rating`} title="Average match rating">{careerPlayerRating(entry, currentRatingMatches)?.toFixed(2) ?? "—"}<span className="block text-[11px] text-ink-3">Rating</span></span>
+                </span>
                 {benchUnlocked && (organization.bench ? <button type="button" className="link col-start-2 row-start-2 min-h-11 text-[13px]" disabled={locked} aria-label={`Swap ${entry.player.name} with ${organization.bench.player.name} on the bench`} onClick={() => rosterAction(swapBenchPlayer, index)}>Swap</button> : organization.squad.length === 5 && <button type="button" className="link col-start-2 row-start-2 min-h-11 text-[13px]" disabled={locked || !organization.benchTokens} aria-label={`Bench ${entry.player.name}`} onClick={() => rosterAction(benchPlayer, index)}>Bench</button>)}
               </li>;
             })}</ul>

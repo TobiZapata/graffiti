@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMajorRecord, organizationProfile, careerPlayerRating, playerRatingTotals } from '../src/lib/organizationProfile.mjs';
+import { buildMajorRecord, organizationProfile, careerPlayerRating, careerPlayerMatches, playerRatingTotals } from '../src/lib/organizationProfile.mjs';
 import { loadCareer, validOrganization } from '../src/lib/localCareer.mjs';
 
 const player = { id: 'player_team', isPlayer: true };
@@ -8,6 +8,15 @@ const opponent = { id: 'random_1', name: 'fnatic', major: '2013', isPlayer: fals
 const match = (round, won, completed = true) => ({ round, teamA: player, teamB: opponent, isPlayerMatch: true, completed, result: completed ? { winner: won ? player.id : opponent.id, scoreA: 2, scoreB: 1 } : null });
 const tournament = (id, stage, matches, pendingResult = null) => ({ tournamentId: id, stage, pendingResult, matches });
 const org = { id:'id', name:'Team', icon:'/icon', colors:['#123456','#abcdef'], squad:Array.from({length:5},(_,i)=>({player:{name:`P${i}`}})), mainAwperUid:'0', iglUid:'1', starUid:'2', createdAt:'2026-01-01' };
+
+test('active player match counts include current completed series without requiring ratings', () => {
+  const slot = { player: { name: 'P0', personId: 'p0' }, gamesPlayed: 12 };
+  const own = { isPlayer: true, players: [slot.player] }, npc = { isPlayer: false, players: [] };
+  const played = { completed: true, isPlayerMatch: true, teamA: own, teamB: npc, result: {} };
+  assert.equal(careerPlayerMatches(slot, [played, { ...played, teamA: npc, teamB: own }]), 14);
+  assert.equal(careerPlayerMatches(slot, [{ ...played, completed: false }, { ...played, result: { forfeit: true } }, { ...played, isPlayerMatch: false }, { ...played, teamA: { ...own, players: [{ name: 'Other' }] } }]), 12);
+  assert.equal(careerPlayerMatches({ player: slot.player }), 0);
+});
 
 test('aggregates finished and current series without counting maps or duplicates', () => {
   const previous = buildMajorRecord(tournament('one', 'won', [match(1, true), match('Final', true)]));

@@ -66,3 +66,11 @@ export function careerPlayerRating(slot, matches = []) {
   const { ratingTotal, ratingMatches } = playerRatingTotals(slot, matches);
   return ratingMatches ? ratingTotal / ratingMatches : null;
 }
+
+export function careerPlayerMatches(slot, matches = []) {
+  return (slot.gamesPlayed || 0) + matches.filter(match => {
+    if (!match.completed || !match.isPlayerMatch || match.result?.forfeit) return false;
+    const team = match.teamA.isPlayer ? match.teamA : match.teamB;
+    return team.players?.some(player => player.personId && player.personId === slot.player.personId || player.name === slot.player.name);
+  }).length;
+}
