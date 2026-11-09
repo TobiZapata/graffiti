@@ -10,7 +10,7 @@ export default function TeamMark({ team, size = 24, dim = false, onClick }) {
   const box = { width: size + 8, height: size + 8 };
   if (!onClick) return <span className={className} style={box} title={teamLabel(team)}>{content}</span>;
   return (
-    <button type="button" onClick={() => onClick(team)} className={`${className} hover:bg-control`} style={box}
+    <button type="button" onClick={() => onClick(team)} className={`${className} cursor-pointer hover:bg-control`} style={box}
       title={teamLabel(team)} aria-label={`${teamLabel(team)} roster`}>
       {content}
     </button>

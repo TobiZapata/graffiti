@@ -33,9 +33,9 @@ function MatchRow({ m, mine, onTeamClick }) {
 
 function Outcome({ label, tone, teams, onTeamClick }) {
   return (
-    <div className="my-2 px-1">
-      <p className="meta flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full" style={{ background: tone }} aria-hidden="true" />{label}</p>
-      <div className="mt-1 flex min-h-8 flex-wrap gap-1">
+    <div className="my-2 flex flex-col gap-1 px-1">
+      <p className={`meta flex items-center gap-2 ${label === "Advanced" ? "order-last" : ""}`}><span className="h-1.5 w-1.5 rounded-full" style={{ background: tone }} aria-hidden="true" />{label}</p>
+      <div className="flex min-h-8 flex-wrap gap-1">
         {teams.length ? teams.map(t => <TeamMark key={t.id} team={t} size={20} onClick={onTeamClick} />) : <span className="meta leading-8">—</span>}
       </div>
     </div>
