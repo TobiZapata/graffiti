@@ -1,6 +1,6 @@
 ﻿import test from 'node:test';
 import assert from 'node:assert/strict';
-import { draftOffer, readDraft, removePick } from '../src/lib/draftState.mjs';
+import { draftOffer, readDraft, removePick, sameDraftPlayer } from '../src/lib/draftState.mjs';
 
 const teams = [1, 2, 3, 4, 5, 6].map(id => ({ id, name: `team${id}`, major: 'event', players: [{ name: `player${id}` }] }));
 const slot = id => ({ player: { name: `player${id}` }, team: { name: `team${id}`, major: 'event' } });
@@ -27,4 +27,22 @@ test('legacy squads survive and invalid stored data is rejected or bounded', () 
   const draft = readDraft({ squad: [slot(1)], rerollsLeft: 99, seed: {} }, teams);
   assert.equal(draft.rerollsLeft, 0);
   assert.equal(draft.seed, null);
+});
+
+test('historical IDs resolve renamed entries and person identity prevents alias duplicates', () => {
+  const catalog = [{ name: 'A', major: 'old', players: [{ id: 10, name: 'znajder', personId: 'znajder' }] }, { name: 'B', major: 'new', players: [{ id: 20, name: 'schneider', personId: 'znajder' }] }];
+  const first = { team: { name: 'A', major: 'old' }, player: { id: 10, name: 'schneider' } };
+  assert.equal(readDraft({ squad: [first], rerollsLeft: 1, seed: 'fixed' }, catalog).squad[0].player.name, 'znajder');
+  assert.equal(readDraft({ squad: [first, { team: { name: 'B', major: 'new' }, player: { id: 20 } }] }, catalog), null);
+  assert.equal(sameDraftPlayer({ personId: 'adren-kz', name: 'AdreN' }, { personId: 'adren-us', name: 'adreN' }), false);
+});
+
+test('legacy draft keeps original catalog stats and spent rerolls after catalog replacement', () => {
+  const legacy = [{ name: 'A', major: 'old', players: [{ id: 1, name: 'P', aim: 71 }] }];
+  const current = [{ name: 'A', major: 'old', players: [{ id: 1, name: 'P', personId: 'person-p', awp: 90 }] }];
+  const result = readDraft({ squad: [{ team: { name: 'A', major: 'old' }, player: legacy[0].players[0] }], seed: 'fixed', rerollsLeft: 1 }, current, legacy);
+  assert.equal(result.squad[0].player.aim, 71);
+  assert.equal(result.squad[0].player.personId, 'person-p');
+  assert.equal(result.rerollsLeft, 1);
+  assert.equal(result.seed, 'fixed');
 });

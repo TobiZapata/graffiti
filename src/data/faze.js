@@ -1,6 +1,7 @@
 export const fazePlayersConfig = [
   {
     name: "broky",
+    country: "lv",
     role: "AWPER",
     aim: 93,
     gamesense: 91,
@@ -13,6 +14,7 @@ export const fazePlayersConfig = [
   },
   {
     name: "frozen",
+    country: "sk",
     role: "RIFLER",
     aim: 91,
     gamesense: 89,
@@ -25,6 +27,7 @@ export const fazePlayersConfig = [
   },
   {
     name: "rain",
+    country: "no",
     role: "ENTRY",
     aim: 88,
     gamesense: 86,
@@ -37,6 +40,7 @@ export const fazePlayersConfig = [
   },
   {
     name: "karrigan",
+    country: "dk",
     role: "IGL",
     aim: 73,
     gamesense: 96,
@@ -49,6 +53,7 @@ export const fazePlayersConfig = [
   },
   {
     name: "EliGE",
+    country: "us",
     role: "RIFLER",
     aim: 92,
     gamesense: 87,

@@ -1,7 +1,9 @@
-import { playerOverall, roleLabel } from "@/lib/majorDisplay.mjs";
+import PlayerIdentity from "@/components/PlayerIdentity";
+import { playerAttributes } from "@/lib/majorDisplay.mjs";
+import { sameDraftPlayer } from "@/lib/draftState.mjs";
 
 // Three rolled rosters side by side; each player is one click away.
-export default function DraftBoard({ teams, pickedNames, onPick }) {
+export default function DraftBoard({ teams, pickedPlayers, onPick }) {
   return (
     <ul className="grid gap-4 md:grid-cols-3">
       {teams.map(team => (
@@ -18,15 +20,16 @@ export default function DraftBoard({ teams, pickedNames, onPick }) {
           </div>
           <ul className="mt-4" aria-label={`${team.name} roster`}>
             {team.players.map(player => {
-              const picked = pickedNames.has(player.name.toLowerCase());
-              const overall = playerOverall(player);
+              const picked = pickedPlayers.some(other => sameDraftPlayer(player, other));
               return (
                 <li key={player.id}>
                   <button type="button" disabled={picked} onClick={() => onPick(player, team)}
-                    className="-mx-2 flex h-10 w-[calc(100%+16px)] items-center gap-3 rounded-lg px-2 text-left transition-colors hover:bg-raised disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent">
-                    <span className="min-w-0 flex-1 truncate font-medium">{player.name}</span>
-                    <span className="text-ink-3">{picked ? "In squad" : roleLabel(player.role)}</span>
-                    <span className="tabular w-7 text-right text-ink-2" aria-label={overall === null ? undefined : `Overall ${overall}`}>{overall ?? "—"}</span>
+                    className="-mx-2 flex min-h-16 w-[calc(100%+16px)] items-center gap-3 rounded-lg px-2 text-left transition-colors hover:bg-raised disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium"><PlayerIdentity player={player} /></span>
+                      <span className="mt-1 block text-[11px] tabular text-ink-2">{playerAttributes(player)}</span>
+                    </span>
+                    {picked && <span className="text-ink-3">In squad</span>}
                   </button>
                 </li>
               );

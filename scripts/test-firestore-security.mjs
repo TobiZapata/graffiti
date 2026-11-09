@@ -125,7 +125,23 @@ try {
     assert.equal(attempts.filter(a => a.status === 'rejected' && a.reason.code === 'permission-denied').length, 1);
   });
   await check('signed-out room creation', false, () => setDoc(doc(anonymous, 'rooms/NEW2'), { ...lobby('NEW2'), players: { host: hostMember } }));
-  await check('invalid organization cannot create room', false, () => setDoc(doc(host, 'rooms/BAD1'), { ...lobby('BAD1'), players: { host: { ...hostMember, organization: { ...hostMember.organization, mainAwperUid: '1' } } } }));
+  await check('invalid organization cannot create room', false, () => setDoc(doc(host, 'rooms/BAD1'), { ...lobby('BAD1'), players: { host: { ...hostMember, organization: { ...hostMember.organization, mainAwperUid: '5' } } } }));
+  for (const [index, score, allowed] of [[0,80,true],[1,101,false],[2,null,false],[3,'80',false],[4,1.5,false],[5,undefined,false]]) {
+    const id=`V2${index}A`, uid=`v2-${index}`, db=client(uid), p=member(uid,true);
+    const squad=p.squad.map(s=>({player:{...s.player,awp:70,rifler:80,igl:60,firepower:score,clutch:90}}));
+    if (score === undefined) squad.forEach(s=>delete s.player.firepower);
+    const candidate={...p,squad,organization:{...p.organization,squad,iglUid:'0'}};
+    await check(`v2 score validation and dual roles ${index}`,allowed,async()=>{
+      const batch=writeBatch(db);
+      batch.set(doc(db,`rooms/${id}`),{...lobby(id),hostId:uid,players:{[uid]:candidate}});
+      batch.set(doc(db,`roomSessions/${uid}`),session(uid,id));
+      await batch.commit();
+    });
+    if (allowed) {
+      await check('v2 ready update retains dual roles',true,()=>updateDoc(doc(db,`rooms/${id}`),{[`players.${uid}.isReady`]:true}));
+      await check('v2 cannot update score outside range',false,()=>updateDoc(doc(db,`rooms/${id}`),{[`players.${uid}.organization.squad`]:squad.map((s,i)=>i ? s : {player:{...s.player,clutch:101}}),[`players.${uid}.squad`]:squad.map((s,i)=>i ? s : {player:{...s.player,clutch:101}})}));
+    }
+  }
   await seed('rooms/PRIVATE', lobby('PRIVATE'));
   await seed('rooms/PUBLIC', lobby('PUBLIC', 'public'));
   await seed('roomSessions/host', session('host', 'PRIVATE', new Date()));
@@ -149,7 +165,7 @@ try {
   const teams = JSON.parse(fs.readFileSync('src/data/teams.json', 'utf8'));
   const realMember = (uid, index, isHost) => {
     const p = member(uid, isHost);
-    const squad = teams[index].players.map(player => ({ player }));
+    const squad = teams[index].players.map(player => ({ player, team: { name: teams[index].name, major: teams[index].major } }));
     return { ...p, squad, organization: { ...p.organization, squad } };
   };
   await seed('rooms/REAL', { ...lobby('REAL'), players: { host: realMember('host', 0, true), guest: realMember('guest', 1, false) } });
@@ -157,6 +173,30 @@ try {
   await check('real roster host ready after guest', true, () => updateDoc(doc(host, 'rooms/REAL'), { 'players.host.isReady': true }));
   await seed('rooms/REALMAP', { ...lobby('REALMAP'), players: { host: realMember('host', 0, true), guest: { ...realMember('guest', 1, false), isReady: true } } });
   await check('real roster host ready with full players map', true, () => updateDoc(doc(host, 'rooms/REALMAP'), { players: { host: { ...realMember('host', 0, true), isReady: true }, guest: { ...realMember('guest', 1, false), isReady: true } } }));
+  const maxUids=['host','guest',...Array.from({length:6},(_,i)=>`max-${i}`)];
+  const maxMembers=Object.fromEntries(maxUids.map((uid,i)=>{
+    const p=realMember(uid,i,i===0), squad=p.squad.map(s=>({...s,player:{...s.player,awp:100,rifler:0,igl:80,firepower:85,clutch:70}}));
+    return [uid,{...p,isReady:i!==7,squad,organization:{...p.organization,squad,iglUid:'0'}}];
+  }));
+  const maxRoom={...lobby('MAX8'),players:Object.fromEntries(Object.entries(maxMembers).slice(0,7))};
+  await seed('rooms/MAX8',maxRoom);
+  const lastUid=maxUids[7],lastClient=client(lastUid);
+  await check('eighth v2 member joins with a full roster and shared roles',true,async()=>{
+    const batch=writeBatch(lastClient);
+    batch.update(doc(lastClient,'rooms/MAX8'),{[`players.${lastUid}`]:maxMembers[lastUid]});
+    batch.set(doc(lastClient,`roomSessions/${lastUid}`),session(lastUid,'MAX8'));
+    await batch.commit();
+  });
+  await check('eighth v2 member readies in a full room',true,()=>updateDoc(doc(lastClient,'rooms/MAX8'),{[`players.${lastUid}.isReady`]:true}));
+  await check('v2 roles update in a full room keeps shared assignment',true,()=>updateDoc(doc(host,'rooms/MAX8'),{'players.host.organization.mainAwperUid':'2','players.host.organization.iglUid':'2'}));
+  const maxTournament={...tournament,simulation:{engineVersion:3,playerDataVersion:'players-v2.0.0',bankVersion:'mirage-economy-v1'},matchesStarted:false,participantUids:maxUids};
+  await check('unknown simulation cannot start a major',false,()=>updateDoc(doc(host,'rooms/MAX8'),{status:'playing',generation:1,tournament:{...maxTournament,simulation:{...maxTournament.simulation,engineVersion:999}}}));
+  await check('eight v2 members start with all organization locks',true,async()=>{
+    const batch=writeBatch(host);
+    batch.update(doc(host,'rooms/MAX8'),{status:'playing',generation:1,tournament:maxTournament});
+    for (const uid of maxUids) batch.set(doc(host,`organizationSessions/org-${uid}`),{ownerUid:uid,roomId:'MAX8',tournamentId:maxTournament.tournamentId});
+    await batch.commit();
+  });
   await check('edit another member', false, () => updateDoc(doc(outsider, 'rooms/PRIVATE'), { 'players.guest.isReady': true }));
   await check('own navigation leave', true, async () => {
     const batch = writeBatch(outsider);
@@ -200,6 +240,12 @@ try {
   await check('join during Major', false, () => updateDoc(doc(outsider, 'rooms/PLAYING'), { 'players.outsider': member('outsider') }));
   await check('guest advances', false, () => updateDoc(doc(guest, 'rooms/PLAYING'), { 'tournament.stage': 'playoffs' }));
   await check('host advances', true, () => updateDoc(doc(host, 'rooms/PLAYING'), { 'tournament.stage': 'playoffs' }));
+  const simulation={engineVersion:2,playerDataVersion:'players-v2.0.0',bankVersion:'mirage-economy-v1'};
+  await check('legacy major cannot change simulation version',false,()=>updateDoc(doc(host,'rooms/PLAYING'),{'tournament.simulation':simulation}));
+  await seed('rooms/PLAYV2',{...playing('PLAYV2'),tournament:{...tournament,simulation}});
+  await check('v2 host advances with fixed simulation',true,()=>updateDoc(doc(host,'rooms/PLAYV2'),{'tournament.stage':'playoffs'}));
+  await check('v2 host cannot remove simulation version',false,()=>updateDoc(doc(host,'rooms/PLAYV2'),{'tournament.simulation':deleteField()}));
+  await check('v2 host cannot change simulation version',false,()=>updateDoc(doc(host,'rooms/PLAYV2'),{'tournament.simulation':{...simulation,engineVersion:3}}));
   await seed('rooms/DEPART', playing('DEPART'));
   await seed('organizationSessions/org-host', { ownerUid: 'host', roomId: 'DEPART', tournamentId: 'major1' });
   const hostLeaves = { hostId: 'guest', 'players.host.left': true, 'players.host.isReady': false, 'players.host.isHost': false, 'players.guest.isHost': true, 'tournament.abandonedUids': ['host'] };
@@ -240,7 +286,7 @@ try {
     return [uid, { ...member(uid, i === 0), isReady: true }];
   }));
   await seed('rooms/LOCK', { ...lobby('LOCK'), players: readyMembers });
-  const startTournament = { ...tournament, matchesStarted: false, participantUids: Object.keys(readyMembers) };
+  const startTournament = { ...tournament, simulation: {engineVersion:2,playerDataVersion:'players-v2.0.0',bankVersion:'mirage-economy-v1'}, matchesStarted: false, participantUids: Object.keys(readyMembers) };
   await check('host atomic start with eight locks', true, async () => {
     const batch = writeBatch(host);
     for (const [uid, player] of Object.entries(readyMembers)) batch.set(doc(host, `organizationSessions/${player.organization.id}`), { ownerUid: uid, roomId: 'LOCK', tournamentId: 'major1' });

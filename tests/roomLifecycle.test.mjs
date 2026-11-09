@@ -10,6 +10,17 @@ test('snapshots validate and do not share history or roster references', () => {
   assert.equal(org.squad[0].player.name, 'P0');
   assert.throws(() => organizationSnapshot({ ...org, id: 'a/b' }));
 });
+
+test('v2 snapshots retain scores, images and shared roles without mutating the organization', () => {
+  const squad = org.squad.map((s,i)=>({player:{...s.player,personId:`person-${i}`,imageUrl:null,awp:70,rifler:80,igl:60,firepower:75,clutch:90}}));
+  const next = {...org,squad,iglUid:'0'};
+  const player = member('one','One',next);
+  assert.deepEqual(player.squad,squad);
+  assert.equal(player.organization.mainAwperUid,player.organization.iglUid);
+  player.squad[0].player.clutch=0;
+  assert.equal(next.squad[0].player.clutch,90);
+  assert.throws(()=>organizationSnapshot({...next,squad:squad.map((s,i)=>i ? s : {player:{...s.player,firepower:101}})}));
+});
 test('start requires ready participating members and a lobby', () => {
   const player = member('one', 'One', org, true);
   const room = { status: 'lobby', players: [player, { ...player, uid: 'two', participating: false }] };

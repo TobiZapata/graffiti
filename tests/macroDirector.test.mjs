@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createMacroDirector, validateTeams } from '../src/lib/macroDirector.mjs';
+import { createMacroDirector as createVersionedDirector, validateTeams } from '../src/lib/macroDirector.mjs';
+
+const createMacroDirector = (a, b, seed) => createVersionedDirector(a, b, seed, 2);
 
 const team = name => ({ id: name, name, players: Array.from({ length: 5 }, (_, i) => ({ name: `${name}${i}`, rating: 80 })) });
+const v2Team = name => ({ id: name, name, mainAwperUid: '0', iglUid: '0', players: Array.from({ length: 5 }, (_, i) => ({ name: `${name}${i}`, awp: 80, rifler: 80, igl: 70, firepower: 80, clutch: 70 })) });
 const play = (a, b, seed) => {
   const director = createMacroDirector(a, b, seed), rounds = [];
   while (!director.done && rounds.length < 1000) rounds.push(director.next());
@@ -205,4 +208,65 @@ test('equal teams do not produce an artificially high overtime rate', () => {
     if (Math.max(score.A, score.B) > 13) overtime++;
   }
   assert.ok(overtime >= 50 && overtime <= 350, `unexpected overtime count: ${overtime}`);
+});
+
+test('v2 scores require complete integer attributes, including valid zero values', () => {
+  const a = v2Team('A'), b = v2Team('B');
+  for (const stat of ['awp', 'rifler', 'igl', 'firepower', 'clutch']) {
+    for (const bad of [undefined, null, NaN, '80', -1, 101, 50.5]) {
+      const invalid = structuredClone(a); invalid.players[0][stat] = bad;
+      assert.throws(() => validateTeams(invalid, b));
+    }
+  }
+  a.players.forEach(p => { for (const stat of ['awp', 'rifler', 'igl', 'firepower', 'clutch']) p[stat] = 0; });
+  b.players = a.players.map((p, i) => ({ ...p, name: `B${i}` }));
+  const plan = createMacroDirector(a, b, 'zeros').plan;
+  assert.equal(plan.winProbabilityA, 0.5);
+  assert.ok(plan.killTargets.every(p => Number.isFinite(p.targetKills)));
+});
+
+test('v2 uses assigned combat role and leadership, while firepower only distributes kills', () => {
+  const a = v2Team('A'), b = v2Team('B');
+  const probability = () => createMacroDirector(a, b, 'roles').plan.winProbabilityA;
+  assert.equal(probability(), 0.5);
+  a.players[1].awp = 100; a.players[0].rifler = 100;
+  assert.equal(probability(), 0.5, 'unused role scores do not add power');
+  a.players[0].awp = 100;
+  assert.ok(probability() > 0.5);
+  const before = probability(); a.players[0].igl = 100;
+  assert.ok(probability() > before, 'AWPer can also lead without becoming a sixth player');
+  const macro = createMacroDirector(a, b, 'roles').plan;
+  a.players[0].firepower = 0; a.players[0].clutch = 0; a.players[0].imageUrl = '/portrait.png';
+  const changed = createMacroDirector(a, b, 'roles').plan;
+  assert.equal(changed.winProbabilityA, macro.winProbabilityA);
+  assert.equal(changed.winnerTeam, macro.winnerTeam);
+  assert.deepEqual(changed.targetScore, macro.targetScore);
+  assert.notDeepEqual(changed.killTargets, macro.killTargets);
+});
+
+test('v2 kill targets favor firepower over many seeds but allow lower scorers to lead', () => {
+  const a = v2Team('A'), b = v2Team('B');
+  a.players[0].firepower = 95; a.players[1].firepower = 70;
+  let high = 0, low = 0, inversions = 0;
+  for (let seed = 0; seed < 500; seed++) {
+    const plan = createMacroDirector(a, b, seed).plan;
+    const targets = plan.killTargets.filter(p => p.team === 'A');
+    high += targets[0].targetKills; low += targets[1].targetKills;
+    inversions += targets[1].targetKills > targets[0].targetKills;
+    assert.ok(Math.abs(targets.reduce((sum, p) => sum + p.targetKills, 0) - (plan.targetScore.A + plan.targetScore.B) * 3.25) <= 2.5);
+    assert.deepEqual(plan, createMacroDirector(a, b, seed).plan);
+  }
+  assert.ok(high > low * 1.2);
+  assert.ok(inversions > 0, 'a weaker player can have a great map');
+});
+
+test('mixed saved drafts support legacy and v2 players without generating attributes', () => {
+  const a = v2Team('A'), b = team('B');
+  a.players[2] = { name: 'legacy-pick', rating: 72, clutch: 70 };
+  const before = structuredClone([a, b]);
+  const plan = createMacroDirector(a, b, 'mixed-draft').plan;
+  assert.ok(plan.killTargets.every(p => Number.isFinite(p.targetKills)));
+  assert.deepEqual([a, b], before);
+  a.players.forEach(p => { p.imageUrl = '/portrait.png'; p.personId = p.name; });
+  assert.deepEqual(createMacroDirector(a, b, 'mixed-draft').plan, plan);
 });

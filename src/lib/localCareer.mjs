@@ -1,8 +1,14 @@
 ﻿export const CAREER_KEY = 'major-mvp:career:v1';
 import { validSeriesProgress } from './replaySeries.mjs';
 import { prepareReplayTeam } from './replayTeam.mjs';
+import { isV2Player, validateV2Player } from './playerModel.mjs';
+import { assertCompatibleSimulation } from './simulationVersion.mjs';
 const text = value => typeof value === 'string' && value.trim().length > 0;
 const number = value => Number.isFinite(value) && value >= 0;
+const validPlayer = player => {
+  if (!text(player?.name)) return false;
+  try { if (isV2Player(player)) validateV2Player(player); return true; } catch { return false; }
+};
 const validTeam = team => {
   try {
     const prepared = prepareReplayTeam(team);
@@ -11,19 +17,21 @@ const validTeam = team => {
 };
 
 export function validOrganization(o) {
-  if (!o || !text(o.id) || !text(o.name) || !text(o.icon) || !text(o.createdAt) || !Array.isArray(o.colors) || o.colors.length !== 2 || !o.colors.every(c => /^#[0-9a-f]{6}$/i.test(c)) || !Array.isArray(o.squad) || o.squad.length !== 5 || !o.squad.every(s => text(s?.player?.name))) return false;
+  if (!o || !text(o.id) || !text(o.name) || !text(o.icon) || !text(o.createdAt) || !Array.isArray(o.colors) || o.colors.length !== 2 || !o.colors.every(c => /^#[0-9a-f]{6}$/i.test(c)) || !Array.isArray(o.squad) || o.squad.length !== 5 || !o.squad.every(s => validPlayer(s?.player))) return false;
   if (o.majorHistory !== undefined && (!Array.isArray(o.majorHistory) || !o.majorHistory.every(r => r && text(r.id) && ['champion','finalist','semifinal','quarterfinal','swiss'].includes(r.outcome) && typeof r.final === 'boolean' && r.final === ['champion','finalist'].includes(r.outcome) && Array.isArray(r.matches) && r.matches.every(m => m && text(m.name) && typeof m.major === 'string' && typeof m.won === 'boolean')) || new Set(o.majorHistory.map(r => r.id)).size !== o.majorHistory.length)) return false;
   const names = o.squad.map(s => s.player.name.trim().toLowerCase());
+  const people = o.squad.map(s => s.player.personId).filter(text);
   const ids = o.squad.map((_, i) => String(i));
-  return new Set(names).size === 5 && ids.includes(o.mainAwperUid) && ids.includes(o.iglUid) && ids.includes(o.starUid) && o.mainAwperUid !== o.iglUid;
+  return new Set(names).size === 5 && new Set(people).size === people.length && ids.includes(o.mainAwperUid) && ids.includes(o.iglUid) && ids.includes(o.starUid);
 }
 
 export function validCareer(data) {
   if (!data || data.version !== 1 || !validOrganization(data.organization)) return false;
   const t = data.tournament;
   if (t === null) return !!data.matchProgress && typeof data.matchProgress === 'object' && !Array.isArray(data.matchProgress) && Object.keys(data.matchProgress).length === 0;
+  try { assertCompatibleSimulation(t?.simulation); } catch { return false; }
   if (!t || !text(t.tournamentId) || !Array.isArray(t.mySquad) || t.mySquad.length !== 5 || !text(t.teamName) || !['swiss','swiss_complete','playoffs','results_pending','eliminated','won'].includes(t.stage) || ![null,'eliminated','won'].includes(t.pendingResult) || (t.stage === 'results_pending' && !t.pendingResult) || !Number.isInteger(t.swissRound) || t.swissRound < 1 || !Array.isArray(t.standings) || t.standings.length !== 16 || !Array.isArray(t.matches) || !data.matchProgress || typeof data.matchProgress !== 'object' || Array.isArray(data.matchProgress)) return false;
-  if (!t.mySquad.every(s => text(s?.player?.name))) return false;
+  if (!t.mySquad.every(s => validPlayer(s?.player))) return false;
   const ids = new Set(t.standings.map(team => team?.id));
   if (ids.size !== 16 || !ids.has('player_team') || !t.standings.every(team => text(team.id) && validTeam(team) && team.isPlayer === (team.id === 'player_team'))) return false;
   const matchIds = new Set();

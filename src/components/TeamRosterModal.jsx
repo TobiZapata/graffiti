@@ -1,7 +1,8 @@
 "use client";
+import PlayerIdentity from "@/components/PlayerIdentity";
 
 import { useEffect, useRef } from "react";
-import { playerOverall, roleLabel } from "@/lib/majorDisplay.mjs";
+import { playerAttributes } from "@/lib/majorDisplay.mjs";
 
 export default function TeamRosterModal({ team, onClose }) {
   const dialog = useRef(null);
@@ -32,13 +33,12 @@ export default function TeamRosterModal({ team, onClose }) {
           <button type="button" onClick={onClose} className="link self-start">Close</button>
         </header>
         <table className="mt-4 w-full text-left">
-          <thead><tr className="meta h-9"><th scope="col" className="font-normal">Player</th><th scope="col" className="font-normal">Role</th><th scope="col" className="text-right font-normal">Overall</th></tr></thead>
+          <thead><tr className="meta h-9"><th scope="col" className="font-normal">Player</th><th scope="col" className="font-normal">Attributes</th></tr></thead>
           <tbody>
             {team.players?.map((p, i) => (
               <tr key={p.uid || i} className="h-11 border-t border-rule">
-                <td className="font-medium">{p.name}</td>
-                <td className="text-ink-2">{roleLabel(p.role)}</td>
-                <td className="tabular text-right">{playerOverall(p) ?? "—"}</td>
+                <td className="font-medium"><PlayerIdentity player={p} /></td>
+                <td className="tabular text-[12px] text-ink-2">{playerAttributes(p)}</td>
               </tr>
             ))}
           </tbody>

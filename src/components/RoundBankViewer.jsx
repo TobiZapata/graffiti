@@ -11,6 +11,7 @@ import { anchorReplay, nextReplayRound, replayTime } from "../lib/replayClock.mj
 import { mostExpensiveWeapon } from "../lib/replayEquipment.mjs";
 import styles from "./RoundBankViewer.module.css";
 import ReplayMatchLayout from "./ReplayMatchLayout";
+import PlayerIdentity from "./PlayerIdentity";
 
 const MAP = { originX: -3230, originY: 1713, scale: 5 };
 const BASE = "/round-bank-lab";
@@ -235,7 +236,11 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
       </div>}
       {progress && <details className={styles.stats}><summary>Match stats</summary>
         <table><thead><tr><th>Player</th><th>Team</th><th>K</th><th>D</th><th>A</th><th>Flash assists</th></tr></thead>
-          <tbody>{progress.players.map((player, i) => <tr key={i}><td>{player.name}</td><td>{player.team === "A" ? (round.meta.macro.teamASide === "T" ? round.meta.macro.teamT : round.meta.macro.teamCT) : (round.meta.macro.teamASide === "T" ? round.meta.macro.teamCT : round.meta.macro.teamT)}</td><td>{player.kills}</td><td>{player.deaths}</td><td>{player.assists}</td><td>{player.flashAssists}</td></tr>)}</tbody></table>
+          <tbody>{progress.players.map((player, i) => {
+            const roster = player.team === "A" ? teamA : teamB;
+            const identity = roster?.players?.find(p => p.name === player.name) ?? player;
+            return <tr key={i}><td><PlayerIdentity player={identity} /></td><td>{player.team === "A" ? (round.meta.macro.teamASide === "T" ? round.meta.macro.teamT : round.meta.macro.teamCT) : (round.meta.macro.teamASide === "T" ? round.meta.macro.teamCT : round.meta.macro.teamT)}</td><td>{player.kills}</td><td>{player.deaths}</td><td>{player.assists}</td><td>{player.flashAssists}</td></tr>;
+          })}</tbody></table>
       </details>}
       {!matchMode && <ReplayKillFeed deaths={deaths} name={name} />}
       {!matchMode && <p className={styles.note}>Recorded round. The defuse bar uses sampled states and may differ slightly from the exact start. Utility areas are approximate.</p>}

@@ -1,4 +1,5 @@
 "use client";
+import PlayerIdentity from "@/components/PlayerIdentity";
 
 import { Suspense, useRef, useState } from "react";
 import Link from "next/link";
@@ -7,7 +8,7 @@ import AppBar from "@/components/AppBar";
 import OrganizationAbandonments from "@/components/OrganizationAbandonments";
 import { useTournament } from "@/context/TournamentContext";
 import { organizationProfile } from "@/lib/organizationProfile.mjs";
-import { matchFormat, opponentOf, record, roleLabel, ROLE_FIELDS } from "@/lib/majorDisplay.mjs";
+import { matchFormat, opponentOf, record, playerAttributes, ROLE_FIELDS } from "@/lib/majorDisplay.mjs";
 import TeamName from "@/components/major/TeamName";
 
 const outcomes = { active: "In progress", champion: "Champion", finalist: "Runner-up", semifinal: "Semifinals", quarterfinal: "Quarterfinals", swiss: "Out in the Swiss stage" };
@@ -147,11 +148,13 @@ export default function OrganizationPage() {
                   setDropTarget(null);
                 }}>
                 <button type="button" disabled={!selectedRole || !!storageError || starting}
-                  className={`min-w-0 flex-1 truncate text-left font-medium ${selectedRole ? "cursor-pointer underline decoration-ink-3 underline-offset-4" : "cursor-default"}`}
+                  className={`min-w-0 flex-1 text-left font-medium ${selectedRole ? "cursor-pointer underline decoration-ink-3 underline-offset-4" : "cursor-default"}`}
                   aria-label={selectedRole ? `Make ${entry.player.name} the ${ROLE_FIELDS[selectedRole]}` : entry.player.name}
-                  onClick={() => moveRole(selectedRole, uid)}>{entry.player.name}</button>
-                <span className="text-ink-3">{roleLabel(entry.player.role)}</span>
-                <span className="flex w-[148px] justify-end gap-1">
+                  onClick={() => moveRole(selectedRole, uid)}>
+                  <span className="block truncate"><PlayerIdentity player={entry.player} /></span>
+                  <span className="block text-[11px] tabular font-normal text-ink-3">{playerAttributes(entry.player)}</span>
+                </button>
+                <span className="flex shrink-0 flex-wrap justify-end gap-1">
                   {Object.entries(ROLE_FIELDS).filter(([field]) => organization[field] === uid).map(([field, label]) =>
                     <button type="button" key={field} data-role={field} draggable={!storageError && !starting} disabled={!!storageError || starting}
                       className={`h-7 cursor-grab rounded-md px-2 text-[12px] font-medium transition-colors active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50 ${selectedRole === field ? "bg-ink text-black" : "bg-control hover:bg-[#363636]"} ${field === "starUid" && selectedRole !== field ? "text-accent" : ""}`}
@@ -176,10 +179,10 @@ export default function OrganizationPage() {
               </header>
               <dl className="mt-4 grid gap-4">
                 <div><dt className="font-medium">AWPer</dt><dd className="mt-1 text-ink-2">Gets first claim on the AWP when the team can afford it.</dd></div>
-                <div><dt className="font-medium">IGL</dt><dd className="mt-1 text-ink-2">The in-game leader. Their game sense shifts the team&apos;s chances of winning.</dd></div>
+                <div><dt className="font-medium">IGL</dt><dd className="mt-1 text-ink-2">The in-game leader. Their leadership shifts the team&apos;s chances of winning.</dd></div>
                 <div><dt className="font-medium">Star player</dt><dd className="mt-1 text-ink-2">The face of your organization. They will be the protected player when roster changes arrive.</dd></div>
               </dl>
-              <p className="mt-4 text-ink-2">The AWPer and the IGL must be different players. Moving one onto the other swaps them. The star can share a player with either.</p>
+              <p className="mt-4 text-ink-2">The AWPer and IGL can be the same player. The star can share either role.</p>
               <p className="meta mt-4">A Major in progress keeps the roles it started with.</p>
             </dialog>
           </section>

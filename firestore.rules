@@ -9,20 +9,48 @@ service cloud.firestore {
     function claimed(r, uid) { let c = getAfter(sessionPath(uid)).data; return c.uid == uid && c.roomId == r.id && c.pageId == r.players[uid].sessionId && !c.leaving && c.heartbeat == request.time; }
     function expired(uid) { let c = get(sessionPath(uid)).data; return c.leaving || c.heartbeat <= request.time - duration.value(180, 's'); }
     function lockPath(id) { return /databases/$(database)/documents/organizationSessions/$(id); }
+    function playerScores(p) {
+      return !p.keys().hasAny(['awp','rifler','igl','firepower']) ||
+        validScores(p);
+    }
+    function validScores(p) {
+      let a=p.awp;
+      let r=p.rifler;
+      let i=p.igl;
+      let f=p.firepower;
+      let c=p.clutch;
+      // One range expression keeps full-roster writes within the rules evaluation budget.
+      return a is int && r is int && i is int && f is int && c is int &&
+        [string(a),string(r),string(i),string(f),string(c)].join(',').matches('^(100|[0-9]{1,2})(,(100|[0-9]{1,2})){4}$');
+    }
     function validPlayer(p) {
-      return p is map && p.player is map && p.player.name is string && p.player.name.size() > 0 && p.player.name.size() <= 100;
+      let player = p.player;
+      return player.name.matches('(?s)^.{1,100}$') && playerScores(player);
+    }
+    function validNewRoom(code, r) {
+      let uid = request.auth.uid;
+      return code.matches('^[A-Z0-9]{4}$') && r.keys().hasOnly(['id','hostId','status','visibility','playbackMode','players','schemaVersion','generation','createdAt']) &&
+        r.get('playbackMode','full') in ['full','highlights'] && r.id == code && r.hostId == uid && r.schemaVersion == 3 &&
+        r.status == 'lobby' && r.visibility in ['public','private'] && r.generation == 0 &&
+        r.createdAt is string && r.createdAt.size() <= 40 && r.players.size() == 1 && uid in r.players &&
+        member(r.players[uid],uid,true) && r.players[uid].participating && !r.players[uid].isReady && claimed(r,uid);
+    }
+    function validNewSession(uid, s) {
+      let room = getAfter(roomPath(s.roomId)).data;
+      return request.auth.uid == uid && s.keys().hasOnly(['uid','roomId','pageId','tabId','heartbeat','leaving']) &&
+        s.uid == uid && s.roomId is string && s.pageId is string && s.pageId.size() > 0 && s.tabId is string && s.tabId.size() > 0 && s.heartbeat == request.time && s.leaving == false &&
+        room.status == 'lobby' && uid in room.players && !room.players[uid].left && room.players[uid].sessionId == s.pageId;
     }
     function validOrganization(o) {
-      return o is map && o.id is string && o.id.size() > 0 && o.id.size() <= 150 && o.id.matches('^[^/]+$') &&
-        o.name is string && o.name.size() > 0 && o.name.size() <= 100 && o.icon is string && o.icon.size() > 0 && o.icon.size() <= 100000 &&
-        o.createdAt is string && o.createdAt.size() > 0 && o.createdAt.size() <= 100 &&
-        o.colors is list && o.colors.size() == 2 && o.colors[0] is string && o.colors[0].matches('^#[0-9a-fA-F]{6}$') && o.colors[1] is string && o.colors[1].matches('^#[0-9a-fA-F]{6}$') &&
+      return o.id.matches('^[^/]{1,150}$') &&
+        o.name.matches('(?s)^.{1,100}$') && o.icon is string && o.icon.size() > 0 && o.icon.size() <= 100000 &&
+        o.createdAt.matches('(?s)^.{1,100}$') &&
+        o.colors is list && o.colors.size() == 2 && o.colors[0].matches('^#[0-9a-fA-F]{6}$') && o.colors[1].matches('^#[0-9a-fA-F]{6}$') &&
         o.squad is list && o.squad.size() == 5 && validPlayer(o.squad[0]) && validPlayer(o.squad[1]) && validPlayer(o.squad[2]) && validPlayer(o.squad[3]) && validPlayer(o.squad[4]) &&
-        o.mainAwperUid in ['0','1','2','3','4'] && o.iglUid in ['0','1','2','3','4'] && o.starUid in ['0','1','2','3','4'] && o.mainAwperUid != o.iglUid;
+        o.mainAwperUid in ['0','1','2','3','4'] && o.iglUid in ['0','1','2','3','4'] && o.starUid in ['0','1','2','3','4'];
     }
     function member(p, uid, host) {
       return p is map && p.keys().hasOnly(['uid','name','isHost','organization','participating','isReady','squad','teamName','icon','sessionId','left']) &&
-        p.keys().hasAll(['uid','name','isHost','organization','participating','isReady','squad','teamName','icon','sessionId','left']) &&
         p.uid == uid && p.sessionId is string && p.sessionId.size() > 0 && p.left == false && p.name is string && p.name.size() <= 100 && p.isHost == host && p.participating is bool && p.isReady is bool &&
         (!p.isReady || p.participating) && validOrganization(p.organization) && p.squad == p.organization.squad && p.teamName == p.organization.name && p.icon == p.organization.icon;
     }
@@ -45,10 +73,15 @@ service cloud.firestore {
       let q = updated.get(uid, {});
       return uid == '' || (p.left ? !(uid in updated) : (q.diff(p).affectedKeys().hasOnly(['participating','isReady']) && q.participating == true && q.isReady == false));
     }
+    function validSimulation(t) {
+      let s = t.get('simulation',null);
+      return s == null || (s.keys().hasOnly(['engineVersion','playerDataVersion','bankVersion']) &&
+        s.engineVersion in [2,3] && s.playerDataVersion == 'players-v2.0.0' && s.bankVersion == 'mirage-economy-v1');
+    }
     function start(old, next) {
       return old.hostId == request.auth.uid && old.status == 'lobby' && next.status == 'playing' &&
         next.diff(old).affectedKeys().hasOnly(['status','generation','tournament']) && next.generation == old.generation + 1 &&
-        next.tournament.tournamentId is string && next.tournament.tournamentId.size() > 0 && next.tournament.tournamentId.size() <= 100 &&
+        validSimulation(next.tournament) && next.tournament.tournamentId is string && next.tournament.tournamentId.size() > 0 && next.tournament.tournamentId.size() <= 100 &&
         next.tournament.participantUids is list && next.tournament.participantUids.size() > 0 && next.tournament.participantUids.size() <= 8 &&
         next.tournament.participantUids.toSet().size() == next.tournament.participantUids.size() &&
         next.tournament.participantUids.toSet().difference(old.players.keys().toSet()).size() == 0 && next.tournament.get('abandonedUids',[]) == [] && next.tournament.matchesStarted == false &&
@@ -77,7 +110,7 @@ service cloud.firestore {
       let changed = next.players.diff(old.players).affectedKeys();
       return old.status == 'lobby' && next.status == 'lobby' && (
         // A new member adds only their own entry.
-        (!(uid in old.players) && next.diff(old).affectedKeys().hasOnly(['players']) && changed.hasOnly([uid]) && next.players.size() == old.players.size() + 1 && next.players.size() <= 8 && member(next.players[uid],uid,false) && claimed(next,uid) && next.players[uid].participating && !next.players[uid].isReady) ||
+        (!(uid in old.players) && next.diff(old).affectedKeys().hasOnly(['players']) && changed.hasOnly([uid]) && next.players.size() == old.players.size() + 1 && next.players.size() <= 8 && member(next.players[uid],uid,false) && next.players[uid].participating && !next.players[uid].isReady) ||
         // Members may change their own readiness or validated organization.
         (uid in old.players && uid in next.players && next.diff(old).affectedKeys().hasOnly(['players']) && changed.hasOnly([uid]) &&
           (next.players[uid].diff(old.players[uid]).affectedKeys().hasOnly(['isReady']) ?
@@ -117,13 +150,7 @@ service cloud.firestore {
     match /rooms/{code} {
       allow get: if signed();
       allow list: if signed() && resource.data.visibility == 'public' && resource.data.status == 'lobby' && request.query.limit <= 50;
-      allow create: if signed() && code.matches('^[A-Z0-9]{4}$') && request.resource.data.keys().hasOnly(['id','hostId','status','visibility','playbackMode','players','schemaVersion','generation','createdAt']) &&
-        request.resource.data.get('playbackMode','full') in ['full','highlights'] &&
-        request.resource.data.id == code && request.resource.data.hostId == request.auth.uid && request.resource.data.schemaVersion == 3 &&
-        request.resource.data.status == 'lobby' && request.resource.data.visibility in ['public','private'] && request.resource.data.generation == 0 &&
-        request.resource.data.createdAt is string && request.resource.data.createdAt.size() <= 40 && request.resource.data.players.size() == 1 &&
-        request.auth.uid in request.resource.data.players && member(request.resource.data.players[request.auth.uid],request.auth.uid,true) &&
-        request.resource.data.players[request.auth.uid].participating && !request.resource.data.players[request.auth.uid].isReady && claimed(request.resource.data,request.auth.uid);
+      allow create: if signed() && validNewRoom(code,request.resource.data);
       // shortcut: host controls simulation state, move advancement to a trusted server to verify every match.
       allow update: if signed() && resource.data.schemaVersion == 3 && request.resource.data.schemaVersion == 3 &&
         (((live(resource.data,request.auth.uid) || (resource.data.status == 'lobby' && !(request.auth.uid in resource.data.players) && claimed(request.resource.data,request.auth.uid))) && (resource.data.status == 'lobby' ?
@@ -133,6 +160,7 @@ service cloud.firestore {
             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tournament']) &&
             request.resource.data.tournament.tournamentId == resource.data.tournament.tournamentId &&
             request.resource.data.tournament.participantUids == resource.data.tournament.participantUids &&
+            request.resource.data.tournament.get('simulation',null) == resource.data.tournament.get('simulation',null) &&
             request.resource.data.tournament.get('abandonedUids',[]) == resource.data.tournament.get('abandonedUids',[]))))) || departure(resource.data,request.resource.data));
       match /results/{resultId} {
         function validMap(m, game) {
@@ -181,9 +209,7 @@ service cloud.firestore {
     match /roomSessions/{uid} {
       allow get: if signed();
       allow list: if signed() && request.query.limit <= 8 && request.auth.uid in get(roomPath(resource.data.roomId)).data.players;
-      allow create: if signed() && request.auth.uid == uid && request.resource.data.keys().hasOnly(['uid','roomId','pageId','tabId','heartbeat','leaving']) && request.resource.data.keys().hasAll(['uid','roomId','pageId','tabId','heartbeat','leaving']) &&
-        request.resource.data.uid == uid && request.resource.data.roomId is string && request.resource.data.pageId is string && request.resource.data.pageId.size() > 0 && request.resource.data.tabId is string && request.resource.data.tabId.size() > 0 && request.resource.data.heartbeat == request.time && request.resource.data.leaving == false &&
-        getAfter(roomPath(request.resource.data.roomId)).data.status == 'lobby' && uid in getAfter(roomPath(request.resource.data.roomId)).data.players && !getAfter(roomPath(request.resource.data.roomId)).data.players[uid].left && getAfter(roomPath(request.resource.data.roomId)).data.players[uid].sessionId == request.resource.data.pageId;
+      allow create: if signed() && validNewSession(uid,request.resource.data);
       allow update: if signed() && request.auth.uid == uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['heartbeat','leaving']) && request.resource.data.heartbeat == request.time && request.resource.data.leaving is bool && !resource.data.leaving && resource.data.heartbeat > request.time - duration.value(180, 's');
       allow delete: if signed() && (request.auth.uid == uid || get(roomPath(resource.data.roomId)).data.hostId == request.auth.uid || expired(uid) || get(roomPath(resource.data.roomId)).data.status == 'closed') &&
         (!existsAfter(roomPath(resource.data.roomId)) || getAfter(roomPath(resource.data.roomId)).data.status == 'closed' || !(uid in getAfter(roomPath(resource.data.roomId)).data.players) || getAfter(roomPath(resource.data.roomId)).data.players[uid].left ||

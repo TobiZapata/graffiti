@@ -1,5 +1,12 @@
 # Firebase: datos y permisos
 
+Modelo de jugadores actualizado: [PLAYER_MODEL_V2.md](PLAYER_MODEL_V2.md).
+Las referencias a atributos anteriores describen el camino legacy.
+
+El scoreboard K-D/Swing/ADR/KAST/Rating usa el sidecar local descrito en
+[MATCH_METRICS.md](MATCH_METRICS.md). Los documentos online conservan sus
+resultados compactos sin estadisticas; la vista las reconstruye de las rondas.
+
 Proyecto graffity-major, Firestore Native (default), region nam5, plan gratuito.
 Auth anonima habilitada. .env.local contiene solo configuracion publica del cliente;
 los tokens de CLI o claves de servidor nunca se copian al frontend.

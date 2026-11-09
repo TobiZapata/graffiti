@@ -5,6 +5,5 @@ export function moveOrganizationRole(org, field, targetUid) {
     throw new Error('The organization or its roles are not valid.');
   }
   if (org[field] === targetUid) return org;
-  const other = field === 'iglUid' ? 'mainAwperUid' : field === 'mainAwperUid' ? 'iglUid' : null;
-  return { ...org, [field]: targetUid, ...(other && org[other] === targetUid ? { [other]: org[field] } : {}) };
+  return { ...org, [field]: targetUid };
 }

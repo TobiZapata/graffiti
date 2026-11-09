@@ -1,4 +1,5 @@
-﻿"use client";
+"use client";
+import PlayerIdentity from "@/components/PlayerIdentity";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -9,29 +10,37 @@ import { summarizeMatchPlayers } from "@/lib/matchSummary.mjs";
 
 const mapName = (map) => (map?.map || "Unknown map").replace(/^de_/, "").replace(/^./, c => c.toUpperCase());
 const value = (n) => n == null ? "—" : n;
+const decimal = (n, digits = 1) => n == null ? "—" : n.toFixed(digits);
+const percentage = (n) => n == null ? "—" : `${decimal(n)}%`;
+const swingValue = (n) => n == null ? "—" : `${n >= 0.05 ? "+" : ""}${decimal(Math.abs(n) < 0.05 ? 0 : n)}%`;
 
 function PlayerTable({ team, players }) {
+  const sorted = players.toSorted((a, b) => {
+    if ((a.rating == null) !== (b.rating == null)) return a.rating == null ? 1 : -1;
+    return (b.rating ?? 0) - (a.rating ?? 0) || (b.kills ?? 0) - (a.kills ?? 0);
+  });
   return <section className="min-w-0" aria-label={`${team.name} player statistics`}>
     <div className="flex items-center gap-2 border-b border-rule-strong pb-3">
       <TeamMark team={team} size={24} /><TeamName team={team} className="font-medium" />
     </div>
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[320px] text-sm">
+      <table className="w-full min-w-[440px] text-sm">
         <thead className="text-xs text-ink-3"><tr>
           <th scope="col" className="py-3 pr-4 text-left font-normal">Player</th>
-          <th scope="col" className="px-2 text-right font-normal" title="Kills">K</th>
-          <th scope="col" className="px-2 text-right font-normal" title="Deaths">D</th>
-          <th scope="col" className="px-2 text-right font-normal" title="Assists">A</th>
-          <th scope="col" className="pl-2 text-right font-normal" aria-label="Flash assists"><abbr title="Flash assists" className="no-underline">FA</abbr></th>
+          <th scope="col" className="px-2 text-right font-normal" title="Kills and deaths">K-D</th>
+          <th scope="col" className="px-2 text-right font-normal" title="Average change in round win probability from kills and deaths">Swing</th>
+          <th scope="col" className="px-2 text-right font-normal"><abbr title="Average damage per round" className="no-underline">ADR</abbr></th>
+          <th scope="col" className="px-2 text-right font-normal"><abbr title="Rounds with a kill, assist, survival or traded death" className="no-underline">KAST</abbr></th>
+          <th scope="col" className="pl-2 text-right font-normal" title="Simulator rating">Rating</th>
         </tr></thead>
-        <tbody>{players.map(player => <tr key={player.uid} className="border-t border-rule">
-          <th scope="row" className="py-3 pr-4 text-left font-normal">{player.name}</th>
-          {[player.kills, player.deaths, player.assists, player.flashAssists].map((stat, i) => <td key={i} className="tabular px-2 text-right last:pr-0">{value(stat)}</td>)}
+        <tbody>{sorted.map(player => <tr key={player.uid} className="border-t border-rule">
+          <th scope="row" className="py-3 pr-4 text-left font-normal"><PlayerIdentity player={player} /></th>
+          <td className="tabular whitespace-nowrap px-2 text-right">{player.kills == null || player.deaths == null ? "—" : `${player.kills}-${player.deaths}`}</td>
+          <td className="tabular px-2 text-right">{swingValue(player.swing)}</td>
+          <td className="tabular px-2 text-right">{decimal(player.adr)}</td>
+          <td className="tabular px-2 text-right">{percentage(player.kast)}</td>
+          <td className="tabular pl-2 text-right">{decimal(player.rating, 2)}</td>
         </tr>)}</tbody>
-        <tfoot><tr className="border-t border-rule-strong font-medium">
-          <th scope="row" className="py-3 pr-4 text-left">Team total</th>
-          {['kills', 'deaths', 'assists', 'flashAssists'].map(field => <td key={field} className="tabular px-2 text-right last:pr-0">{players.some(player => player[field] == null) ? '—' : players.reduce((sum, player) => sum + player[field], 0)}</td>)}
-        </tr></tfoot>
       </table>
     </div>
   </section>;
@@ -71,7 +80,9 @@ export default function MatchSummary({ match, result, saving = false, loadingSta
     </div>}
     <section className="mt-8" aria-labelledby="player-stats-title">
       <h2 id="player-stats-title" className="text-lg font-medium">Player statistics</h2>
+      <p className="mt-2 text-xs text-ink-3">Swing and rating use the simulator’s own calculations.</p>
       {loadingStats ? <p role="status" className="mt-2 text-sm text-ink-2">Loading player statistics…</p> : !stats.complete && <p className="mt-2 text-sm text-ink-2">{stats.availableMaps ? `Statistics are unavailable for ${stats.totalMaps - stats.availableMaps} of ${stats.totalMaps} maps.` : "Player statistics are unavailable for this result."}</p>}
+      {!loadingStats && stats.complete && !stats.metricsComplete && <p role="status" className="mt-2 text-sm text-ink-2">Detailed metrics are unavailable for this result. Saved kills and deaths are preserved.</p>}
       {(stats.teamA.length > 0 || stats.teamB.length > 0) && <div className="mt-5 grid gap-8 lg:grid-cols-2"><PlayerTable team={match.teamA} players={stats.teamA} /><PlayerTable team={match.teamB} players={stats.teamB} /></div>}
     </section>
   </main>;

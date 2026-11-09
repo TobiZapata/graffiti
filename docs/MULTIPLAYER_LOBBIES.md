@@ -1,5 +1,8 @@
 # Salas y abandonos
 
+Modelo de jugadores actualizado: [PLAYER_MODEL_V2.md](PLAYER_MODEL_V2.md).
+Las referencias a atributos anteriores describen el camino legacy.
+
 ## Modo de reproduccion
 
 El creador elige Full match o Highlights antes de crear la sala. El modo queda

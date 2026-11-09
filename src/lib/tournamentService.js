@@ -1,26 +1,5 @@
+import { CURRENT_SIMULATION } from "./simulationVersion.mjs";
 import { formatTeamForSimulation } from "@/app/utils/playerExpansion";
-
-// Helper function to generate scores for NPC matches
-export function generateScore() {
-  const roll = Math.random();
-  let winnerScore, loserScore;
-
-  if (roll < 0.20) {
-    const otRounds = Math.random() < 0.7 ? 1 : 2; 
-    winnerScore = 13 + otRounds * 3;
-    loserScore = winnerScore - 2; 
-  } else if (roll < 0.45) {
-    winnerScore = 13;
-    loserScore = 10 + Math.floor(Math.random() * 3); 
-  } else if (roll < 0.75) {
-    winnerScore = 13;
-    loserScore = 6 + Math.floor(Math.random() * 4); 
-  } else {
-    winnerScore = 13;
-    loserScore = 2 + Math.floor(Math.random() * 4); 
-  }
-  return { winnerScore, loserScore };
-}
 
 // Generate the initial tournament state
 export async function initializeMultiplayerTournament(roomPlayers) {
@@ -75,6 +54,7 @@ export async function initializeMultiplayerTournament(roomPlayers) {
   }
 
   return {
+    simulation: CURRENT_SIMULATION,
     stage: "swiss",
     swissRound: 1,
     standings,

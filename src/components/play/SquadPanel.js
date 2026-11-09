@@ -1,4 +1,5 @@
-import { roleLabel, teamLabel, ROLE_FIELDS } from "@/lib/majorDisplay.mjs";
+import PlayerIdentity from "@/components/PlayerIdentity";
+import { playerAttributes, teamLabel, ROLE_FIELDS } from "@/lib/majorDisplay.mjs";
 
 export default function SquadPanel({ squad, roles = {}, onRemove }) {
   const open = Math.max(0, 5 - squad.length);
@@ -13,12 +14,11 @@ export default function SquadPanel({ squad, roles = {}, onRemove }) {
         {squad.map((slot, index) => {
           const tags = Object.entries(ROLE_FIELDS).filter(([field]) => roles[field] === String(index)).map(([, label]) => label);
           return (
-            <li key={slot.player.name} className="flex h-12 items-center gap-3 rounded-lg bg-raised px-3">
+            <li key={slot.player.id ?? slot.player.name} className="flex min-h-16 items-center gap-3 rounded-lg bg-raised px-3 py-2">
               <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium">{slot.player.name}</span>
-                <span className="meta block truncate">
-                  {[roleLabel(slot.player.role), slot.team && teamLabel(slot.team)].filter(Boolean).join(" · ")}
-                </span>
+                <span className="block truncate font-medium"><PlayerIdentity player={slot.player} /></span>
+                <span className="block text-[10px] tabular text-ink-2">{playerAttributes(slot.player)}</span>
+                {slot.team && <span className="meta block truncate">{teamLabel(slot.team)}</span>}
               </span>
               {tags.length > 0 && <span className="text-[12px] text-ink-2">{tags.join(" · ")}</span>}
               {onRemove && (

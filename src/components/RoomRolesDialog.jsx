@@ -1,4 +1,5 @@
-﻿"use client";
+"use client";
+import { playerOptionLabel } from "@/lib/playerCountry.mjs";
 
 import { useRef, useState } from "react";
 import { ROLE_FIELDS } from "@/lib/majorDisplay.mjs";
@@ -30,13 +31,13 @@ export default function RoomRolesDialog({ organization, assignRole, disabled, on
     <dialog ref={dialog} aria-labelledby="room-roles-title" onCancel={e => { if (saving) e.preventDefault(); }}
       className="m-auto w-[calc(100%_-_32px)] max-w-[480px] rounded-2xl bg-surface p-6 text-ink backdrop:bg-black/70">
       <h2 id="room-roles-title" className="text-[16px] font-medium">Edit roles</h2>
-      <p className="mt-1 text-ink-2">Choose a player for each role. The AWPer and IGL swap when assigned to the same player.</p>
+      <p className="mt-1 text-ink-2">Choose a player for each role. The AWPer and IGL can be the same player.</p>
       <div className="mt-4 grid gap-4">
         {Object.entries(ROLE_FIELDS).map(([field, label]) => <label key={field} className="grid gap-1">
           <span>{label}</span>
           <select className="rounded-lg bg-control p-2 text-ink" value={organization?.[field] ?? ""} disabled={saving}
             onChange={e => { try { assignRole(field, e.target.value); setError(""); } catch (err) { setError(err.message); } }}>
-            {organization?.squad.map((entry, index) => <option key={index} value={String(index)}>{entry.player.name}</option>)}
+            {organization?.squad.map((entry, index) => <option key={index} value={String(index)}>{playerOptionLabel(entry.player)}</option>)}
           </select>
         </label>)}
       </div>

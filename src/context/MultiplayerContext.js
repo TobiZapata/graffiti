@@ -6,10 +6,13 @@ import { collection, doc, onSnapshot, query, runTransaction, where } from "fireb
 import { useRouter } from "next/navigation";
 import { returnRoomToLobby } from "@/lib/roomService";
 import { useAuth } from "@/context/AuthContext";
-import { generateScore, generateSwissPairings } from "@/lib/tournamentService";
+import { generateSwissPairings } from "@/lib/tournamentService";
 import { decodeRoom } from "@/lib/roomStorage.mjs";
 import { applyForfeits } from "@/lib/roomForfeit.mjs";
 import { applySubmittedResults, matchResultId, validMatchResult } from "@/lib/multiplayerResults.mjs";
+
+import { assertCompatibleSimulation } from "@/lib/simulationVersion.mjs";
+import { simulateNpcMatch } from "@/lib/simulateNpcMatch.mjs";
 
 const MultiplayerContext = createContext();
 
@@ -49,7 +52,10 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
   }, [roomId, activeTournamentId, isMember]);
   const resolved = useMemo(() => {
     if (!room?.tournament) return null;
-    try { return { tournament: applyForfeits(applySubmittedResults(room.tournament, submissions)) }; }
+    try {
+      assertCompatibleSimulation(room.tournament.simulation);
+      return { tournament: applyForfeits(applySubmittedResults(room.tournament, submissions)) };
+    }
     catch (err) { return { error: err.message }; }
   }, [room, submissions]);
 
@@ -80,6 +86,7 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
     if (!user?.uid || auth.currentUser?.uid !== user.uid || data.status !== "playing" || !tournamentId || data.tournament?.tournamentId !== tournamentId) throw new Error("This Major is no longer active.");
     if (!Object.values(data.players || {}).some(p => p.uid === user.uid && !p.left)) throw new Error("You are not in this room.");
     if (hostOnly && data.hostId !== user.uid) throw new Error("Only the host can advance the Major.");
+    assertCompatibleSimulation(data.tournament.simulation);
     return data.tournament;
   };
 
@@ -140,9 +147,8 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
 
       currentRoundMatches.forEach(m => {
         if (!m.completed && !m.isPlayerMatch) {
-          const winner = Math.random() > 0.5 ? m.teamA : m.teamB;
-          const { winnerScore, loserScore } = generateScore();
-          const result = { teamA: m.teamA, teamB: m.teamB, winner: winner.id, scoreA: winner.id === m.teamA.id ? winnerScore : loserScore, scoreB: winner.id === m.teamA.id ? loserScore : winnerScore };
+          const result = simulateNpcMatch(m, `${roomId}:${tournamentId}`, t.simulation ?? null);
+          const winner = result.winner === m.teamA.id ? m.teamA : m.teamB;
           newCompletedMatches.push({ id: m.id, result });
           
           const teamAIdx = updatedStandings.findIndex(tm => tm.id === m.teamA.id);
@@ -189,18 +195,7 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
       let newCompletedMatches = [];
       t.matches.forEach(m => {
         if (!m.completed && !m.isPlayerMatch && playoffRounds.includes(m.round)) {
-          const isFinal = m.round === 'Final';
-          const bestOf = isFinal ? 5 : 3;
-          const mapsToWin = Math.ceil(bestOf / 2);
-          
-          let winsA = 0, winsB = 0;
-          while (winsA < mapsToWin && winsB < mapsToWin) {
-            const winnerMap = Math.random() > 0.5 ? 'A' : 'B';
-            if (winnerMap === 'A') winsA++;
-            else winsB++;
-          }
-          const winnerId = winsA > winsB ? m.teamA.id : m.teamB.id;
-          const result = { teamA: m.teamA, teamB: m.teamB, winner: winnerId, scoreA: winsA, scoreB: winsB };
+          const result = simulateNpcMatch(m, `${roomId}:${tournamentId}`, t.simulation ?? null);
           newCompletedMatches.push({ id: m.id, result });
         }
       });
@@ -308,6 +303,7 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
     isHost,
     roomId,
     tournamentId,
+    simulation: room.tournament.simulation ?? null,
     isArchived: room.status === "lobby",
     returnToLobby: () => returnRoomToLobby(roomId, user.uid),
     userUid: user?.uid,

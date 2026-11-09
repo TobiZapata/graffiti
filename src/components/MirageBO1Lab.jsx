@@ -1,4 +1,6 @@
 "use client";
+import { playerOptionLabel } from "@/lib/playerCountry.mjs";
+import PlayerIdentity from "@/components/PlayerIdentity";
 
 import { useRef, useState } from "react";
 import Link from "next/link";
@@ -57,7 +59,7 @@ export default function MirageBO1Lab() {
       const result = await retryReplayAssembly(assemblySeed => assembleMirageBO1(bank.current,
         { ...teamA, mainAwperUid: selectedA.mainAwperUid, iglUid: selectedA.iglUid },
         { ...teamB, mainAwperUid: selectedB.mainAwperUid, iglUid: selectedB.iglUid }, seed, assemblySeed), seed);
-      setMatch({ ...result, key: ++generation.current });
+      setMatch({ ...result, teamA, teamB, key: ++generation.current });
     } catch (e) {
       setError(e.message);
     } finally { setBusy(false); }
@@ -79,22 +81,22 @@ export default function MirageBO1Lab() {
             <label key={side + field}>{label} equipo {side} <select required disabled={busy} value={roles[field]}
               onChange={e => setRoles({ ...roles, teamId: team.id, [field]: e.target.value })}>
               <option value="">Choose a player</option>
-              {team.players.map((player, index) => <option key={String(player.uid ?? index)} value={String(player.uid ?? index)}>{player.name}</option>)}
+              {team.players.map((player, index) => <option key={String(player.uid ?? index)} value={String(player.uid ?? index)}>{playerOptionLabel(player)}</option>)}
             </select></label>))}
         <label>Seed <input disabled={busy} required value={seed} onChange={e => setSeed(e.target.value)} /></label>
         <button disabled={busy} type="submit">{busy ? "Assembling…" : "Generate BO1"}</button>
       </form>
-      <p className={styles.note}>The winner is chosen first, then recorded rounds are assembled against flexible kill targets. Buys respect saved weapons and the available money; weapons show the skin chosen by the engine.</p>
+      <p className={styles.note}>The winner is chosen first, then recorded rounds are assigned using Firepower and seeded player form, without kill quotas. Buys respect saved weapons and the available money; weapons show the skin chosen by the engine.</p>
       {error && <p className={styles.error} role="alert">{error}</p>}
       {match && <>
         <p>{match.catalog.rounds.length} rounds · seed {String(match.seed)}</p>
         <details><summary>BO1 stats</summary>
-          <table><thead><tr><th scope="col">Player</th><th scope="col">Team</th><th scope="col">K</th><th scope="col">Target K</th><th scope="col">Difference</th><th scope="col">D</th><th scope="col">A</th><th scope="col">Flash A</th></tr></thead>
-            <tbody>{match.playerStats.map(p => <tr key={p.uid}><th scope="row">{p.name}</th><td>{p.team}</td><td>{p.kills}</td><td>{p.targetKills}</td><td>{p.killDeviation}</td><td>{p.deaths}</td><td>{p.assists}</td><td>{p.flashAssists}</td></tr>)}</tbody>
+          <table><thead><tr><th scope="col">Player</th><th scope="col">Team</th><th scope="col">K</th><th scope="col">D</th><th scope="col">A</th><th scope="col">Flash A</th></tr></thead>
+            <tbody>{match.playerStats.map(p => <tr key={p.uid}><th scope="row"><PlayerIdentity player={(p.uid.startsWith("A:") ? match.teamA : match.teamB).players.find(player => player.uid === p.uid.slice(2)) ?? p} /></th><td>{p.team}</td><td>{p.kills}</td><td>{p.deaths}</td><td>{p.assists}</td><td>{p.flashAssists}</td></tr>)}</tbody>
           </table>
         </details>
       </>}
     </section>
-    {match && <RoundBankViewer key={match.key} catalog={match.catalog} />}
+    {match && <RoundBankViewer key={match.key} catalog={match.catalog} teamA={match.teamA} teamB={match.teamB} />}
   </>;
 }

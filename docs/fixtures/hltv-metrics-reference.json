@@ -1,0 +1,28 @@
+{
+  "note": "Two manually transcribed map scoreboards; a small plausibility reference, not a representative population or HLTV formula training set. Assists unavailable. Swing definitions differ from the simulator.",
+  "columns": ["name", "kills", "deaths", "adr", "kast", "swing", "rating"],
+  "maps": [
+    {
+      "source": "https://www.hltv.org/matches/2363848/apeks-vs-g2-blasttv-paris-major-2023-challengers-stage",
+      "map": "Anubis", "score": "Apeks 11-16 G2", "rounds": 27, "ratingVersion": "2.0",
+      "players": [
+        ["nawwk",27,16,91.3,81.5,null,1.43], ["jkaem",14,19,64.3,63.0,null,0.93],
+        ["jL",17,21,78.9,59.3,null,0.91], ["STYKO",12,19,49.3,66.7,null,0.86],
+        ["kyxsan",14,21,67.9,59.3,null,0.84], ["jks",23,17,102.7,77.8,null,1.39],
+        ["NiKo",22,17,76.4,55.6,null,1.17], ["huNter-",20,17,82.7,85.2,null,1.16],
+        ["m0NESY",20,16,64.9,66.7,null,1.10], ["HooXi",11,17,63.3,81.5,null,0.93]
+      ]
+    },
+    {
+      "source": "https://www.hltv.org/matches/2368524/natus-vincere-vs-g2-blast-premier-world-final-2023",
+      "map": "Anubis", "score": "NAVI 13-16 G2", "rounds": 29, "ratingVersion": "3.0 retrospective",
+      "players": [
+        ["w0nderful",26,17,85.4,79.3,1.72,1.20], ["b1t",20,19,69.4,79.3,-0.81,1.00],
+        ["jL",19,18,78.0,82.8,-4.05,0.93], ["iM",19,19,71.4,79.3,-2.10,0.92],
+        ["Aleksib",14,21,56.9,79.3,-3.80,0.71], ["m0NESY",25,18,74.8,79.3,4.74,1.45],
+        ["NiKo",19,19,77.9,72.4,3.08,1.25], ["huNter-",19,18,64.9,75.9,3.32,1.17],
+        ["nexa",17,20,59.3,75.9,-1.19,0.95], ["HooXi",14,23,61.3,58.6,-0.91,0.83]
+      ]
+    }
+  ]
+}

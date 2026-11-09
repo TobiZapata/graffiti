@@ -1,4 +1,6 @@
-﻿const stats = ['aim', 'positioning', 'composure', 'rating', 'gamesense'];
+import { isV2Player, validateV2Player } from './playerModel.mjs';
+
+const stats = ['aim', 'positioning', 'composure', 'rating', 'gamesense'];
 const hasRole = (player, role) => [player.role, player.rol1, player.rol2].some(value => typeof value === 'string' && value.toUpperCase() === role);
 
 export function prepareReplayTeam(team) {
@@ -11,6 +13,7 @@ export function prepareReplayTeam(team) {
     if (!uid || ids.has(uid)) { uid = `slot-${index}`; while (ids.has(uid)) uid += '-'; }
     ids.add(uid);
     const result = { ...player, uid };
+    if (isV2Player(result)) { validateV2Player(result); return result; }
     for (const stat of stats) {
       if (result[stat] !== undefined) {
         const value = Number(result[stat]);
@@ -26,9 +29,9 @@ export function prepareReplayTeam(team) {
     return uid;
   };
   let awper = explicit('mainAwperUid'), igl = explicit('iglUid');
-  if (awper && igl && awper === igl) throw new Error('AWPer e IGL deben ser jugadores distintos');
   const choose = (role, excluded, stat) => players.filter(p => p.uid !== excluded).sort((a, b) => Number(hasRole(b, role)) - Number(hasRole(a, role)) || (b[stat] ?? b.rating ?? 80) - (a[stat] ?? a.rating ?? 80))[0].uid;
-  awper ??= choose('AWPER', igl, 'aim');
-  igl ??= choose('IGL', awper, 'gamesense');
+  const v2 = players.every(isV2Player);
+  awper ??= choose('AWPER', v2 ? undefined : igl, v2 ? 'awp' : 'aim');
+  igl ??= choose('IGL', v2 ? undefined : awper, v2 ? 'igl' : 'gamesense');
   return { ...team, players, mainAwperUid: awper, iglUid: igl };
 }

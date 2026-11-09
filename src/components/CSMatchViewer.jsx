@@ -1,4 +1,5 @@
 "use client";
+import PlayerIdentity from "@/components/PlayerIdentity";
 import {
   useState,
   useEffect,
@@ -1295,7 +1296,7 @@ export default function CSMatchViewer({ rounds, matchSummary, onSimulationComple
                                  <div style={{ width: 32, height: 32, borderRadius: 6, backgroundColor: 'var(--bg-body)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
                                    {p.role ? p.role.substring(0,3).toUpperCase() : "PLY"}
                                  </div>
-                                 <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>{p.name}</span>
+                                 <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}><PlayerIdentity player={p} /></span>
                               </div>
                               
                               <div style={{ display: 'flex', gap: 32, fontSize: 15, fontWeight: 500, color: 'var(--text-secondary)', minWidth: 320, paddingRight: 8 }}>

@@ -1,6 +1,7 @@
 import { WEAPONS } from '../app/engines/WeaponEngine.js';
 import { inventoryItem, normalizeInventory } from './replayEquipment.mjs';
 import { mustContestRound } from './replayRoundContext.mjs';
+import { isV2Player } from './playerModel.mjs';
 
 const primary = p => p.inventory.find(x => inventoryItem(x)?.kind === 'primary');
 const pick = (items, random) => { let n = random() * items.reduce((s, x) => s + x[1], 0); for (const [v, w] of items) if ((n -= w) < 0) return v; return items.at(-1)[0]; };
@@ -23,6 +24,7 @@ export function prepareReplayBuys(state, teamA, teamB, proposal, random = Math.r
     }
     const mainIndex = roster.mainAwperUid !== undefined ? roster.players.findIndex((p, i) => (p.uid ?? String(i)) === roster.mainAwperUid) : roster.players.findIndex(p => p.isAwper === true || [p.role, p.rol1, p.rol2].some(r => typeof r === 'string' && r.toUpperCase() === 'AWPER'));
     const main = players[mainIndex], holder = players.find(p => p !== main && primary(p) && inventoryItem(primary(p)).id === 'AWP');
+    const sniperOrder = roster.players.some(isV2Player) ? [...order].sort((a, b) => (roster.players[players.indexOf(b)].awp ?? 0) - (roster.players[players.indexOf(a)].awp ?? 0)) : order;
     if (main && holder && inventoryItem(primary(main))?.id !== 'AWP') {
       const awp = primary(holder), displaced = primary(main); holder.inventory.splice(holder.inventory.indexOf(awp), 1); if (displaced) main.inventory.splice(main.inventory.indexOf(displaced), 1); main.inventory.push(awp); if (displaced) holder.inventory.push(displaced);
       log.push({type:'transfer', item:awp, from:holder.uid, to:main.uid}); if (displaced) log.push({type:'transfer', item:displaced, from:main.uid, to:holder.uid});
@@ -69,11 +71,11 @@ export function prepareReplayBuys(state, teamA, teamB, proposal, random = Math.r
     const reserve = profile === 'LIGHT' ? 1200 : profile === 'BONUS' ? 800 : 0;
     let partial = second && !won && side === 'T' && team.previousPlanted ? pick([[1,2],[2,6],[3,5],[4,1]], random) : 5;
     const wantsScout = second && !won && side === 'CT' && profile === 'FORCE' && random() < 32 / 44;
-    if (wantsScout) { const p = main && !primary(main) ? main : order.find(x => !primary(x)); if (p) buy(p, 'SSG08'); }
+    if (wantsScout) { const p = main && !primary(main) ? main : sniperOrder.find(x => !primary(x)); if (p) buy(p, 'SSG08'); }
     const allowAwp = ['FULL', 'FULL_DUMP'].includes(profile) || (profile === 'BONUS' && side === 'CT' && random() < 7 / 38);
     let awps = players.filter(p => inventoryItem(primary(p))?.id === 'AWP').length;
     const desiredAwps = allowAwp ? (side === 'CT' && random() < 0.08 ? 2 : random() < (side === 'CT' ? 0.75 : 0.60) ? 1 : 0) : 0;
-    for (const p of [main, ...order].filter(Boolean)) if (awps < desiredAwps && (!primary(p) || ['MAC10','MP9'].includes(inventoryItem(primary(p)).id)) && buy(p, 'AWP', p, 650)) awps++;
+    for (const p of [main, ...sniperOrder].filter(Boolean)) if (awps < desiredAwps && (!primary(p) || ['MAC10','MP9'].includes(inventoryItem(primary(p)).id)) && buy(p, 'AWP', p, 650)) awps++;
     for (const p of order) {
       const held = inventoryItem(primary(p));
       if (held && (!['MAC10','MP9'].includes(held.id) || random() >= (profile === 'BONUS' ? 8 / 45 : 0.3))) continue;

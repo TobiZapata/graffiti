@@ -8,7 +8,7 @@ export const ROLE_FIELDS = { mainAwperUid: 'AWPer', iglUid: 'IGL', starUid: 'Sta
 
 // "ESL One Cologne 2014" -> "Cologne '14". The same team often played several Majors, and two of them
 // were in 2014, so the event's short name is what tells two rosters apart.
-const EVENT_NAMES = [['Katowice', 'Katowice'], ['Cologne', 'Cologne'], ['DreamHack', 'DreamHack']];
+const EVENT_NAMES = [['Katowice', 'Katowice'], ['Cologne', 'Cologne'], ['DreamHack', 'DreamHack'], ['Krakow', 'Krakow']];
 
 export function teamEvent(team) {
   const major = team?.major || '';
@@ -30,8 +30,14 @@ export function roleLabel(role) {
 
 // Mean of the attributes the simulation reads; null when the player has none.
 export function playerOverall(player) {
+  if (Number.isFinite(player?.awp)) return null;
   const values = STATS.map(stat => player?.[stat]).filter(Number.isFinite);
   return values.length ? Math.round(values.reduce((sum, v) => sum + v, 0) / values.length) : null;
+}
+
+export function playerAttributes(player) {
+  if (Number.isFinite(player?.awp)) return `AWP ${player.awp} · Rifler ${player.rifler} · IGL ${player.igl} · Clutch ${player.clutch}`;
+  return [roleLabel(player?.role), playerOverall(player) === null ? '' : `Overall ${playerOverall(player)}`].filter(Boolean).join(' · ');
 }
 
 export function record(team) {

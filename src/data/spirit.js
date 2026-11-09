@@ -1,6 +1,7 @@
 export const spiritPlayersConfig = [
   {
     name: "donk",
+    country: "ru",
     role: "ENTRY",
     aim: 99,
     gamesense: 88,
@@ -13,6 +14,7 @@ export const spiritPlayersConfig = [
   },
   {
     name: "sh1ro",
+    country: "ru",
     role: "AWPER",
     aim: 95,
     gamesense: 95,
@@ -25,6 +27,7 @@ export const spiritPlayersConfig = [
   },
   {
     name: "zont1x",
+    country: "ua",
     role: "SUPPORT",
     aim: 84,
     gamesense: 86,
@@ -37,6 +40,7 @@ export const spiritPlayersConfig = [
   },
   {
     name: "magixx",
+    country: "ru",
     role: "RIFLER",
     aim: 88,
     gamesense: 84,
@@ -49,6 +53,7 @@ export const spiritPlayersConfig = [
   },
   {
     name: "chopper",
+    country: "ru",
     role: "IGL",
     aim: 79,
     gamesense: 93,

@@ -1,9 +1,11 @@
-﻿import assert from 'node:assert/strict';
+import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { assembleMirageBO1, validateBankCatalog, compositionMatches, roundFitsSaveContext } from '../src/lib/assembleMirageBO1.mjs';
+import { assembleMirageBO1 as assembleVersionedMirageBO1, validateBankCatalog, compositionMatches, roundFitsSaveContext, rankReplayAssignments } from '../src/lib/assembleMirageBO1.mjs';
 import { inventoryItem } from '../src/lib/replayEconomy.mjs';
 import { visibleWeapon, buildWeaponAppearance } from '../src/lib/weaponAppearance.mjs';
+
+const assembleMirageBO1 = (catalog, a, b, seed, assemblySeed = seed) => assembleVersionedMirageBO1(catalog, a, b, seed, assemblySeed, 2);
 
 const samples = JSON.parse(readFileSync(new URL('../public/round-bank-lab/index.json', import.meta.url)));
 const realCatalog = new URL('../public/round-bank/economy-index.json', import.meta.url);
@@ -21,6 +23,31 @@ function fixture() {
       })), weaponEvidence: { actors: source.actors.map(a => a.actor_id), endTick: 1, changes: source.actors.map(a => [1, a.actor_id, [pistol ? 'AWP' : 'SSG08']]), deaths: [], pickups: [] }, killRewards: {}, planters: [], ctKills: 0 } };
   }) };
 }
+
+test('clutch aptitude softly ranks compatible actors without replacing weapons or measured kills', () => {
+  const roster = { players: Array.from({ length: 5 }, (_, i) => ({ uid: String(i), name: `P${i}`, awp: 70, rifler: 70, igl: 30, firepower: 70, clutch: i === 0 ? 95 : 50 })) };
+  const actors = roster.players.map((p, i) => ({ actor_id: String(i), side: 'T', kills: 1 }));
+  const source = { round_id: 'clutch-fixture', actors, clutch: { actor_id: '0', survived_at_resolution: true },
+    equipment: { actors: Object.fromEntries(actors.map(a => [a.actor_id, { initialInventory: ['AK-47'] }])) } };
+  const stats = roster.players.map(p => ({ uid: `A:${p.uid}`, targetKills: 15, kills: 15 }));
+  const prepared = { A: { players: stats.map(p => ({ uid: p.uid, inventory: ['AK-47'] })) }, B: { players: [] } };
+  const counts = [0, 0, 0, 0, 0];
+  const before = structuredClone([source, roster, stats, prepared]);
+  for (let seed = 0; seed < 150; seed++) {
+    const ranked = rankReplayAssignments(source, roster, 'T', 'A', stats, prepared, {}, seed);
+    assert.equal(ranked.length, 120);
+    const pick = ranked[0].assignments.find(a => a.actorId === '0').playerUid;
+    counts[Number(pick.split(':')[1])]++;
+    if (seed === 0) assert.deepEqual(ranked, rankReplayAssignments(source, roster, 'T', 'A', stats, prepared, {}, seed));
+  }
+  assert.ok(counts[0] > Math.max(...counts.slice(1)));
+  assert.ok(counts[0] < 150, 'best clutch player is not guaranteed the slot');
+  prepared.A.players[0].inventory = ['AWP'];
+  const compatible = rankReplayAssignments(source, roster, 'T', 'A', stats, prepared, {}, 0);
+  assert.equal(compatible.length, 0, 'clutch cannot bypass AWP/rifle compatibility');
+  prepared.A.players[0].inventory = ['AK-47'];
+  assert.deepEqual([source, roster, stats, prepared], before);
+});
 
 test('real matches preserve source evidence, purchased appearances and player stats', { skip: !existsSync(realCatalog) }, () => {
   const catalog = JSON.parse(readFileSync(realCatalog)), a = team('A'), b = team('B');
@@ -71,6 +98,36 @@ test('real matches preserve source evidence, purchased appearances and player st
   }
   assert.deepEqual([catalog, a, b], original);
   assert.equal(Math.random, originalRandom);
+});
+
+test('v2 teams assemble deterministic matches with dual leadership and source-derived statistics', { skip: !existsSync(realCatalog) }, () => {
+  const catalog = JSON.parse(readFileSync(realCatalog));
+  const make = name => ({ id: name, name, mainAwperUid: '0', iglUid: '0', players: Array.from({ length: 5 }, (_, i) => ({
+    uid: String(i), name: `${name}${i}`, awp: i ? 35 : 95, rifler: 80, igl: i ? 30 : 85, firepower: 90 - i * 8, clutch: 95 - i * 10,
+  })) });
+  const a = make('A'), b = make('B');
+  for (const seed of ['v2-a', 'v2-b']) {
+    const match = assembleMirageBO1(catalog, a, b, seed);
+    assert.deepEqual(match, assembleMirageBO1(catalog, a, b, seed));
+    assert.equal(match.winner, match.macroPlan.winnerTeam);
+    for (const player of match.playerStats) {
+      const kills = match.catalog.rounds.reduce((sum, round) => {
+        const assignment = round.assignments.find(row => row.playerUid === player.uid);
+        return sum + round.actors.find(actor => actor.actor_id === assignment.actorId).kills;
+      }, 0);
+      assert.equal(player.kills, kills);
+    }
+    for (const round of match.catalog.rounds) {
+      const source = catalog.rounds.find(r => r.round_id === round.round_id);
+      assert.deepEqual(round.actors, source.actors);
+      for (const assignment of round.assignments) {
+        const purchased = round.economyAudit.afterPreparation[assignment.team].players.find(p => p.uid === assignment.playerUid);
+        const from = source.equipment.actors[assignment.actorId].initialInventory.map(inventoryItem).find(item => item?.kind === 'primary');
+        const to = purchased.inventory.map(inventoryItem).find(item => item?.kind === 'primary');
+        assert.equal(from ? inventoryItem(visibleWeapon(from.id, round.weaponAppearance[assignment.actorId])).id : null, to?.id ?? null);
+      }
+    }
+  }
 });
 
 test('save context excludes losing survivors only at side endings or elimination match points', () => {

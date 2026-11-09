@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "bank:import": "node scripts/import-round-bank.mjs",
+    "bank:metrics": "node scripts/build-round-metrics.mjs",
     "test:replay": "node --test tests/*.test.mjs",
     "test:firestore": "node scripts/test-firestore-security.mjs"
   },

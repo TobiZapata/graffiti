@@ -1,7 +1,23 @@
 import seedrandom from 'seedrandom';
+import { isV2Player, validateV2Player } from './playerModel.mjs';
 
 const localUid = (player, index) => player.uid ?? String(index);
 const playerStrength = p => (p.aim ?? p.rating ?? 80) * 0.5 + (p.positioning ?? p.rating ?? 80) * 0.3 + (p.composure ?? p.rating ?? 80) * 0.2;
+const strength = team => team.players.reduce((sum, p, i) => sum + (isV2Player(p) ? (localUid(p, i) === team.mainAwperUid ? p.awp : p.rifler) : playerStrength(p)), 0) / 5;
+const iglBonus = team => {
+  const roles = team.players.filter(p => [p.role, p.rol1, p.rol2].some(role => typeof role === 'string' && role.toUpperCase() === 'IGL'));
+  const igl = team.iglUid === undefined ? (roles.length === 1 ? roles[0] : undefined) : team.players.find((p, i) => localUid(p, i) === team.iglUid);
+  // shortcut: leadership weights are game calibration; revisit after match balancing.
+  return igl ? (isV2Player(igl) ? Math.max(-5, Math.min(5, (igl.igl - 70) * 0.1)) : ((igl.gamesense ?? igl.rating ?? 80) - 80) * 0.15) + (team.iglCompatibility ?? 0) * 3 : 0;
+};
+
+export const teamStrength = team => Math.max(1, strength(team) + iglBonus(team));
+export const matchWinProbability = (teamA, teamB, engineVersion = 3) => {
+  const powerA = teamStrength(teamA), powerB = teamStrength(teamB);
+  if (engineVersion < 3) return powerA / (powerA + powerB);
+  const difference = powerA - powerB;
+  return 0.5 + Math.sign(difference) * Math.min(0.2, 0.1 * (Math.abs(difference) / 10) ** 1.5);
+};
 
 export function validateTeams(teamA, teamB) {
   for (const team of [teamA, teamB]) {
@@ -15,6 +31,7 @@ export function validateTeams(teamA, teamB) {
       const uid = localUid(player, index);
       if (typeof uid !== 'string' || !uid.trim() || uids.has(uid.trim())) throw new Error('Los identificadores de jugadores deben ser únicos y no estar vacíos');
       uids.add(uid.trim());
+      if (isV2Player(player)) validateV2Player(player);
       for (const stat of ['aim', 'positioning', 'composure', 'rating', 'gamesense']) {
         if (player[stat] !== undefined && (!Number.isFinite(player[stat]) || player[stat] < 1 || player[stat] > 100)) throw new Error(`Estadística de jugador inválida: ${stat}`);
       }
@@ -27,19 +44,12 @@ export function validateTeams(teamA, teamB) {
   if (teamA.id !== undefined && teamB.id !== undefined ? teamA.id === teamB.id : teamA.name.trim() === teamB.name.trim()) throw new Error('Los equipos deben ser distintos');
 }
 
-export function createMacroDirector(teamA, teamB, seed = 'mirage-bo1') {
+export function createMacroDirector(teamA, teamB, seed = 'mirage-bo1', engineVersion = 3) {
+  if (![1, 2, 3].includes(engineVersion)) throw new Error('Unsupported simulation version');
   validateTeams(teamA, teamB);
   if (!((typeof seed === 'string' && seed.trim()) || (typeof seed === 'number' && Number.isFinite(seed)))) throw new Error('La semilla debe ser un texto no vacío o un número finito');
-  const strength = team => team.players.reduce((sum, p) => sum + playerStrength(p), 0) / 5;
-  const iglBonus = team => {
-    const roles = team.players.filter(p => [p.role, p.rol1, p.rol2].some(role => typeof role === 'string' && role.toUpperCase() === 'IGL'));
-    const igl = team.iglUid === undefined ? (roles.length === 1 ? roles[0] : undefined) : team.players.find((p, i) => localUid(p, i) === team.iglUid);
-    // shortcut: IGL weights are provisional, calibrate against match data when available.
-    return igl ? ((igl.gamesense ?? igl.rating ?? 80) - 80) * 0.15 + (team.iglCompatibility ?? 0) * 3 : 0;
-  };
-  const powerA = Math.max(1, strength(teamA) + iglBonus(teamA)), powerB = Math.max(1, strength(teamB) + iglBonus(teamB));
-  const winProbabilityA = powerA / (powerA + powerB);
-  const roundProbabilityA = strength(teamA) / (strength(teamA) + strength(teamB));
+  const winProbabilityA = matchWinProbability(teamA, teamB, engineVersion);
+  const roundProbabilityA = Math.max(1, strength(teamA)) / (Math.max(1, strength(teamA)) + Math.max(1, strength(teamB)));
   const random = seedrandom(seed);
   const winnerTeam = random() < winProbabilityA ? 'A' : 'B';
   const loser = winnerTeam === 'A' ? 'B' : 'A';
@@ -55,11 +65,26 @@ export function createMacroDirector(teamA, teamB, seed = 'mirage-bo1') {
   if (targetScore[winnerTeam] < targetScore[loser]) [targetScore.A, targetScore.B] = [targetScore.B, targetScore.A];
   const totalRounds = targetScore.A + targetScore.B;
   // shortcut: kill estimates and variance are provisional, calibrate against match data when available.
-  const killTargets = [teamA, teamB].flatMap((team, index) => team.players.map((player, i) => Object.freeze({
-    playerUid: `${index ? 'B' : 'A'}:${localUid(player, i)}`, name: player.name, team: index ? 'B' : 'A',
-    targetKills: Math.max(0, Math.round(totalRounds * 0.65 * playerStrength(player) / 80 * (0.85 + random() * 0.3))),
-  })));
-  const plan = Object.freeze({ winnerTeam, winProbabilityA, targetScore: Object.freeze(targetScore), killTargets: Object.freeze(killTargets) });
+  const killTargets = engineVersion < 3 ? [teamA, teamB].flatMap((team, index) => {
+    const v2 = team.players.some(isV2Player);
+    const killRandom = seedrandom(`${typeof seed}:${seed}:kills:${index}`);
+    const weights = v2 ? team.players.map(player => (0.2 + (isV2Player(player) ? player.firepower : playerStrength(player)) / 100) ** 1.5 * (0.5 + killRandom())) : [];
+    const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+    return team.players.map((player, i) => Object.freeze({
+      playerUid: `${index ? 'B' : 'A'}:${localUid(player, i)}`, name: player.name, team: index ? 'B' : 'A',
+      targetKills: Math.max(0, Math.round(v2 ? totalRounds * 3.25 * weights[i] / totalWeight : totalRounds * 0.65 * playerStrength(player) / 80 * (0.85 + random() * 0.3))),
+    }));
+  }) : undefined;
+  // shortcut: map form is game calibration; tune its spread against observed scoreboard distributions.
+  const playerTendencies = engineVersion >= 3 ? [teamA, teamB].flatMap((team, index) => {
+    const formRandom = seedrandom(`${typeof seed}:${seed}:form:${index}`);
+    return team.players.map((player, i) => Object.freeze({
+      playerUid: `${index ? 'B' : 'A'}:${localUid(player, i)}`, name: player.name, team: index ? 'B' : 'A',
+      protagonism: (0.2 + (isV2Player(player) ? player.firepower : playerStrength(player)) / 100) ** 1.5 * (0.65 + formRandom() * 0.7),
+    }));
+  }) : undefined;
+  const plan = Object.freeze({ winnerTeam, winProbabilityA, targetScore: Object.freeze(targetScore),
+    ...(engineVersion >= 3 ? { playerTendencies: Object.freeze(playerTendencies) } : { killTargets: Object.freeze(killTargets) }) });
   let scoreTeam1 = 0, scoreTeam2 = 0, done = false, pending;
   const context = () => {
     const round = scoreTeam1 + scoreTeam2 + 1;

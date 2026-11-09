@@ -1,16 +1,18 @@
 "use client";
+import { playerOptionLabel } from "@/lib/playerCountry.mjs";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import teams from "@/data/teams.json";
+import legacyTeams from "@/data/teams-legacy.json";
 import AppBar from "@/components/AppBar";
 import DraftBoard from "@/components/play/DraftBoard";
 import SquadPanel from "@/components/play/SquadPanel";
 import LogoCreator from "@/components/play/LogoCreator";
 import { useTournament } from "@/context/TournamentContext";
 import { playerOverall } from "@/lib/majorDisplay.mjs";
-import { draftOffer, readDraft, removePick } from "@/lib/draftState.mjs";
+import { draftOffer, readDraft, removePick, sameDraftPlayer } from "@/lib/draftState.mjs";
 
 const DRAFT_KEY = "major-mvp:draft:v1";
 const REROLLS = 3;
@@ -19,15 +21,17 @@ const REROLLS = 3;
 function suggestRoles(squad) {
   const ids = squad.map((_, i) => String(i));
   const byRole = role => ids.find(i => String(squad[i].player.role).toUpperCase() === role);
-  const awper = byRole("AWPER") ?? "";
-  const igl = ids.find(i => i !== awper && String(squad[i].player.role).toUpperCase() === "IGL") ?? "";
-  const star = ids.reduce((best, i) => best === "" || (playerOverall(squad[i].player) ?? 0) > (playerOverall(squad[best].player) ?? 0) ? i : best, "");
+  const best = field => ids.reduce((best, i) => best === "" || (squad[i].player[field] ?? -1) > (squad[best].player[field] ?? -1) ? i : best, "");
+  const awper = squad.some(s => Number.isFinite(s.player.awp)) ? best("awp") : byRole("AWPER") ?? "";
+  const igl = squad.some(s => Number.isFinite(s.player.igl)) ? best("igl") : byRole("IGL") ?? "";
+  const combat = p => Math.max(p.awp ?? 0, p.rifler ?? 0, playerOverall(p) ?? 0);
+  const star = ids.reduce((best, i) => best === "" || combat(squad[i].player) > combat(squad[best].player) ? i : best, "");
   return { mainAwperUid: awper, iglUid: igl, starUid: star };
 }
 
 function loadDraft() {
   try {
-    return readDraft(JSON.parse(sessionStorage.getItem(DRAFT_KEY)), teams);
+    return readDraft(JSON.parse(sessionStorage.getItem(DRAFT_KEY)), teams, legacyTeams);
   } catch { /* A missing or unreadable draft starts fresh. */ }
   return null;
 }
@@ -50,10 +54,10 @@ export default function PlayPage() {
     catch { /* The draft still works without session storage. */ }
   }, [draftState]);
 
-  const pickedNames = new Set(squad.map(s => s.player.name.toLowerCase()));
   const complete = squad.length >= 5;
 
   function pick(player, team) {
+    if (squad.length >= 5 || squad.some(s => sameDraftPlayer(s.player, player))) return;
     const next = [...squad, { player, team: { name: team.name, major: team.major } }];
     setDraftState({ ...draftState, squad: next });
     if (next.length === 5) setRoles(suggestRoles(next));
@@ -74,7 +78,6 @@ export default function PlayPage() {
     !roles.mainAwperUid && "an AWPer",
     !roles.iglUid && "an IGL",
     !roles.starUid && "a star player",
-    roles.mainAwperUid && roles.mainAwperUid === roles.iglUid && "different players as AWPer and IGL",
   ].filter(Boolean);
 
   function create() {
@@ -116,7 +119,7 @@ export default function PlayPage() {
                       <span className="label">{label}</span>
                       <select value={roles[field]} onChange={e => { const value = e.target.value; setRoles(current => ({ ...current, [field]: value })); }} className="field">
                         <option value="">Choose</option>
-                        {squad.map((entry, index) => <option key={entry.player.name} value={String(index)}>{entry.player.name}</option>)}
+                        {squad.map((entry, index) => <option key={entry.player.name} value={String(index)}>{playerOptionLabel(entry.player)}</option>)}
                       </select>
                     </label>
                   ))}
@@ -142,9 +145,9 @@ export default function PlayPage() {
                 </div>
               </div>
               <div className="mt-6">
-                <DraftBoard teams={rolledTeams} pickedNames={pickedNames} onPick={pick} />
+                <DraftBoard teams={rolledTeams} pickedPlayers={squad.map(s => s.player)} onPick={pick} />
               </div>
-              <p className="meta mt-3">Numbers are each player&apos;s overall: the average of aim, game sense, positioning, utility, clutch, entry, aggression and composure.</p>
+              <p className="meta mt-3">Compare AWP, Rifler, IGL and Clutch. The AWPer and IGL can be the same player.</p>
             </section>
           )}
         </div>

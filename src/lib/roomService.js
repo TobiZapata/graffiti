@@ -1,3 +1,5 @@
+import catalog from '../data/teams.json';
+import { upgradeOrganization } from './upgradeOrganization.mjs';
 import { auth, db } from './firebase';
 import { collection, doc, FieldPath, getDoc, getDocFromServer, getDocs, limit, query, runTransaction, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { assertCanReady, completedFinal, lobby, member, participation, readyPlayers } from './roomLifecycle.mjs';
@@ -25,7 +27,7 @@ async function cachePageToken(uid) {
   pageToken = { uid, value: await auth.currentUser.getIdToken() };
 }
 const sessionData = (uid, roomId, identity) => ({ uid, roomId, ...identity, heartbeat: serverTimestamp(), leaving: false });
-const newMember = (uid, name, org, isHost) => ({ ...member(uid, name, org, isHost), sessionId: getPageSession().pageId, left: false });
+const newMember = (uid, name, org, isHost) => ({ ...member(uid, name, upgradeOrganization(org, catalog), isHost), sessionId: getPageSession().pageId, left: false });
 const matchingLock = (snap, room, uid) => snap.exists() && snap.data().roomId === room.id && snap.data().tournamentId === room.tournament?.tournamentId && snap.data().ownerUid === uid;
 
 async function availableSession(tx, uid) {
@@ -73,7 +75,7 @@ export async function joinRoom(code, uid, name, organization) {
 export async function setRoomReady(code, uid, organization, ready) {
   authenticate(uid);
   if (typeof ready !== 'boolean') throw new Error('Invalid state.');
-  const updated = member(uid, '', organization), ref = roomRef(code);
+  const updated = member(uid, '', upgradeOrganization(organization, catalog)), ref = roomRef(code);
   await runTransaction(db, async tx => {
     const room = await readRoom(tx, ref);
     lobby(room); ownPage(room, uid);

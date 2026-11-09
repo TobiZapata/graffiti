@@ -1,4 +1,10 @@
+import { isV2Player, validateV2Player } from '../../lib/playerModel.mjs';
+
 export function expandPlayerStats(playerData, assignedRole = null) {
+  if (isV2Player(playerData)) {
+    validateV2Player(playerData);
+    return { ...playerData };
+  }
   // If the player already has specific stats (like from spirit.js), return as is, just update role if assigned
   if (playerData.aim !== undefined) {
     return {
@@ -46,6 +52,8 @@ export function formatTeamForSimulation(team, squad = null) {
     name: team.name,
     icon: team.icon,
     major: team.major,
+    ...(team.mainAwperUid !== undefined ? { mainAwperUid: team.mainAwperUid } : {}),
+    ...(team.iglUid !== undefined ? { iglUid: team.iglUid } : {}),
     players: team.players.map(p => expandPlayerStats(p))
   };
 }

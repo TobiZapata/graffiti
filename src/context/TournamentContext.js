@@ -8,34 +8,11 @@ import { moveOrganizationRole } from "@/lib/organizationRoles.mjs";
 import { formatTeamForSimulation } from "@/app/utils/playerExpansion";
 import { generateSwissPairings } from "@/lib/tournamentService";
 
+import { CURRENT_SIMULATION } from "@/lib/simulationVersion.mjs";
+import { upgradeOrganization } from "@/lib/upgradeOrganization.mjs";
+import { simulateNpcMatch } from "@/lib/simulateNpcMatch.mjs";
+
 const TournamentContext = createContext();
-
-// Genera scores realistas de CS2 para matches NPC
-function generateScore() {
-  const roll = Math.random();
-  let winnerScore, loserScore;
-
-  if (roll < 0.20) {
-    // ~20% overtime (MR12 → empate 12-12, luego OT de 3 rondas)
-    const otRounds = Math.random() < 0.7 ? 1 : 2; // 1 o 2 tiempos extra
-    winnerScore = 13 + otRounds * 3;
-    loserScore = winnerScore - 2; // OT siempre se gana por 2 (16-14, 19-17)
-  } else if (roll < 0.45) {
-    // ~25% partida cerrada (13-10, 13-11, 13-12)
-    winnerScore = 13;
-    loserScore = 10 + Math.floor(Math.random() * 3); // 10, 11, o 12
-  } else if (roll < 0.75) {
-    // ~30% partida normal (13-6 a 13-9)
-    winnerScore = 13;
-    loserScore = 6 + Math.floor(Math.random() * 4); // 6, 7, 8, o 9
-  } else {
-    // ~25% dominio claro (13-2 a 13-5)
-    winnerScore = 13;
-    loserScore = 2 + Math.floor(Math.random() * 4); // 2, 3, 4, o 5
-  }
-
-  return { winnerScore, loserScore };
-}
 
 export function TournamentProvider({ children }) {
   const [mySquad, setMySquad] = useState([]);
@@ -48,6 +25,7 @@ export function TournamentProvider({ children }) {
 
   const [organization, setOrganization] = useState(null);
   const [tournamentId, setTournamentId] = useState(null);
+  const [simulation, setSimulation] = useState(null);
   const [matchProgress, setMatchProgress] = useState({});
   const [storageError, setStorageError] = useState(null);
   const [ready, setReady] = useState(false);
@@ -66,6 +44,7 @@ export function TournamentProvider({ children }) {
       const { organization: org, tournament: t, matchProgress: progress } = loaded.data;
       setOrganization(org); setMatchProgress(progress);
       if (t) {
+        setSimulation(t.simulation ?? null);
         setTournamentId(t.tournamentId); setMySquad(t.mySquad); setTeamName(t.teamName);
         setStage(t.stage); setPendingResult(t.pendingResult); setSwissRound(t.swissRound);
         setStandings(t.standings); setMatches(t.matches);
@@ -77,12 +56,12 @@ export function TournamentProvider({ children }) {
 
   useEffect(() => {
     if (!ready || !organization || writesBlocked.current) return;
-    const tournament = tournamentId ? { tournamentId, mySquad, teamName, stage, pendingResult, swissRound, standings, matches } : null;
+    const tournament = tournamentId ? { tournamentId, simulation, mySquad, teamName, stage, pendingResult, swissRound, standings, matches } : null;
     let error;
     try { error = saveCareer(window.localStorage, { version: 1, organization, tournament, matchProgress }); }
     catch { error = "Local storage is not available in this browser."; }
     setStorageError(error);
-  }, [ready, organization, tournamentId, mySquad, teamName, stage, pendingResult, swissRound, standings, matches, matchProgress]);
+  }, [ready, organization, tournamentId, simulation, mySquad, teamName, stage, pendingResult, swissRound, standings, matches, matchProgress]);
 
   useEffect(() => {
     const onStorage = event => {
@@ -112,12 +91,20 @@ export function TournamentProvider({ children }) {
   const startOrganizationMajor = async () => {
     if (!organization || writesBlocked.current) throw new Error("There is no organization.");
     if (tournamentId && !["won", "eliminated", "results_pending"].includes(stage)) throw new Error("The current Major is still in progress.");
-    let nextOrganization = organization;
+    const { default: catalog } = await import("@/data/teams.json");
+    let nextOrganization = upgradeOrganization(organization, catalog);
+    if (nextOrganization !== organization) {
+      if (!validOrganization(nextOrganization)) throw new Error("The updated roster is not valid. Your saved organization was kept.");
+      try {
+        const backupKey = `${CAREER_KEY}:before-player-v2`;
+        if (window.localStorage.getItem(backupKey) === null) window.localStorage.setItem(backupKey, window.localStorage.getItem(CAREER_KEY));
+      } catch { throw new Error("The roster backup could not be saved. Your organization was kept."); }
+    }
     if (tournamentId) {
       const record = buildMajorRecord({ tournamentId, stage, pendingResult, matches });
-      nextOrganization = { ...organization, majorHistory: [...(organization.majorHistory || []).filter(r => r.id !== tournamentId), record] };
+      nextOrganization = { ...nextOrganization, majorHistory: [...(organization.majorHistory || []).filter(r => r.id !== tournamentId), record] };
     }
-    await initTournament(organization.squad, organization.name, organization.icon, {
+    await initTournament(nextOrganization.squad, organization.name, organization.icon, {
       mainAwperUid: organization.mainAwperUid, iglUid: organization.iglUid, starUid: organization.starUid
     }, nextOrganization);
   };
@@ -150,6 +137,7 @@ export function TournamentProvider({ children }) {
     const nextTournamentId = crypto.randomUUID();
     if (nextOrganization) setOrganization(nextOrganization);
     setTournamentId(nextTournamentId);
+    setSimulation(CURRENT_SIMULATION);
     setMatchProgress({});
     completedIds.current = new Set();
     setMySquad(squad);
@@ -191,7 +179,7 @@ export function TournamentProvider({ children }) {
     let error;
     try {
       error = saveCareer(window.localStorage, { version: 1, organization,
-        tournament: { tournamentId, mySquad, teamName, stage, pendingResult, swissRound, standings: nextStandings, matches: nextMatches },
+        tournament: { tournamentId, simulation, mySquad, teamName, stage, pendingResult, swissRound, standings: nextStandings, matches: nextMatches },
         matchProgress: nextProgress });
     } catch { error = "Local storage is not available in this browser."; }
     if (error) { setStorageError(error); throw new Error(error); }
@@ -212,10 +200,8 @@ export function TournamentProvider({ children }) {
 
     currentRoundMatches.forEach(m => {
       if (!m.completed && !m.isPlayerMatch) {
-        // simulate basic win
-        const winner = Math.random() > 0.5 ? m.teamA : m.teamB;
-        const { winnerScore, loserScore } = generateScore();
-        const result = { teamA: m.teamA, teamB: m.teamB, winner: winner.id, scoreA: winner.id === m.teamA.id ? winnerScore : loserScore, scoreB: winner.id === m.teamA.id ? loserScore : winnerScore };
+        const result = simulateNpcMatch(m, tournamentId, simulation);
+        const winner = result.winner === m.teamA.id ? m.teamA : m.teamB;
         newCompletedMatches.push({ id: m.id, result });
         
         const teamAIdx = updatedStandings.findIndex(t => t.id === m.teamA.id);
@@ -267,10 +253,9 @@ export function TournamentProvider({ children }) {
         for (const matchEntry of roundMatches) {
           const tA = matchEntry.teamA;
           const tB = matchEntry.teamB;
-          const winner = Math.random() > 0.5 ? tA : tB;
-          const { winnerScore: ws, loserScore: ls } = generateScore();
-          const result = { teamA: tA, teamB: tB, winner: winner.id, scoreA: winner.id === tA.id ? ws : ls, scoreB: winner.id === tA.id ? ls : ws };
-          
+          const result = simulateNpcMatch(matchEntry, tournamentId, simulation);
+          const winner = result.winner === tA.id ? tA : tB;
+
           matchEntry.result = result;
           matchEntry.completed = true;
           simMatches.push(matchEntry);
@@ -310,20 +295,7 @@ export function TournamentProvider({ children }) {
     let newCompletedMatches = [];
     matches.forEach(m => {
       if (!m.completed && !m.isPlayerMatch && playoffRounds.includes(m.round)) {
-        const isFinal = m.round === 'Final';
-        const bestOf = isFinal ? 5 : 3;
-        const mapsToWin = Math.ceil(bestOf / 2);
-        
-        let winsA = 0, winsB = 0;
-        
-        while (winsA < mapsToWin && winsB < mapsToWin) {
-          const winnerMap = Math.random() > 0.5 ? 'A' : 'B';
-          if (winnerMap === 'A') winsA++;
-          else winsB++;
-        }
-        
-        const winnerId = winsA > winsB ? m.teamA.id : m.teamB.id;
-        const result = { teamA: m.teamA, teamB: m.teamB, winner: winnerId, scoreA: winsA, scoreB: winsB };
+        const result = simulateNpcMatch(m, tournamentId, simulation);
         newCompletedMatches.push({ id: m.id, result });
       }
     });
@@ -443,7 +415,7 @@ export function TournamentProvider({ children }) {
   return (
     <TournamentContext.Provider value={{
       mySquad, teamName, stage, swissRound, standings, matches, pendingResult,
-      organization, createOrganization, assignOrganizationRole, startOrganizationMajor, tournamentId, matchProgress, saveMatchProgress, storageError, ready,
+      organization, createOrganization, assignOrganizationRole, startOrganizationMajor, tournamentId, simulation, matchProgress, saveMatchProgress, storageError, ready,
       initTournament, completeMatch, advanceRound: advanceStage,
       continueToPlayoffs, showFinalResult
     }}>

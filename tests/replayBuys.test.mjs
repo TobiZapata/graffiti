@@ -6,6 +6,13 @@ const roster = () => ({mainAwperUid:'0', players:Array.from({length:5}, (_, i) =
 const seed = n => () => ((n = (n * 1664525 + 1013904223) >>> 0) / 2 ** 32);
 const setup = money => { const a = roster(), b = roster(), state = createReplayEconomy(a,b); for (const p of [...state.A.players,...state.B.players]) p.money = money; return {a,b,state}; };
 const buys = (s, round, random = seed(3), extra = {}) => prepareReplayBuys(s.state,s.a,s.b,{round,teamASide:'T',...extra},random);
+
+test('v2 secondary sniper follows awp aptitude while retaining the designated main', () => {
+  const s = setup(10000);
+  for (const t of [s.a, s.b]) t.players.forEach((p, i) => { p.awp = i === 3 ? 95 : 35; p.rifler = 70; p.igl = 30; p.firepower = 70; p.clutch = 70; });
+  const result = buys(s, 8, () => 0);
+  assert.deepEqual(result.state.B.players.filter(p => p.inventory.includes('AWP')).map(p => p.uid).sort(), ['B:0', 'B:3']);
+});
 test('demo prices and deterministic pistol templates', () => {
   assert.deepEqual([WEAPONS.GALIL.cost, WEAPONS.FAMAS.cost, WEAPONS.M4A4.cost],[1800,1950,2900]);
   const s = setup(800), original = structuredClone(s.state), result = buys(s,1);

@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { prepareReplayTeam } from '../src/lib/replayTeam.mjs';
 
@@ -16,11 +16,11 @@ test('infers NPC roles and normalizes duplicate IDs and ratings', () => {
   assert.ok(result.players.every(p => typeof p.uid === 'string'));
 });
 
-test('keeps explicit roles and rejects invalid or duplicate selections', () => {
+test('keeps explicit roles and rejects invalid selections including allowing dual roles', () => {
   const input = team(); input.mainAwperUid = '2'; input.iglUid = 'slot-1';
   const result = prepareReplayTeam(input);
   assert.equal(result.mainAwperUid, '2'); assert.equal(result.iglUid, 'slot-1');
-  assert.throws(() => prepareReplayTeam({ ...input, iglUid: '2' }));
+  assert.equal(prepareReplayTeam({ ...input, iglUid: '2' }).iglUid, '2');
   assert.throws(() => prepareReplayTeam({ ...input, iglUid: 'missing' }));
   input.players[4].name = 'A'; assert.throws(() => prepareReplayTeam(input));
 });

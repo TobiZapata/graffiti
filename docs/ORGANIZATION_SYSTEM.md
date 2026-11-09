@@ -1,5 +1,8 @@
 # Organizacion local y Hub
 
+Modelo de jugadores actualizado: [PLAYER_MODEL_V2.md](PLAYER_MODEL_V2.md).
+Las referencias a atributos anteriores describen el camino legacy.
+
 Primera entrega del GDD de organizaciones: identidad local permanente, plantilla,
 roles, STAR y reanudacion del Major. Incluye perfil con resultados y resumenes
 acumulados de Majors y enfrentamientos contra IA. No incluye todavia cuentas,
@@ -9,8 +12,8 @@ sincronizacion, rivalidades entre usuarios, offseason ni disband.
 
 Inicio -> Mi organizacion (`/organization`) -> Crear organizacion (`/play`).
 El draft incorpora cada jugador con un clic. Al completar cinco se eligen nombre,
-escudo geometrico, dos colores, AWPer principal, IGL y STAR. AWPer e IGL deben ser
-distintos; STAR puede coincidir con cualquiera. Se crea la organizacion y se vuelve
+escudo geometrico, dos colores, AWPer principal, IGL y STAR. AWPer e IGL pueden
+coincidir; STAR puede coincidir con cualquiera. Se crea la organizacion y se vuelve
 al Hub sin iniciar automaticamente un torneo.
 
 El Hub muestra identidad y plantilla, permite iniciar el primer Major y continuar
@@ -23,9 +26,8 @@ otro Major conserva la misma organizacion y reinicia solo la competicion.
 
 Los cartelitos AWP, IGL y STAR se pueden arrastrar sobre otro jugador. Como
 alternativa tactil y de teclado, se selecciona el cartelito y despues el nombre
-de destino; Cancelar descarta la seleccion. Al mover AWP sobre el IGL o viceversa,
-se intercambian sus titulares, manteniendo las dos funciones separadas. STAR
-puede coincidir con cualquiera. Los cambios conservan identidad, plantilla e
+de destino; Cancelar descarta la seleccion. Cada cargo se mueve de forma independiente:
+AWP e IGL pueden coincidir. STAR puede coincidir con cualquiera. Los cambios conservan identidad, plantilla e
 historial y se guardan mediante el mismo documento local.
 
 El circulo `i` abre un dialogo nativo con la funcion de cada rol y las instrucciones;

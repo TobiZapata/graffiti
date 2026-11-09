@@ -1,5 +1,8 @@
 # Simulacion hibrida: estado de implementacion
 
+Modelo de jugadores actualizado: [PLAYER_MODEL_V2.md](PLAYER_MODEL_V2.md).
+Las referencias a atributos anteriores describen el camino legacy.
+
 Actualizado el 30 de octubre de 2026. Contrato de producto:
 `../cs2-data-lab/docs/HYBRID_SIMULATION_AGREEMENT.md`.
 

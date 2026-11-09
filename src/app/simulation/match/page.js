@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import { Suspense, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -6,13 +6,13 @@ import { useTournament } from "@/context/TournamentContext";
 import HybridMatchPlayer from "@/components/HybridMatchPlayer";
 function MatchContent() {
   const searchParams = useSearchParams();
-  const { matches, completeMatch, tournamentId, matchProgress, saveMatchProgress } = useTournament();
+  const { matches, completeMatch, tournamentId, simulation, matchProgress, saveMatchProgress } = useTournament();
   const matchId = searchParams.get("id");
   const match = matches.find(candidate => candidate.id === matchId);
   const persistProgress = useCallback(progress => saveMatchProgress(matchId, progress), [matchId, saveMatchProgress]);
   if (!match) return <main className="p-6"><p>There is no match waiting to be played.</p>
     <Link href="/simulation" className="link mt-2 inline-block underline">Back to the Major</Link></main>;
-  return <HybridMatchPlayer key={`${tournamentId}:${match.id}`} match={match} tournamentId={tournamentId}
+  return <HybridMatchPlayer key={`${tournamentId}:${match.id}`} match={match} tournamentId={tournamentId} simulation={simulation}
     initialProgress={matchProgress?.[match.id]} onSaveProgress={persistProgress} onFinish={result => {
     return completeMatch(match.id, result);
   }} />;

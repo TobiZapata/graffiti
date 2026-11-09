@@ -2,26 +2,35 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { simulationEngineVersion } from "@/lib/simulationVersion.mjs";
 import { assembleMirageBO1 } from "@/lib/assembleMirageBO1.mjs";
 import { prepareReplayTeam } from "@/lib/replayTeam.mjs";
 import { readReplayJSON } from "@/lib/readReplayJSON.mjs";
 import { retryReplayAssembly } from "@/lib/retryReplayAssembly.mjs";
 import { replaySeriesResult } from "@/lib/replaySeries.mjs";
-import { createMapSummary, recoverMatchSummaryMaps } from "@/lib/matchSummary.mjs";
+import { createMapSummary, recoverMatchSummaryMaps, hasMapMetrics } from "@/lib/matchSummary.mjs";
+import { attachReplayMetrics } from "@/lib/replayMetrics.mjs";
 import { selectHighlightRounds } from "@/lib/replayHighlights.mjs";
 import MatchSummary from "./MatchSummary";
 import RoundBankViewer from "./RoundBankViewer";
 
-async function assembleMap(bank, match, tournamentId, index, signal) {
+async function assembleMap(bank, match, tournamentId, index, signal, simulation, metrics) {
+  const engineVersion = simulationEngineVersion(simulation);
   const teamA = prepareReplayTeam(match.teamA), teamB = prepareReplayTeam(match.teamB);
   const seed = `${tournamentId}:${match.id}-map${index}`;
-  return retryReplayAssembly(assemblySeed => {
+  const data = await retryReplayAssembly(assemblySeed => {
     if (signal.aborted) throw new DOMException("Match cancelled", "AbortError");
-    return assembleMirageBO1(bank, teamA, teamB, seed, assemblySeed);
+    return assembleMirageBO1(bank, teamA, teamB, seed, assemblySeed, engineVersion);
   }, seed);
+  try { return attachReplayMetrics(data, await metrics()); }
+  catch (error) {
+    if (signal.aborted || error.name === "AbortError") throw error;
+    // Missing display metrics must never prevent finishing or saving the match.
+    return data;
+  }
 }
 
-export default function HybridMatchPlayer({ match, onFinish, backHref = "/simulation", tournamentId = "", initialProgress = null, onSaveProgress, playbackMode = "full" }) {
+export default function HybridMatchPlayer({ match, onFinish, backHref = "/simulation", tournamentId = "", initialProgress = null, onSaveProgress, playbackMode = "full", simulation = null }) {
   const [history, setHistory] = useState(initialProgress?.history ?? []);
   const [loaded, setLoaded] = useState(null);
   const [error, setError] = useState(null);
@@ -33,7 +42,11 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
   const [recovered, setRecovered] = useState(null);
   const [confirmed, setConfirmed] = useState(null);
   const [confirmSkip, setConfirmSkip] = useState(false);
-  const bank = useRef(null), submitting = useRef(false);
+  const bank = useRef(null), metrics = useRef(null), submitting = useRef(false);
+  const loadMetrics = useCallback(async () => {
+    metrics.current ??= await readReplayJSON("/round-metrics-v1.json.gz");
+    return metrics.current;
+  }, []);
   const playback = useRef(initialProgress?.playback ?? null);
   const index = history.length;
   const series = useMemo(() => replaySeriesResult(match, history), [match, history]);
@@ -44,7 +57,7 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
   const currentError = error?.index === index && error.retry === retry ? error.message : "";
   const watched = watchedMap === index;
   const finalized = match.completed ? match.result : confirmed || series.result;
-  const needsStats = finalized?.maps?.some(map => !map.playerStats);
+  const needsStats = finalized?.maps?.some(map => !hasMapMetrics(map));
   const result = finalized && { ...finalized, maps: recovered?.source === finalized ? recovered.maps : finalized.maps };
 
   useEffect(() => {
@@ -54,7 +67,7 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
     async function generate() {
       try {
         bank.current ??= await readReplayJSON("/round-bank/economy-index.json", controller.signal);
-        const result = await assembleMap(bank.current, match, tournamentId, index, controller.signal);
+        const result = await assembleMap(bank.current, match, tournamentId, index, controller.signal, simulation, loadMetrics);
         if (!cancelled) setLoaded({ index, data: result });
       } catch (e) {
         if (!cancelled && e.name !== "AbortError") setError({ index, retry, message: e.message });
@@ -62,7 +75,7 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
     }
     generate();
     return () => { cancelled = true; controller.abort(); };
-  }, [match, index, retry, tournamentId, series.done]);
+  }, [match, index, retry, tournamentId, series.done, simulation, loadMetrics]);
 
   useEffect(() => {
     if (!needsStats) return;
@@ -72,15 +85,15 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
       if (data) cachedMaps[index] = createMapSummary(match, data);
       const maps = await recoverMatchSummaryMaps(match, finalized.maps, async mapIndex => {
         bank.current ??= await readReplayJSON("/round-bank/economy-index.json", controller.signal);
-        return assembleMap(bank.current, match, tournamentId, mapIndex, controller.signal);
-      }, cachedMaps);
+        return assembleMap(bank.current, match, tournamentId, mapIndex, controller.signal, simulation, loadMetrics);
+      }, cachedMaps, true);
       if (!controller.signal.aborted) setRecovered({ source: finalized, maps });
     }
     recover().catch(e => {
       if (e.name !== "AbortError" && !controller.signal.aborted) setRecovered({ source: finalized, maps: finalized.maps });
     });
     return () => controller.abort();
-  }, [match, finalized, needsStats, history, data, index, tournamentId]);
+  }, [match, finalized, needsStats, history, data, index, tournamentId, simulation, loadMetrics]);
 
   const savePlayback = useCallback(position => {
     playback.current = position;

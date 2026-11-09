@@ -3,6 +3,7 @@ import { createMacroDirector } from './macroDirector.mjs';
 import { createReplayEconomy, beginReplayRound, prepareReplayBuys, finishReplayRound, inventoryItem, normalizeInventory } from './replayEconomy.mjs';
 import { buildWeaponAppearance, validWeaponEvidence } from './weaponAppearance.mjs';
 import { mustContestRound } from './replayRoundContext.mjs';
+import { isV2Player } from './playerModel.mjs';
 
 const requireValue = (value, message) => { if (!value) throw new Error(`Banco inválido: ${message}`); };
 const coverageError = message => Object.assign(new Error(message), { code: 'ROUND_BANK_COVERAGE' });
@@ -34,24 +35,40 @@ export function validateBankCatalog(catalog) {
   return rounds;
 }
 
-function assignPlayers(metadata, team, side, key, stats, prepared, appearance = {}) {
+export function rankReplayAssignments(metadata, team, side, key, stats, prepared, appearance = {}, assignmentSeed = '', { engineVersion = 2, playerTendencies = [] } = {}) {
   const actors = metadata.actors.filter(a => a.side === side).toSorted((a, b) => b.kills - a.kills);
+  const random = seedrandom(`${assignmentSeed}:clutch:${metadata.round_id}:${key}`);
+  const assignmentRandom = seedrandom(`${assignmentSeed}:protagonism:${metadata.round_id}:${key}`);
   const players = team.players.map((p, i) => {
     const uid = `${key}:${p.uid ?? String(i)}`, record = stats.find(s => s.uid === uid);
-    return { uid, name: p.name, deficit: record.targetKills - record.kills };
+    if (engineVersion >= 3) {
+      const tendency = playerTendencies.find(p => p.playerUid === uid);
+      if (!tendency || !Number.isFinite(tendency.protagonism) || tendency.protagonism <= 0) throw new Error('Invalid player protagonism');
+      return { uid, name: p.name, logProtagonism: Math.log(tendency.protagonism),
+        clutchPreference: isV2Player(p) ? (p.clutch - 50) * 0.025 : 0 };
+    }
+    return { uid, name: p.name, deficit: record.targetKills - record.kills,
+      clutchPreference: isV2Player(p) ? (p.clutch - 50) * 0.16 + (random() - 0.5) * 16 : 0 };
   });
   const permutations = [];
   const pairs = new Map(actors.map(actor => [actor.actor_id, new Map(players.map(player => [player.uid,
     buildWeaponAppearance(metadata, [{ actorId: actor.actor_id, playerUid: player.uid }], prepared, appearance)]))]));
   function visit(index, remaining, rows, score, map) {
-    if (index === actors.length) { permutations.push({ assignments: rows, score, appearance: map }); return; }
+    if (index === actors.length) {
+      // Gumbel-max samples compatible permutations by their relative weight, without a kill quota.
+      if (engineVersion >= 3) score -= Math.log(-Math.log(Math.max(1e-12, assignmentRandom())));
+      permutations.push({ assignments: rows, score, appearance: map }); return;
+    }
     const actor = actors[index];
     for (const player of remaining) {
       const row = { actorId: actor.actor_id, playerUid: player.uid, name: player.name, team: key };
       const pair = pairs.get(actor.actor_id).get(player.uid);
       if (!pair) continue;
       const next = { ...map, ...pair };
-      visit(index + 1, remaining.filter(p => p !== player), [...rows, row], score + player.deficit * actor.kills, next);
+      // A surviving 1vX actor is stronger evidence than an opportunity ending before resolution.
+      const clutchWeight = metadata.clutch?.actor_id === actor.actor_id ? (metadata.clutch.survived_at_resolution === true ? 1 : 0.25) : 0;
+      visit(index + 1, remaining.filter(p => p !== player), [...rows, row], score +
+        (engineVersion >= 3 ? player.logProtagonism : player.deficit) * actor.kills + player.clutchPreference * clutchWeight, next);
     }
   }
   visit(0, players, [], 0, appearance);
@@ -76,8 +93,8 @@ export function roundFitsSaveContext(source, proposal) {
   return !mustContestRound(proposal, losingTeam) || !source.actors.some(a => a.side !== source.winner_side && a.survived);
 }
 
-export function assembleMirageBO1(catalog, teamA, teamB, seed = 'mirage-bo1', assemblySeed = seed) {
-  const initialDirector = createMacroDirector(teamA, teamB, seed), bank = validateBankCatalog(catalog);
+export function assembleMirageBO1(catalog, teamA, teamB, seed = 'mirage-bo1', assemblySeed = seed, engineVersion = 3) {
+  const initialDirector = createMacroDirector(teamA, teamB, seed, engineVersion), bank = validateBankCatalog(catalog);
   requireValue(catalog.equipment_version === 2 && bank.every(r => r.equipment && typeof r.equipment.supported === 'boolean'), 'falta catalogo economico con trazas de armas');
   const supported = bank.filter(r => r.equipment.supported);
   requireValue(supported.length, 'no hay rondas con equipamiento compatible');
@@ -103,14 +120,14 @@ export function assembleMirageBO1(catalog, teamA, teamB, seed = 'mirage-bo1', as
   if (longRoundSides.size === 1 && pistolSides.size === 1) throw new Error('Sin cobertura: los mismos bandos ganan siempre y cada mitad termina empatada.');
   const demos = new Map((catalog.demos ?? []).map(d => [d.demo_id, d.demo.replace(/-p\d+(?=\.dem$)/, '')]));
   const provenance = r => demos.get(r.demo_id) ?? r.demo_id;
-  const initialStats = initialDirector.plan.killTargets.map(target => ({ uid: target.playerUid, name: target.name,
-    team: target.team === 'A' ? teamA.name : teamB.name, targetKills: target.targetKills, kills: 0, deaths: 0, assists: 0, flashAssists: 0 }));
+  const initialStats = (initialDirector.plan.playerTendencies ?? initialDirector.plan.killTargets).map(target => ({ uid: target.playerUid, name: target.name,
+    team: target.team === 'A' ? teamA.name : teamB.name, ...(engineVersion < 3 ? { targetKills: target.targetKills } : {}), kills: 0, deaths: 0, assists: 0, flashAssists: 0 }));
   let attempts = 0, backtracks = 0;
   // shortcut: busqueda limitada a 1000 intentos; indexar estados si el banco requiere mas exploracion.
   const limit = 1000;
   const failed = new Set();
   function search(rounds, state, stats, sources) {
-    let director = createMacroDirector(teamA, teamB, seed);
+    let director = createMacroDirector(teamA, teamB, seed, engineVersion);
     for (const round of rounds) director.next(round.winner_side);
     if (director.done) return { rounds, state, stats, director };
     const proposal = { ...director.peek(), scoreTeam1: director.scoreTeam1, scoreTeam2: director.scoreTeam2 }, before = beginReplayRound(state, director.peek());
@@ -130,8 +147,10 @@ export function assembleMirageBO1(catalog, teamA, teamB, seed = 'mirage-bo1', as
         const prepared = purchase.state;
         for (const { r: source } of candidates) {
           if (!compositionMatches(source, proposal.teamASide, prepared.A) || !compositionMatches(source, otherSide, prepared.B)) continue;
-          const choicesA = assignPlayers(source, teamA, proposal.teamASide, 'A', stats, prepared);
-          const choicesB = assignPlayers(source, teamB, otherSide, 'B', stats, prepared);
+          const assignmentSeed = `${assemblySeed}:${rounds.map(r => r.round_id).join(',')}`;
+          const options = { engineVersion, playerTendencies: initialDirector.plan.playerTendencies };
+          const choicesA = rankReplayAssignments(source, teamA, proposal.teamASide, 'A', stats, prepared, {}, assignmentSeed, options);
+          const choicesB = rankReplayAssignments(source, teamB, otherSide, 'B', stats, prepared, {}, assignmentSeed, options);
           if (!choicesA.length || !choicesB.length) continue;
           function* choices() {
             for (const a of choicesA) for (const b of choicesB) {
@@ -170,7 +189,7 @@ export function assembleMirageBO1(catalog, teamA, teamB, seed = 'mirage-bo1', as
         const result = search([...rounds, round], after, nextStats, nextSources);
         if (result) return result;
         backtracks++;
-        director = createMacroDirector(teamA, teamB, seed);
+        director = createMacroDirector(teamA, teamB, seed, engineVersion);
         for (const previous of rounds) director.next(previous.winner_side);
       }
     }
@@ -180,7 +199,7 @@ export function assembleMirageBO1(catalog, teamA, teamB, seed = 'mirage-bo1', as
   const result = search([], createReplayEconomy(teamA, teamB), initialStats, new Map());
   if (!result) throw coverageError('Sin cobertura económica para completar el partido');
   const { rounds, state, stats, director } = result;
-  for (const player of stats) player.killDeviation = player.kills - player.targetKills;
+  if (engineVersion < 3) for (const player of stats) player.killDeviation = player.kills - player.targetKills;
   return { map: 'de_mirage', seed, macroPlan: director.plan, scoreTeam1: director.scoreTeam1, scoreTeam2: director.scoreTeam2,
     winner: director.scoreTeam1 > director.scoreTeam2 ? 'A' : 'B', playerStats: stats, economyFinal: state, economySearch: { attempts, backtracks },
     catalog: { schema_version: 1, source: { demo: `${teamA.name} vs ${teamB.name} · BO1 Mirage` }, names: {}, rounds } };

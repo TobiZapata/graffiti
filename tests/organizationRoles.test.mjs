@@ -4,14 +4,15 @@ import { moveOrganizationRole } from '../src/lib/organizationRoles.mjs';
 
 const org = { id: 'id', name: 'Team', icon: '/icon', colors: ['#123456', '#abcdef'], squad: Array.from({ length: 5 }, (_, i) => ({ player: { name: `P${i}` } })), mainAwperUid: '0', iglUid: '1', starUid: '2', createdAt: '2026-01-01', majorHistory: [] };
 
-test('moving IGL or AWPer onto the other swaps their holders without mutation', () => {
+test('moving IGL or AWPer allows a shared holder without mutation', () => {
   const before = structuredClone(org);
   const igl = moveOrganizationRole(org, 'iglUid', '0');
   assert.equal(igl.iglUid, '0');
-  assert.equal(igl.mainAwperUid, '1');
+  assert.equal(igl.mainAwperUid, '0');
   const awper = moveOrganizationRole(org, 'mainAwperUid', '1');
   assert.equal(awper.mainAwperUid, '1');
-  assert.equal(awper.iglUid, '0');
+  assert.equal(awper.iglUid, '1');
+  assert.equal(moveOrganizationRole(igl, 'starUid', '0').starUid, '0');
   assert.deepEqual(org, before);
   assert.equal(igl.squad, org.squad);
   assert.equal(igl.majorHistory, org.majorHistory);
