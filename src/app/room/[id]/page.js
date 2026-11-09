@@ -6,6 +6,7 @@ import Link from "next/link";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import AppBar from "@/components/AppBar";
+import PlayerIdentity from "@/components/PlayerIdentity";
 import RoomRolesDialog from "@/components/RoomRolesDialog";
 import { useAuth } from "@/context/AuthContext";
 import { useTournament } from "@/context/TournamentContext";
@@ -99,7 +100,7 @@ export default function RoomPage({ params }) {
               </div>
               {org?.squad && <ul className="mt-3 grid gap-1 text-[13px]">{org.squad.map((entry, i) => {
                 const tags = Object.entries(ROLE_FIELDS).filter(([field]) => org[field] === String(i)).map(([, label]) => label);
-                return <li key={i} className="flex justify-between gap-2"><span>{entry.player?.name}</span><span className="text-ink-3">{tags.join(" · ")}</span></li>;
+                return <li key={i} className="flex justify-between gap-2"><PlayerIdentity player={entry.player} /><span className="shrink-0 text-ink-3">{tags.join(" · ")}</span></li>;
               })}</ul>}
               {isHost && inLobby && !p.left && <button type="button" disabled={!!busy} className="link mt-3 text-[13px] underline disabled:opacity-40"
                 onClick={() => run(`participation-${p.uid}`, () => setRoomParticipation(roomId, user.uid, p.uid, !p.participating))}>

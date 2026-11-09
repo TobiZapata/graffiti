@@ -267,7 +267,7 @@ export default function OrganizationPage() {
           <section className="card p-6" aria-labelledby="former-players">
             <h2 id="former-players" className="text-[16px] font-medium">Former players</h2>
             <p className="meta mt-1">The five former players with the most matches for your organization.</p>
-            {organization.formerPlayers?.length ? <ul className="mt-3">{organization.formerPlayers.map((entry, index) => <li key={index} className="flex min-h-11 items-center justify-between gap-3 border-t border-rule"><PlayerIdentity player={entry.player} /><span className="meta tabular">{entry.gamesPlayed} Matches</span></li>)}</ul> : <p className="mt-2 text-ink-2">Players who leave your roster will appear here with their organization stats.</p>}
+            {organization.formerPlayers?.length ? <ul className="mt-3">{organization.formerPlayers.map((entry, index) => <li key={index} className="flex min-h-14 items-center justify-between gap-3 border-t border-rule"><PlayerIdentity player={entry.player} /><span className="shrink-0 text-right tabular text-[13px]" aria-label={`${entry.player.name} average rating`}>{careerPlayerRating(entry)?.toFixed(2) ?? "—"}<span className="meta block">{entry.gamesPlayed} Matches · Rating</span></span></li>)}</ul> : <p className="mt-2 text-ink-2">Players who leave your roster will appear here with their organization stats.</p>}
           </section>
 
           <section className="card p-6" aria-labelledby="rivalries">
