@@ -78,6 +78,24 @@ test('initial bomb carrier is read from inventory without inventing pickup event
   assert.equal(state.events.length, 0);
 });
 
+test('explosion and defuse retain the plant position despite terminal actor coordinates', () => {
+  for (const terminal of ['bomb_exploded', 'bomb_defused']) {
+    const { raw, metadata } = fixture();
+    raw.events = [
+      { tick: 5, event: 'bomb_planted', steamid: '100', x: 5, y: 6, z: 7 },
+      { tick: 50, event: terminal, steamid: '105', x: 900, y: 800, z: 700 },
+    ];
+    const original = structuredClone(raw);
+    const round = decodeReplay(raw, metadata);
+    const before = sampleReplay(round, 49 / 64).bomb;
+    const after = sampleReplay(round, 1).bomb;
+    assert.equal(after.status, terminal.slice(5));
+    assert.deepEqual([after.x, after.y, after.z], [before.x, before.y, before.z]);
+    assert.equal(sampleReplay(round, 49 / 64).bomb.status, 'planted');
+    assert.deepEqual(raw, original);
+  }
+});
+
 test('credited assists require another teammate of the attacker while preserving native fields', () => {
   for (const [assister, credited] of [['100', null], ['105', null], ['999', null], ['106', '106']]) {
     const { raw, metadata } = fixture();

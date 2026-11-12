@@ -28,3 +28,12 @@ test('series counts map wins, stops at majority and reports BO1 rounds', () => {
   assert.equal(replaySeriesResult(match('Final'),[map('a'),map('a')]).done,false);
   assert.equal(replaySeriesResult(match('Final'),[map('a'),map('a'),map('a')]).done,true);
 });
+
+test('supports Dust2 progress while retaining legacy saves', () => {
+  const progress = { history: [{ ...map('a'), map: 'de_dust2' }], watchedMap: 0, playback: null };
+  assert.ok(validSeriesProgress(match('Final'), progress));
+  assert.ok(validSeriesProgress(match('Final'), { ...progress, map: 'de_dust2' }));
+  assert.ok(validSeriesProgress(match('Final'), { ...progress, map: 'de_dust2', dust2BankVersion: 'v1.0.0' }));
+  assert.equal(validSeriesProgress(match('Final'), { ...progress, dust2BankVersion: 'unknown' }), false);
+  assert.equal(validSeriesProgress(match('Final'), { ...progress, map: 'de_other' }), false);
+});

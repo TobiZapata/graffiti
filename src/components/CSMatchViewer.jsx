@@ -404,8 +404,8 @@ export function PlayerCard({
         </span>
       }
       </span>
-      {health !== undefined && alive && <span role="group" aria-label="Weapon in hand" title={activeWeapon || "No weapon"}>
-        {activeSrc ? <Icon src={activeSrc} alt={activeWeapon} size={15} /> : <span style={{ fontSize: 10 }}>{activeWeapon || "—"}</span>}
+      {health !== undefined && <span role="group" aria-label="Weapon in hand" title={alive ? activeWeapon || "No weapon" : "Dead"}>
+        {alive && activeSrc ? <Icon src={activeSrc} alt={activeWeapon} size={15} /> : <span style={{ fontSize: 10 }}>{alive ? activeWeapon || "—" : "—"}</span>}
       </span>}
       </span>
     </div>

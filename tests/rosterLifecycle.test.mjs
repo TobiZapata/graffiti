@@ -1,10 +1,40 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { assertFullRoster, benchRosterPlayer, departureProbabilities, expectedMajorOutcome, finishRosterMajor, promoteBenchPlayer, recruitRosterPlayer, releaseBenchPlayer, replacementOffer, swapBenchPlayer } from '../src/lib/rosterLifecycle.mjs';
+import { rosterDepartureMessage } from '../src/lib/rosterLifecycle.mjs';
 const catalog = Array.from({length: 6}, (_, i) => ({id: i, name: `T${i}`, major: 'M', players: [{id: i, name: `P${i}`, rating: 80}]}));
 const slot = i => ({player: catalog[i].players[0], team: {name: `T${i}`, major: 'M'}, gamesPlayed: i});
 const org = () => ({id: 'club', squad: [0,1,2,3,4].map(slot), starUid: '4', iglUid: '1', mainAwperUid: '0', benchTokens: 1});
 const major = id => ({tournamentId: id, stage: 'won', rosterTarget: 'champion', matches: [{completed: true, isPlayerMatch: true, round: 'Final', teamA: {isPlayer: true}, teamB: {name: 'Other'}, result: {winner: 'player_team'}}]});
+
+test('departure messages vary by reason and remain stable across renders and reloads', () => {
+ for (const [reason, count] of [['performance', 6], ['bench', 2]]) {
+  const messages = new Set();
+  for (let i = 0; i < 200; i++) {
+   const entry = { name: 'Player', reason };
+   const message = rosterDepartureMessage(entry, `major-${i}`);
+   assert.equal(message, rosterDepartureMessage(structuredClone(entry), `major-${i}`));
+   if (reason === 'bench') assert.match(message, /Benched Hero/);
+   messages.add(message);
+  }
+  assert.equal(messages.size, count);
+  if (reason === 'performance') assert.ok(messages.has('Decided to save his career instead of another round. Jame time.'));
+ }
+});
+
+test('departure notices retain countries for starters and the bench independently of the archive', () => {
+ const current = { ...org(), squad: org().squad.map(slot => ({ ...slot, player: { ...slot.player, country: 'SE' } })),
+  bench: { player: { name: 'Bench', country: 'ar' }, benchMajors: 1 } };
+ let sawStarter = false;
+ for (let i = 0; i < 100 && !sawStarter; i++) {
+  const departed = finishRosterMajor(current, major(`flags-${i}`)).rosterNotice.departed;
+  assert.equal(departed.find(entry => entry.reason === 'bench').country, 'ar');
+  for (const entry of departed.filter(entry => entry.reason === 'performance')) {
+   assert.equal(entry.country, 'se'); sawStarter = true;
+  }
+ }
+ assert.ok(sawStarter);
+});
 
 test('departing assigned specialists pass each role to the highest matching score', () => {
  const current = { ...org(), mainAwperUid: '0', iglUid: '0', squad: org().squad.map((slot, i) => ({ ...slot, player: { ...slot.player, awp: [99,50,90,70,60][i], igl: [99,80,40,95,50][i] } })) };

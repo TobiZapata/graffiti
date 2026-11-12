@@ -32,6 +32,7 @@ test('incomplete organizations round trip while the Major retains its five-playe
     {...org,formerPlayers:[{player:{name:'Former'},gamesPlayed:0}]},
     {...org,formerPlayers:Array.from({length:6},(_,i)=>({player:{name:`Former${i}`},gamesPlayed:1}))},
     {...org,rosterNotice:{...org.rosterNotice,departed:[{name:'P0',reason:'other'}]}},
+    {...org,rosterNotice:{...org.rosterNotice,departed:[{name:'P0',reason:'bench',country:'../../x'}]}},
     {...org,squad:[{...org.squad[0],gamesPlayed:-1},org.squad[1]]},
   ]) assert.equal(validOrganization(invalid),false);
 });

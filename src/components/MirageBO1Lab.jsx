@@ -10,6 +10,8 @@ import { spiritPlayersConfig } from "@/data/spirit";
 import { assembleMirageBO1 } from "@/lib/assembleMirageBO1.mjs";
 import { retryReplayAssembly } from "@/lib/retryReplayAssembly.mjs";
 import { readReplayJSON } from "@/lib/readReplayJSON.mjs";
+import { attachRoundResolutions } from "@/lib/replayResolution.mjs";
+import { REPLAY_MAPS } from "@/lib/replayMaps.mjs";
 import RoundBankViewer from "./RoundBankViewer";
 import styles from "./RoundBankViewer.module.css";
 
@@ -31,10 +33,11 @@ export default function MirageBO1Lab() {
   const [rolesA, setRolesA] = useState({});
   const [rolesB, setRolesB] = useState({});
   const [seed, setSeed] = useState("mirage-bo1");
+  const [map, setMap] = useState('de_mirage');
   const [match, setMatch] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const bank = useRef(null);
+  const bank = useRef({});
   const generation = useRef(0);
 
   const teamA = teams[teamAIndex] ?? teams[0];
@@ -55,10 +58,11 @@ export default function MirageBO1Lab() {
     event.preventDefault();
     setError(""); setBusy(true); setMatch(null);
     try {
-      bank.current ??= await readReplayJSON("/round-bank/economy-index.json");
-      const result = await retryReplayAssembly(assemblySeed => assembleMirageBO1(bank.current,
+      bank.current[map] ??= attachRoundResolutions(await readReplayJSON(REPLAY_MAPS[map].bank),
+        await readReplayJSON(REPLAY_MAPS[map].resolution));
+      const result = await retryReplayAssembly(assemblySeed => assembleMirageBO1(bank.current[map],
         { ...teamA, mainAwperUid: selectedA.mainAwperUid, iglUid: selectedA.iglUid },
-        { ...teamB, mainAwperUid: selectedB.mainAwperUid, iglUid: selectedB.iglUid }, seed, assemblySeed), seed);
+        { ...teamB, mainAwperUid: selectedB.mainAwperUid, iglUid: selectedB.iglUid }, seed, assemblySeed, 3, map), seed);
       setMatch({ ...result, teamA, teamB, key: ++generation.current });
     } catch (e) {
       setError(e.message);
@@ -66,10 +70,13 @@ export default function MirageBO1Lab() {
   }
 
   return <>
-    <section className={styles.lab} aria-label="Generate a Mirage BO1">
-      <header className={styles.header}><div><h1>Mirage assembler</h1>
+    <section className={styles.lab} aria-label="Generate a BO1">
+      <header className={styles.header}><div><h1>BO1 assembler</h1>
         <p>BO1 · MR12 · Overtime MR3</p></div><Link href="/replay-lab">View the recorded rounds</Link></header>
       <form className={styles.controls} onSubmit={generate}>
+        <label>Map <select disabled={busy} value={map} onChange={e => setMap(e.target.value)}>
+          {Object.entries(REPLAY_MAPS).map(([id, item]) => <option key={id} value={id}>{item.label}</option>)}
+        </select></label>
         <label>Team A <select disabled={busy} value={teams[teamAIndex] ? teamAIndex : 0} onChange={e => setTeamAIndex(Number(e.target.value))}>
           {teams.map((team, i) => <option key={team.id} value={i}>{team.name}</option>)}
         </select></label>

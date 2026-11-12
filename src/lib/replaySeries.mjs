@@ -21,8 +21,8 @@ export function replaySeriesResult(match, history) {
 }
 
 export function validSeriesProgress(match, progress) {
-  return !!progress && Array.isArray(progress.history) && progress.history.length < replayBestOf(match) &&
-    progress.history.every(map => map && validMapPlayerStats(match, map) && map.map === 'de_mirage' && Number.isInteger(map.scoreA) && map.scoreA >= 0 &&
+  return !!progress && (progress.dust2BankVersion === undefined || progress.dust2BankVersion === 'v1.0.0') && (progress.map === undefined || ['de_mirage', 'de_dust2'].includes(progress.map)) && Array.isArray(progress.history) && progress.history.length < replayBestOf(match) &&
+    progress.history.every(map => map && validMapPlayerStats(match, map) && ['de_mirage', 'de_dust2'].includes(map.map) && Number.isInteger(map.scoreA) && map.scoreA >= 0 &&
       Number.isInteger(map.scoreB) && map.scoreB >= 0 && (map.winnerId === match.teamA.id && map.scoreA > map.scoreB || map.winnerId === match.teamB.id && map.scoreB > map.scoreA)) &&
     !replaySeriesResult(match, progress.history).done && Number.isInteger(progress.watchedMap) &&
     progress.watchedMap >= -1 && progress.watchedMap <= progress.history.length &&

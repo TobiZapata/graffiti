@@ -20,8 +20,5 @@ export function pickDraftPlayer(draft, player, team) {
 
 export function draftPlayerStat(player, team, roles, index) {
   const uid = roles ? String(index) : String(player.id);
-  if (!roles && team?.mainAwperUid === uid && team?.iglUid === uid) {
-    return `AWP ${Number.isFinite(player.awp) ? player.awp : '—'} · IGL ${Number.isFinite(player.igl) ? player.igl : '—'}`;
-  }
   return rosterPlayerAttribute(player, roles || team || {}, uid);
 }

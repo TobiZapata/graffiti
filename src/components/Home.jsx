@@ -30,7 +30,7 @@ export default function Home({ majors, logos, rosterCount }) {
             Draft a squad from past Majors and play your own
           </h1>
           <p className="mt-4 text-[16px] leading-relaxed text-ink-2">
-            Pick from the rosters of {majors.slice(0, -1).join(", ")} and {majors.at(-1)}. Take five players through a 16-team Swiss stage and the playoffs, and watch every round on the Mirage radar.
+            Pick from the rosters of {majors.slice(0, -1).join(", ")} and {majors.at(-1)}. Take five players through a 16-team Swiss stage and the playoffs, and watch every round on Mirage or Dust2.
           </p>
 
           {!ready ? <div className="mt-8 h-11" aria-hidden="true" /> : organization ? (

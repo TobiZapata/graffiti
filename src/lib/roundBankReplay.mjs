@@ -1,6 +1,7 @@
 import { sampleRound } from './recordedReplay.mjs';
 import { validWeaponAppearance, visibleWeapon, traceWeaponAppearances, weaponEvidenceFromRaw, validWeaponEvidence } from './weaponAppearance.mjs';
 import { inventoryItem } from './replayEquipment.mjs';
+import { isSideEndRound } from './replayResolution.mjs';
 export { worldToRadar } from './recordedReplay.mjs';
 
 const COLUMNS = ['x', 'y', 'z', 'yaw', 'health', 'alive', 'active_weapon', 'defusing', 'has_kit'];
@@ -62,7 +63,8 @@ export function decodeReplay(raw, metadata, rosterNames = {}) {
     previous = event.tick;
   }
   const suppliedEvidence = metadata.equipment?.weaponEvidence;
-  requireValue(suppliedEvidence === undefined || validWeaponEvidence(suppliedEvidence, raw.actors, raw.end_tick), 'evidencia de armas');
+  requireValue(suppliedEvidence === undefined || validWeaponEvidence(suppliedEvidence, raw.actors,
+    metadata.freezeAtResolution ? raw.resolution_tick : raw.end_tick), 'evidencia de armas');
   const evidence = suppliedEvidence ?? weaponEvidenceFromRaw(raw, sides);
   const trace = appearance ? traceWeaponAppearances(evidence, appearance) : null;
   const heldAt = (tick, actor) => {
@@ -128,10 +130,24 @@ export function decodeReplay(raw, metadata, rosterNames = {}) {
   const duration = raw.end_tick / raw.tick_rate;
   validateUtility(raw, duration);
   const initialCarrier = frames[0].players.find(player => player.inventory.some(weapon => /^(c4|c4 explosive)$/i.test(weapon)));
-  return { number: metadata.round, duration, players, sides: Object.fromEntries(sides), frames, events,
+  const round = { number: metadata.round, duration, players, sides: Object.fromEntries(sides), frames, events,
     grenades: raw.grenades, effects: raw.effects, initialBombCarrier: initialCarrier?.id ?? null,
     meta: { ...metadata, mode: 'recorded_replay', sampleHz: raw.sample_hz, tickRate: raw.tick_rate },
     result: { t: raw.resolution_tick / raw.tick_rate, winnerSide: metadata.winner_side, winCondition: metadata.win_condition } };
+  if (metadata.freezeAtResolution || (metadata.macro && (metadata.endsMatch || isSideEndRound(metadata.round)))) {
+    // Sample once before removing the tail, preserving deaths on the resolution tick.
+    const frozen = sampleRound(round, round.result.t).players;
+    round.events = events.filter(event => event.t <= round.result.t);
+    round.frames = [...frames.filter(frame => frame.t < round.result.t), { t: round.result.t, players: frozen }];
+    round.grenades = raw.grenades.filter(grenade => grenade.start <= round.result.t)
+      .map(grenade => ({ ...grenade, end: Math.min(grenade.end, round.result.t) }));
+    round.effects = raw.effects.filter(effect => effect.start <= round.result.t)
+      .map(effect => ({ ...effect, end: Math.min(effect.end, round.result.t) }));
+    round.duration = round.result.t + 7;
+  } else if (isSideEndRound(metadata.source_round ?? metadata.round)) {
+    round.duration = Math.min(duration, round.result.t + 7);
+  }
+  return round;
 }
 
 export function sampleReplay(round, seconds) {

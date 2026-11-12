@@ -22,15 +22,18 @@
 .t { background: #3a3020; } .ct { background: #1f2c3d; }
 .score { display: flex; align-items: center; gap: 20px; color: var(--ink); }
 .score > strong { font-size: 44px; font-weight: 500; min-width: 48px; text-align: center; font-variant-numeric: tabular-nums; }
-.score > span:not(.pips) { color: var(--ink-3); font-size: 12px; text-align: center; }
+.roundInfo { display: grid; justify-items: center; gap: 4px; color: var(--ink-3); font-size: 12px; text-align: center; }
 .score b { display: block; color: var(--ink-2); font-size: 16px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .pips { display: flex; gap: 4px; }
 .pips i { width: 6px; height: 32px; background: var(--control); border-radius: 3px; }
 .pips i.won { background: var(--ink); }
 .match { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr) minmax(0, 1fr); gap: 12px; align-items: start; }
 .players { min-width: 0; }
+.players [aria-label="Most valuable weapon"], .players [aria-label="Weapon in hand"] { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 80px; width: 80px; height: 24px; overflow: hidden; }
+.players [aria-label="Weapon in hand"] { flex-basis: 44px; width: 44px; }
+.players [aria-label="Most valuable weapon"] img, .players [aria-label="Weapon in hand"] img { width: 100%; max-height: 100%; }
 .radar { position: relative; min-width: 0; }
-.killfeed { position: absolute; top: 8px; right: 8px; max-width: 65%; max-height: 55%; overflow: auto; z-index: 1; font-size: 11px; }
+.killfeed { position: absolute; top: 8px; right: 8px; width: max-content; max-width: calc(100% - 16px); max-height: 55%; overflow: auto; z-index: 1; font-size: 11px; }
 @media (max-width: 800px) {
   .scoreboard { gap: 8px; } .teamHeading { gap: 4px; } .teamHeading strong { font-size: 15px; } .logo { width: 28px; height: 28px; } .badge { padding: 4px; } .score { gap: 4px; } .score > strong { font-size: 28px; min-width: 24px; }
   .match { grid-template-columns: 1fr 1fr; } .radar { grid-column: 1 / -1; grid-row: 1; }

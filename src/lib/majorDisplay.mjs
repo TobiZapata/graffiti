@@ -41,9 +41,11 @@ export function playerAttributes(player) {
 }
 
 export function rosterPlayerAttribute(player, organization, uid) {
-  const field = organization.mainAwperUid === uid ? 'awp' : organization.iglUid === uid ? 'igl' : 'rifler';
-  const label = { awp: 'AWP', igl: 'IGL', rifler: 'Rifler' }[field];
-  return `${label} ${Number.isFinite(player?.[field]) ? player[field] : '—'}`;
+  const fields = [];
+  if (organization.mainAwperUid === uid) fields.push('awp');
+  if (organization.iglUid === uid) fields.push('igl');
+  if (!fields.length) fields.push('rifler');
+  return fields.map(field => `${{ awp: 'AWP', igl: 'IGL', rifler: 'Rifler' }[field]} ${Number.isFinite(player?.[field]) ? player[field] : '—'}`).join(' · ');
 }
 
 export function record(team) {
