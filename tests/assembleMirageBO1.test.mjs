@@ -191,3 +191,11 @@ test('refuses missing enrichment, invalid identities and replay paths', () => {
   catalog.rounds.forEach(r => { r.eligible = false; });
   assert.throws(() => validateBankCatalog(catalog), /no hay rondas/);
 });
+
+test('validates only the selected map and accepts its bank paths', () => {
+  const catalog = fixture();
+  catalog.rounds = catalog.rounds.map(round => ({ ...round, map: 'de_dust2', replay_data_ref: '/round-bank-dust2/demos/' + 'a'.repeat(64) + '/r001.json.gz' }));
+  assert.equal(validateBankCatalog(catalog, 'de_dust2').length, 4);
+  assert.throws(() => validateBankCatalog(catalog));
+  assert.throws(() => validateBankCatalog(catalog, 'de_other'));
+});

@@ -184,10 +184,9 @@ service cloud.firestore {
         function validMap(m, game) {
           let a = m.scoreA;
           let b = m.scoreB;
-          let winner = m.winnerId;
           return m.keys().hasOnly(['map','scoreA','scoreB','winnerId']) &&
-            m.map == 'de_mirage' && a is int && b is int && a >= 0 && b >= 0 &&
-            (a > b ? winner == game.teamA.id : b > a && winner == game.teamB.id);
+            m.map in ['de_mirage', 'de_dust2'] && a is int && b is int && a >= 0 && b >= 0 &&
+            (a > b ? m.winnerId == game.teamA.id : b > a && m.winnerId == game.teamB.id);
         }
         function wins(maps, id) {
           let count = maps.size();

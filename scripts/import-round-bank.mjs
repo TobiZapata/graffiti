@@ -52,7 +52,7 @@ function validateRound(raw, metadata) {
   return { raw, round, state, kills };
 }
 
-function equipmentMetadata({ raw, round, state, kills }) {
+export function equipmentMetadata({ raw, round, state, kills }) {
   const actors = {}, killRewards = {}, killRewardsByWeapon = {};
   for (const opening of round.frames[0].players) {
     const final = state.players.find(player => player.id === opening.id);
@@ -87,15 +87,17 @@ async function publishIndex(indexPath, index) {
   } finally { await unlink(temporary); }
 }
 
-export async function importRoundBank(sourceDir, destDir) {
+export async function importRoundBank(sourceDir, destDir, map = 'de_mirage') {
   try {
+    if (!['de_mirage', 'de_dust2'].includes(map)) throw new Error(`Mapa no soportado: ${map}`);
+    const publicPath = map === 'de_dust2' ? '/round-bank-dust2' : '/round-bank';
     await noLinks(sourceDir);
     await noLinks(destDir);
     const catalogPath = path.join(sourceDir, 'catalog.json');
     await noLinks(catalogPath);
     const catalog = JSON.parse(await readFile(catalogPath, 'utf8'));
     if (catalog.schema_version !== 1 || !Array.isArray(catalog.rounds)) throw new Error('Catálogo inválido');
-    const rounds = catalog.rounds.filter(round => round.eligible === true && round.map === 'de_mirage');
+    const rounds = catalog.rounds.filter(round => round.eligible === true && round.map === map);
     const seen = new Set();
     for (const round of rounds) {
       if (typeof round.replay_data_ref !== 'string' || !/^demos\/[a-f0-9]{64}\/r[0-9]+\.json$/.test(round.replay_data_ref) || seen.has(round.replay_data_ref)) {
@@ -103,7 +105,7 @@ export async function importRoundBank(sourceDir, destDir) {
       }
       seen.add(round.replay_data_ref);
     }
-    const index = Buffer.from(JSON.stringify({ ...catalog, rounds: rounds.map(round => ({ ...round, replay_data_ref: `/round-bank/${round.replay_data_ref}.gz` })) }));
+    const index = Buffer.from(JSON.stringify({ ...catalog, rounds: rounds.map(round => ({ ...round, replay_data_ref: `${publicPath}/${round.replay_data_ref}.gz` })) }));
     const indexPath = path.join(destDir, 'index.json');
     await existingMatches(indexPath, index);
     const equipmentRounds = [];
@@ -115,7 +117,7 @@ export async function importRoundBank(sourceDir, destDir) {
       const bytes = gunzipSync(compressed);
       if (createHash('sha256').update(bytes).digest('hex') !== round.replay_sha256) throw new Error(`SHA256 incorrecto: ${round.replay_data_ref}`);
       const evidence = validateRound(JSON.parse(bytes.toString('utf8')), round);
-      equipmentRounds.push({ ...round, replay_data_ref: `/round-bank/${round.replay_data_ref}.gz`, equipment: equipmentMetadata(evidence) });
+      equipmentRounds.push({ ...round, replay_data_ref: `${publicPath}/${round.replay_data_ref}.gz`, equipment: equipmentMetadata(evidence) });
       await existingMatches(destination, compressed);
     }
     const equipmentIndex = Buffer.from(JSON.stringify({ ...catalog, equipment_version: 2, rounds: equipmentRounds }));
@@ -144,7 +146,8 @@ export async function importRoundBank(sourceDir, destDir) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  importRoundBank(process.argv[2] ?? '../cs2-data-lab/output/round-bank', process.argv[3] ?? 'public/round-bank')
+  const map = process.argv[4] ?? 'de_mirage';
+  importRoundBank(process.argv[2] ?? '../cs2-data-lab/output/round-bank', process.argv[3] ?? (map === 'de_dust2' ? 'public/round-bank-dust2' : 'public/round-bank'), map)
     .then(count => console.log(`Importadas ${count} rondas`))
     .catch(error => { console.error(error.message); process.exitCode = 1; });
 }

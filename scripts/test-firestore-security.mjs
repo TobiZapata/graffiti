@@ -366,6 +366,11 @@ try {
   await check('return cannot leave organization locks behind', false, () => updateDoc(doc(host, 'rooms/RETURNBAD'), { status: 'lobby', lastMajor: { tournamentId: 'major1', winner: 'a' } }));
   await seed('roomSessions/host', session('host', 'PLAYING', new Date()));
   await seed('roomSessions/guest', session('guest', 'PLAYING', new Date()));
+  for (const [map, allowed] of [['de_other', false], ['de_dust2', true]]) {
+    await check(`result map ${map}`, allowed, () => setDoc(doc(host, 'rooms/PLAYING/results/major1~match1'), { ...submission, result: { ...result, maps: [{ ...result.maps[0], map }] } }));
+  }
+  const resetResult = await fetch(`${documents}/rooms/PLAYING/results/major1~match1`, { method: 'DELETE', headers: { Authorization: 'Bearer owner' } });
+  assert.ok(resetResult.ok);
   await check('valid result', true, () => setDoc(doc(host, 'rooms/PLAYING/results/major1~match1'), submission));
   await check('member reads result', true, () => getDoc(doc(guest, 'rooms/PLAYING/results/major1~match1')));
   await check('outsider cannot read result', false, () => getDoc(doc(outsider, 'rooms/PLAYING/results/major1~match1')));

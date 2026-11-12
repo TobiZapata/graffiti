@@ -114,20 +114,25 @@ export function createMacroDirector(teamA, teamB, seed = 'mirage-bo1', engineVer
     }
     return pending;
   };
+  const wouldFinish = winnerSide => {
+    const c = context();
+    return (winnerSide === c.teamASide ? scoreTeam1 : scoreTeam2) + 1 >= finishAt(c.round);
+  };
   return {
     plan,
     get scoreTeam1() { return scoreTeam1; },
     get scoreTeam2() { return scoreTeam2; },
     get done() { return done; },
     peek,
+    wouldFinish,
     next(winnerSide) {
       if (done) throw new Error('El partido ya terminó');
       if (winnerSide !== undefined && !context().allowedWinnerSides.includes(winnerSide)) throw new Error('Lado ganador no permitido');
       const c = peek();
       winnerSide ??= c.winnerSide;
       const observedWinner = winnerSide === c.teamASide ? 'A' : 'B';
+      done = wouldFinish(winnerSide);
       if (observedWinner === 'A') scoreTeam1++; else scoreTeam2++;
-      done = (observedWinner === 'A' ? scoreTeam1 : scoreTeam2) >= finishAt(c.round);
       pending = undefined;
       return { ...c, winnerSide, winnerTeam: observedWinner };
     },

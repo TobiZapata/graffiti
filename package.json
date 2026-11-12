@@ -9,6 +9,7 @@
     "lint": "eslint",
     "bank:import": "node scripts/import-round-bank.mjs",
     "bank:metrics": "node scripts/build-round-metrics.mjs",
+    "bank:resolutions": "node scripts/build-round-resolution.mjs",
     "test:replay": "node --test tests/*.test.mjs",
     "test:firestore": "node scripts/test-firestore-security.mjs"
   },

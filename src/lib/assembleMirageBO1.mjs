@@ -4,21 +4,23 @@ import { createReplayEconomy, beginReplayRound, prepareReplayBuys, finishReplayR
 import { buildWeaponAppearance, validWeaponEvidence } from './weaponAppearance.mjs';
 import { mustContestRound } from './replayRoundContext.mjs';
 import { isV2Player } from './playerModel.mjs';
+import { resolutionRound } from './replayResolution.mjs';
 
 const requireValue = (value, message) => { if (!value) throw new Error(`Banco inválido: ${message}`); };
 const coverageError = message => Object.assign(new Error(message), { code: 'ROUND_BANK_COVERAGE' });
 
-export function validateBankCatalog(catalog) {
+export function validateBankCatalog(catalog, map = 'de_mirage') {
+  requireValue(['de_mirage', 'de_dust2'].includes(map), 'mapa desconocido');
   requireValue(catalog?.schema_version === 1 && Array.isArray(catalog.rounds), 'esquema o catálogo');
   const ids = new Set();
-  const rounds = catalog.rounds.filter(r => r.eligible === true && r.map === 'de_mirage');
+  const rounds = catalog.rounds.filter(r => r.eligible === true && r.map === map);
   for (const r of rounds) {
     requireValue(typeof r.round_id === 'string' && !ids.has(r.round_id), 'ID de ronda duplicado o ausente');
     ids.add(r.round_id);
     requireValue(typeof r.demo_id === 'string' && r.tail_complete === true &&
       Array.isArray(r.exclusions) && !r.exclusions.length, 'procedencia o elegibilidad');
     requireValue(['T', 'CT'].includes(r.winner_side) && ['ELIMINATION', 'DEFUSE', 'BOMB_EXPLOSION', 'TIME'].includes(r.win_condition), 'resultado');
-    requireValue(/^\/(round-bank\/demos\/[a-f0-9]{64}\/r\d+\.json\.gz|round-bank-lab\/r\d+\.json)$/.test(r.replay_data_ref), 'referencia de replay');
+    requireValue(/^\/(round-bank(?:-dust2)?\/demos\/[a-f0-9]{64}\/r\d+\.json\.gz|round-bank-lab\/r\d+\.json)$/.test(r.replay_data_ref), 'referencia de replay');
     requireValue(Array.isArray(r.actors) && r.actors.length === 10 && new Set(r.actors.map(a => a.actor_id)).size === 10, 'diez actores únicos');
     for (const side of ['T', 'CT']) {
       requireValue(r.actors.filter(a => a.side === side).length === 5 &&
@@ -31,7 +33,7 @@ export function validateBankCatalog(catalog) {
         actor.deaths === Number(!actor.survived) && actor.flash_assists <= actor.assists, 'estadísticas de actor');
     }
   }
-  requireValue(rounds.length > 0, 'no hay rondas elegibles de Mirage');
+  requireValue(rounds.length > 0, `no hay rondas elegibles de ${map}`);
   return rounds;
 }
 
@@ -93,8 +95,8 @@ export function roundFitsSaveContext(source, proposal) {
   return !mustContestRound(proposal, losingTeam) || !source.actors.some(a => a.side !== source.winner_side && a.survived);
 }
 
-export function assembleMirageBO1(catalog, teamA, teamB, seed = 'mirage-bo1', assemblySeed = seed, engineVersion = 3) {
-  const initialDirector = createMacroDirector(teamA, teamB, seed, engineVersion), bank = validateBankCatalog(catalog);
+export function assembleMirageBO1(catalog, teamA, teamB, seed = 'mirage-bo1', assemblySeed = seed, engineVersion = 3, map = 'de_mirage') {
+  const initialDirector = createMacroDirector(teamA, teamB, seed, engineVersion), bank = validateBankCatalog(catalog, map);
   requireValue(catalog.equipment_version === 2 && bank.every(r => r.equipment && typeof r.equipment.supported === 'boolean'), 'falta catalogo economico con trazas de armas');
   const supported = bank.filter(r => r.equipment.supported);
   requireValue(supported.length, 'no hay rondas con equipamiento compatible');
@@ -136,7 +138,7 @@ export function assembleMirageBO1(catalog, teamA, teamB, seed = 'mirage-bo1', as
     if (proposal.overtime && longRoundSides.size < 2) return null;
     const otherSide = proposal.teamASide === 'T' ? 'CT' : 'T';
     const random = seedrandom(`${assemblySeed}:assembly:${rounds.map(r => r.round_id).join(',')}`);
-    const candidates = supported.filter(r => proposal.allowedWinnerSides.includes(r.winner_side) && roundFitsSaveContext(r, proposal) &&
+    const candidates = supported.map(r => resolutionRound(r, proposal.round, director.wouldFinish(r.winner_side))).filter(r => proposal.allowedWinnerSides.includes(r.winner_side) && roundFitsSaveContext(r, proposal) &&
       (proposal.pistol ? r.economy.T === 'PISTOL' && r.economy.CT === 'PISTOL' : r.economy.T !== 'PISTOL' && r.economy.CT !== 'PISTOL'))
       .map(r => ({ r, tie: random(), used: rounds.some(x => x.round_id === r.round_id), source: sources.get(provenance(r)) ?? 0 }))
       .sort((a, b) => Number(a.r.winner_side !== proposal.winnerSide) - Number(b.r.winner_side !== proposal.winnerSide) || a.used - b.used || a.source - b.source || a.tie - b.tie);
@@ -179,7 +181,7 @@ export function assembleMirageBO1(catalog, teamA, teamB, seed = 'mirage-bo1', as
           player.kills += actor.kills; player.deaths += actor.deaths; player.assists += actor.assists; player.flashAssists += actor.flash_assists;
         }
         const plan = director.next(source.winner_side);
-        const round = { ...source, round: plan.round, source_round: source.round, assignments,
+        const round = { ...source, round: plan.round, source_round: source.round, assignments, endsMatch: director.done,
           names: Object.fromEntries(assignments.map(x => [x.actorId, x.name])), weaponAppearance: appearance,
           economyAudit: { before, afterPreparation: prepared, after, actions: purchase.actions, strategies: purchase.strategies,
             reset: plan.round === 1 || plan.round === 13 || (plan.round >= 25 && (plan.round - 25) % 3 === 0) },
@@ -200,7 +202,7 @@ export function assembleMirageBO1(catalog, teamA, teamB, seed = 'mirage-bo1', as
   if (!result) throw coverageError('Sin cobertura económica para completar el partido');
   const { rounds, state, stats, director } = result;
   if (engineVersion < 3) for (const player of stats) player.killDeviation = player.kills - player.targetKills;
-  return { map: 'de_mirage', seed, macroPlan: director.plan, scoreTeam1: director.scoreTeam1, scoreTeam2: director.scoreTeam2,
+  return { map, seed, macroPlan: director.plan, scoreTeam1: director.scoreTeam1, scoreTeam2: director.scoreTeam2,
     winner: director.scoreTeam1 > director.scoreTeam2 ? 'A' : 'B', playerStats: stats, economyFinal: state, economySearch: { attempts, backtracks },
-    catalog: { schema_version: 1, source: { demo: `${teamA.name} vs ${teamB.name} · BO1 Mirage` }, names: {}, rounds } };
+    catalog: { schema_version: 1, source: { demo: `${teamA.name} vs ${teamB.name} · BO1 ${map === 'de_dust2' ? 'Dust2' : 'Mirage'}` }, names: {}, rounds } };
 }

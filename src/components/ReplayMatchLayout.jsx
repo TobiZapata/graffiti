@@ -3,6 +3,7 @@
 import { MatchTimeline, PlayerCard } from "./CSMatchViewer";
 import { mostExpensiveWeapon } from "../lib/replayEquipment.mjs";
 import styles from "./ReplayMatchLayout.module.css";
+import ReplayRoundTimer from "./ReplayRoundTimer";
 
 export default function ReplayMatchLayout({ catalog, selection, round, sample, progress, teamA, teamB, seriesState, radar, killfeed, controls }) {
   const sideA = round.meta.macro.teamASide;
@@ -37,7 +38,7 @@ export default function ReplayMatchLayout({ catalog, selection, round, sample, p
   return <div className={styles.layout}>
     <div className={styles.scoreboard}>
       {team(teamA, nameA, sideA, false)}
-      <div className={styles.score}>{pips(seriesState?.winsA)}<strong>{progress.score[0]}</strong><span>Round<b>{round.meta.round}{round.meta.macro.overtime ? ` · OT ${round.meta.macro.overtime}` : " / 24"}</b></span><strong>{progress.score[1]}</strong>{pips(seriesState?.winsB)}</div>
+      <div className={styles.score}>{pips(seriesState?.winsA)}<strong>{progress.score[0]}</strong><div className={styles.roundInfo}><span>Round<b>{round.meta.round}{round.meta.macro.overtime ? ` · OT ${round.meta.macro.overtime}` : " / 24"}</b></span><ReplayRoundTimer round={round} sample={sample} /></div><strong>{progress.score[1]}</strong>{pips(seriesState?.winsB)}</div>
       {team(teamB, nameB, sideB, true)}
     </div>
     <MatchTimeline rounds={timeline} currentRoundIdx={selection} isCurrentRoundFinished={Boolean(sample.result)} />

@@ -24,11 +24,11 @@ export function validMapPlayerStats(match, map) {
 }
 
 export function createMapSummary(match, data) {
-  const map = { map: 'de_mirage', scoreA: data.scoreTeam1, scoreB: data.scoreTeam2,
+  const map = { map: data.map ?? 'de_mirage', scoreA: data.scoreTeam1, scoreB: data.scoreTeam2,
     winnerId: data.winner === 'A' ? match.teamA.id : match.teamB.id,
     playerStats: data.playerStats.map(({ uid, kills, deaths, assists, flashAssists, damage, kastRounds, swingTotal }) => ({ uid, kills, deaths, assists, flashAssists,
       ...(damage !== undefined ? { damage, kastRounds, swingTotal } : {}) })) };
-  if (!validMapPlayerStats(match, map)) throw new Error('Invalid map player statistics');
+  if (!['de_mirage', 'de_dust2'].includes(map.map) || !validMapPlayerStats(match, map)) throw new Error('Invalid map player statistics');
   return map;
 }
 
@@ -49,7 +49,7 @@ export function summarizeMatchPlayers(match, maps) {
   return { teamA: teams[0], teamB: teams[1], complete, metricsComplete, availableMaps, totalMaps: maps.length };
 }
 
-export async function recoverMatchSummaryMaps(match, maps, loadMap, cachedMaps = [], preferMetrics = false) {
+export async function recoverMatchSummaryMaps(match, maps, loadMap, cachedMaps = [], preferMetrics = false, fallbackLoadMap) {
   const recovered = [];
   const sameResult = (a, b) => a?.map === b?.map && a?.scoreA === b?.scoreA && a?.scoreB === b?.scoreB && a?.winnerId === b?.winnerId;
   const preservesStats = (old, next) => !Object.hasOwn(old, 'playerStats') || !validMapPlayerStats(match, old) ||
@@ -58,13 +58,16 @@ export async function recoverMatchSummaryMaps(match, maps, loadMap, cachedMaps =
     if (Object.hasOwn(map, 'playerStats') && validMapPlayerStats(match, map) && (!preferMetrics || hasMapMetrics(map))) { recovered.push(map); continue; }
     const cached = cachedMaps[index];
     if (sameResult(map, cached) && Object.hasOwn(cached, 'playerStats') && validMapPlayerStats(match, cached) && preservesStats(map, cached) && (!preferMetrics || hasMapMetrics(cached))) { recovered.push(cached); continue; }
-    try {
-      const generated = createMapSummary(match, await loadMap(index));
-      recovered.push(sameResult(map, generated) && preservesStats(map, generated) ? generated : map);
-    } catch (error) {
-      if (error?.name === 'AbortError') throw error;
-      recovered.push(map);
+    let result = map;
+    for (const load of [loadMap, fallbackLoadMap].filter(Boolean)) {
+      try {
+        const generated = createMapSummary(match, await load(index));
+        if (sameResult(map, generated) && preservesStats(map, generated)) { result = generated; break; }
+      } catch (error) {
+        if (error?.name === 'AbortError') throw error;
+      }
     }
+    recovered.push(result);
   }
   return recovered;
 }

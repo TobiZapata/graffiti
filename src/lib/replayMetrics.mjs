@@ -6,7 +6,7 @@ export function attachReplayMetrics(data, index) {
     const source = index.rounds[round.round_id];
     if (source?.sha256 !== round.replay_sha256) throw new Error('Round metrics do not match the replay bank');
     for (const assignment of round.assignments) {
-      const row = source.actors[assignment.actorId], total = totals.get(assignment.playerUid);
+      const row = (round.freezeAtResolution ? round.resolution.metrics : source.actors)[assignment.actorId], total = totals.get(assignment.playerUid);
       if (!total || !Array.isArray(row) || row.length !== 3 || !row.every(Number.isSafeInteger) ||
           row[0] < 0 || row[0] > 500 || ![0, 1].includes(row[1]) || Math.abs(row[2]) > 50000) throw new Error('Invalid round metrics');
       total.damage += row[0]; total.kastRounds += row[1]; total.swingTotal += row[2];

@@ -2,6 +2,27 @@ import seedrandom from 'seedrandom';
 import { draftOffer, sameDraftPlayer } from './draftState.mjs';
 import { buildMajorRecord, playerRatingTotals } from './organizationProfile.mjs';
 import { isV2Player, PLAYER_SCORES } from './playerModel.mjs';
+import { playerCountry } from './playerCountry.mjs';
+
+const departureMessages = {
+  performance: [
+    'Left for a team with more firepower. Apparently, that fixes everything.',
+    'Wanted to win trophies. Management wanted to have fun.',
+    'Decided to save his career instead of another round. Jame time.',
+    'Left to join the next French shuffle. Speaking French was optional.',
+    'Asked if the trophies were only for the commercials.',
+    'His exit interview consisted of one question: "Why you bully me?"',
+  ],
+  bench: [
+    'Left to form Benched Heroes. Already qualified for the name.',
+    'Wanted to be a Benched Hero. Just somewhere else.',
+  ],
+};
+
+export function rosterDepartureMessage(entry, majorId) {
+  const messages = departureMessages[entry.reason];
+  return messages[Math.floor(seedrandom(`departure:${majorId}:${entry.name}:${entry.reason}`)() * messages.length)];
+}
 
 const outcomes = ['champion', 'finalist', 'semifinal', 'quarterfinal', 'swiss'];
 const roles = ['starUid', 'iglUid', 'mainAwperUid'];
@@ -88,14 +109,14 @@ export function finishRosterMajor(org, tournament) {
   const survivors = org.squad.filter((slot, index) => {
     if (!departing.has(index)) return true;
     former = archive(former, { ...slot, ...playerRatingTotals(slot, tournament.matches), gamesPlayed: (slot.gamesPlayed ?? baseline) + games, benchMajors: 0 });
-    departed.push({ name: slot.player.name, reason: 'performance' });
+    departed.push({ name: slot.player.name, country: playerCountry(slot.player), reason: 'performance' });
     return false;
   });
   const mapped = remap(org, survivors);
   mapped.squad = survivors.map(slot => ({ ...slot, ...playerRatingTotals(slot, tournament.matches), gamesPlayed: (slot.gamesPlayed ?? baseline) + games, benchMajors: 0 }));
   if (bench) {
     bench = { ...bench, benchMajors: (bench.benchMajors || 0) + 1 };
-    if (bench.benchMajors >= 2) { former = archive(former, bench); departed.push({ name: bench.player.name, reason: 'bench' }); bench = null; }
+    if (bench.benchMajors >= 2) { former = archive(former, bench); departed.push({ name: bench.player.name, country: playerCountry(bench.player), reason: 'bench' }); bench = null; }
   }
   return { ...mapped, bench, formerPlayers: former, majorHistory: [...history, record], benchTokens: 1, rosterVersion: 1, rosterRevision: revision(org), rosterNotice: { majorId: tournament.tournamentId, departed, acknowledged: departed.length === 0 } };
 }

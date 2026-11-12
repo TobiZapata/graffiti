@@ -78,8 +78,10 @@ export function sampleRound(round, requestedTime) {
     } else if (event.type === 'bomb_dropped' && !['planted', 'defused', 'exploded'].includes(bomb?.status)) {
       bomb = { status: 'dropped', x: event.x, y: event.y, z: event.z, t: event.t };
     } else if (['bomb_planted', 'bomb_defused', 'bomb_exploded'].includes(event.type)) {
-      bomb = { ...bomb, status: event.type.slice(5), x: event.x ?? bomb?.x, y: event.y ?? bomb?.y,
-        z: event.z ?? bomb?.z, t: event.t };
+      // Terminal event coordinates can belong to the actor; keep the planted C4 position.
+      const position = event.type !== 'bomb_planted' && bomb?.status === 'planted' ? bomb : event;
+      bomb = { ...bomb, status: event.type.slice(5), x: position.x ?? bomb?.x, y: position.y ?? bomb?.y,
+        z: position.z ?? bomb?.z, t: event.t };
     }
   }
   if (bomb?.status === 'carried') {

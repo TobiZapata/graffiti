@@ -68,3 +68,26 @@ test('recovery preserves missing stats on errors and propagates abort', async ()
   await assert.rejects(recoverMatchSummaryMaps(match, [legacy], async () => { throw Object.assign(new Error('cancelled'), { name: 'AbortError' }); }), { name: 'AbortError' });
 });
 
+test('recovery tries the legacy bank only when the current bank does not match', async () => {
+  const current = { ...data, map: 'de_dust2' }, full = createMapSummary(match, current);
+  const { playerStats, ...saved } = full;
+  let fallbackCalls = 0;
+  const fallback = async () => { fallbackCalls++; return current; };
+  assert.deepEqual(await recoverMatchSummaryMaps(match, [saved], async () => current, [], true, fallback), [full]);
+  assert.equal(fallbackCalls, 0);
+  assert.deepEqual(await recoverMatchSummaryMaps(match, [saved], async () => ({ ...current, scoreTeam2: 8 }), [], true, fallback), [full]);
+  assert.equal(fallbackCalls, 1);
+  assert.deepEqual(await recoverMatchSummaryMaps(match, [saved], async () => { throw new Error('offline'); }, [], true, fallback), [full]);
+  const changedStats = structuredClone(full);
+  changedStats.playerStats[0].kills++;
+  assert.deepEqual(await recoverMatchSummaryMaps(match, [changedStats], async () => current, [], true, fallback), [changedStats]);
+  await assert.rejects(recoverMatchSummaryMaps(match, [saved], async () => ({ ...current, scoreTeam2: 8 }), [], true,
+    async () => { throw Object.assign(new Error('cancelled'), { name: 'AbortError' }); }), { name: 'AbortError' });
+});
+
+
+test('preserves the selected map in summaries', () => {
+  assert.equal(createMapSummary(match, data).map, 'de_mirage');
+  assert.equal(createMapSummary(match, { ...data, map: 'de_dust2' }).map, 'de_dust2');
+  assert.throws(() => createMapSummary(match, { ...data, map: 'de_other' }));
+});

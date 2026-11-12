@@ -1,19 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { decodeReplay, sampleReplay, worldToRadar } from "../lib/roundBankReplay.mjs";
 import { readReplayJSON } from "../lib/readReplayJSON.mjs";
 import { cachedWeaponIcon, replayWeaponIcon } from "../lib/replayWeaponIcon.mjs";
 import mirageRadar from "../../public/maps/mirage/de_mirage_radar_psd.webp";
+import dust2Radar from "../../public/maps/dust/de_dust2_radar_psd.png";
+import { REPLAY_MAPS } from "../lib/replayMaps.mjs";
 import { replayProgress } from "../lib/replayProgress.mjs";
 import { anchorReplay, nextReplayRound, replayTime } from "../lib/replayClock.mjs";
 import { mostExpensiveWeapon } from "../lib/replayEquipment.mjs";
 import styles from "./RoundBankViewer.module.css";
 import ReplayMatchLayout from "./ReplayMatchLayout";
+import ReplayRoundTimer from "./ReplayRoundTimer";
 import PlayerIdentity from "./PlayerIdentity";
 
-const MAP = { originX: -3230, originY: 1713, scale: 5 };
 const BASE = "/round-bank-lab";
 const COLORS = { T: "#e0b45a", CT: "#79a6dc" };
 const WIN_LABELS = { ELIMINATION: "elimination", DEFUSE: "bomb defused", BOMB_EXPLOSION: "bomb exploded", TIME: "time ran out" };
@@ -38,14 +40,14 @@ function TeamList({ side, sample, round }) {
         round.sides[e.victim] && round.sides[e.victim] !== actor.side && !["c4", "planted_c4"].includes(e.weapon)).length;
       return <div key={actor.id} className={`${styles.player} ${!player.alive ? styles.dead : ""}`}>
         <div><strong>{actor.name}</strong><span>{kills} K · {player.alive ? `${player.health} HP` : "Dead"}</span></div>
-        <span className={styles.playerWeapons}>{player.alive ? <>
+        <span className={styles.playerWeapons}>
           <span className={styles.inventoryWeapon} role="group" aria-label="Most valuable weapon" title="Most valuable weapon">
-            <WeaponIcon weapon={mostExpensiveWeapon(player.inventory)} />
+            {player.alive ? <WeaponIcon weapon={mostExpensiveWeapon(player.inventory)} /> : "—"}
           </span>
           <span className={styles.activeWeapon} role="group" aria-label="Weapon in hand" title="Weapon in hand">
-            <WeaponIcon weapon={player.weapon} />
+            {player.alive ? <WeaponIcon weapon={player.weapon} /> : "—"}
           </span>
-        </> : "—"}</span>
+        </span>
         {player.defuse && <label className={styles.defuse}>Defusing
           <progress aria-label={`${actor.name} defuse progress`} max="1" value={player.defuse.progress} />
         </label>}
@@ -55,9 +57,14 @@ function TeamList({ side, sample, round }) {
 }
 
 function Radar({ sample, round }) {
-  const point = (p) => worldToRadar(p, MAP);
-  return <svg className={styles.radar} viewBox="0 0 1024 1024" role="img" aria-label="Mirage radar with player positions">
-    <image href={mirageRadar.src} width="1024" height="1024" />
+  const bombMask = useId();
+  const map = REPLAY_MAPS[round.meta.map];
+  const point = (p) => worldToRadar(p, map);
+  return <svg className={styles.radar} viewBox="0 0 1024 1024" role="img" aria-label={`${map.label} radar with player positions`}>
+    <defs><mask id={bombMask} maskUnits="userSpaceOnUse" x="-10" y="-10" width="20" height="20">
+      <image href={`/weapons/other/${sample.bomb?.status === "exploded" ? "planted_c4" : "c4"}.svg`} x="-10" y="-10" width="20" height="20" />
+    </mask></defs>
+    <image href={(round.meta.map === 'de_dust2' ? dust2Radar : mirageRadar).src} width="1024" height="1024" />
     {sample.effects.map((effect) => {
       const p = point(effect);
       return <circle key={effect.id} cx={p.x} cy={p.y} r={effect.kind === "smoke" ? 29 : effect.kind === "fire" ? 22 : 8}
@@ -81,8 +88,10 @@ function Radar({ sample, round }) {
           <rect x="-20" y="34" width={40 * p.defuse.progress} height="5" fill="#5cc489" /></g>}
       </g>;
     })}
-    {sample.bomb && (() => { const p = point(sample.bomb); return <g transform={`translate(${p.x},${p.y})`}>
-      <rect x="-8" y="-8" width="16" height="16" rx="3" fill={sample.bomb.status === "defused" ? "#5cc489" : "#e5634d"} stroke="#000" strokeWidth="2" />
+    {sample.bomb && (() => { const p = point(sample.bomb), carried = sample.bomb.status === "carried";
+      return <g transform={`translate(${p.x + (carried ? 13 : 0)},${p.y + (carried ? 13 : 0)}) scale(${carried ? .8 : 1})`}>
+      <rect x="-10" y="-10" width="20" height="20" mask={`url(#${bombMask})`}
+        fill={sample.bomb.status === "defused" ? "#5cc489" : ["planted", "exploded"].includes(sample.bomb.status) ? "#e5634d" : "#fff"} />
       <title>Bomb: {sample.bomb.status}</title>
     </g>; })()}
   </svg>;
@@ -94,14 +103,17 @@ function ReplayKillFeed({ deaths, name, sides = {}, compact = false }) {
   const color = id => compact ? COLORS[sides[id]] : undefined;
   return <section className={`${styles.feed} ${compact ? styles.compactFeed : ""}`} aria-label="Round kills">
     {!compact && <h2>Kill feed · {deaths.length} kills</h2>}
-    {deaths.length ? events.map((e, i) => <p key={`${e.t}-${i}`}>
-      {!compact && <time>{timeLabel(e.t)}</time>}
-      <strong style={{color: color(e.attacker)}}>{name(e.attacker)}</strong><span className={styles.killWeapon}><WeaponIcon weapon={e.weapon} />
-        {e.headshot && <img src="/modifiers/icon_headshot.svg" alt="Headshot" width="13" height="13" />}
-        {e.thrusmoke && <img src="/modifiers/smoke_kill.svg" alt="Through smoke" width="13" height="13" />}
-        {e.penetrated > 0 && <img src="/modifiers/penetrate.svg" alt="Wallbang" width="13" height="13" />}</span>
-      <strong style={{color: color(e.victim)}}>{name(e.victim)}</strong>{!compact && e.assister && <small>Assist: {name(e.assister)}{e.assistedflash ? " (flash)" : ""}</small>}
-    </p>) : !compact && <p>No kills yet.</p>}
+    {deaths.length ? events.map((e, i) => {
+      const bombKill = ["c4", "planted_c4"].includes(e.weapon);
+      return <p key={`${e.t}-${i}`}>
+      {!compact && !bombKill && <time>{timeLabel(e.t)}</time>}
+      {!bombKill && <strong style={{color: color(e.attacker)}}>{name(e.attacker)}</strong>}
+      <span className={styles.killWeapon}><WeaponIcon weapon={bombKill ? "planted_c4" : e.weapon} />
+        {!bombKill && e.headshot && <img src="/modifiers/icon_headshot.svg" alt="Headshot" width="13" height="13" />}
+        {!bombKill && e.thrusmoke && <img src="/modifiers/smoke_kill.svg" alt="Through smoke" width="13" height="13" />}
+        {!bombKill && e.penetrated > 0 && <img src="/modifiers/penetrate.svg" alt="Wallbang" width="13" height="13" />}</span>
+      <strong style={{color: color(e.victim)}}>{name(e.victim)}</strong>{!compact && !bombKill && e.assister && <small>Assist: {name(e.assister)}{e.assistedflash ? " (flash)" : ""}</small>}
+    </p>; }) : !compact && <p>No kills yet.</p>}
   </section>;
 }
 
@@ -140,7 +152,9 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
     const controller = new AbortController();
     const info = catalog.rounds[selection];
     readReplayJSON(info.replay_data_ref, controller.signal).then((raw) => {
-      const decoded = decodeReplay(raw, info, info.names ?? catalog.names);
+      const decoded = decodeReplay(raw, { ...info,
+        endsMatch: info.endsMatch || !!(info.macro && selection === catalog.rounds.length - 1),
+      }, info.names ?? catalog.names);
       const saved = restoredPlayback.current;
       const position = saved?.selection === selection ? Math.min(saved.time, decoded.duration) : 0;
       restoredPlayback.current = null;
@@ -200,6 +214,7 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
 
   const controls = <div className={styles.toolbar}>
     <div className={styles.controls}>
+      {!matchMode && round && <ReplayRoundTimer round={round} sample={sample} />}
       <button type="button" disabled={!round} onClick={() => { if (playing) seek(Math.min(round.duration, replayTime(clock.current, performance.now()))); else seek(time >= round?.duration ? 0 : time); setPlaying(!playing); }}>{playing ? "Pause" : "Play"}</button>
       <label>Round <select value={selection} disabled={!catalog} onChange={(e) => {
         continuing.current = false; setPlaying(false); setError(""); setSelection(Number(e.target.value));
@@ -217,7 +232,7 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
   </div>;
 
   return <main className={`${styles.lab} ${matchMode ? styles.matchMode : ""}`}>
-    {!matchMode && <header className={styles.header}><div><p>Mirage</p><h1>{suppliedCatalog ? "Mirage BO1" : "Recorded round test"}</h1>
+    {!matchMode && <header className={styles.header}><div><p>{REPLAY_MAPS[catalog?.rounds[0]?.map ?? 'de_mirage'].label}</p><h1>{suppliedCatalog ? `${REPLAY_MAPS[catalog.rounds[0].map].label} BO1` : "Recorded round test"}</h1>
       <span>{catalog?.source.demo.replace(/\.dem$/, "") || "Loading round bank…"}</span></div>
       <Link href={backHref}>Back to home</Link></header>}
     {!matchMode && controls}

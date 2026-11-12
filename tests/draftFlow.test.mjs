@@ -35,6 +35,6 @@ test('draft reveals one natural-role stat and final squad follows assigned roles
   assert.equal(draftPlayerStat(player, { iglUid: String(player.id) }), 'IGL 70');
   assert.equal(draftPlayerStat(player, { mainAwperUid: String(player.id), iglUid: String(player.id) }), 'AWP 90 · IGL 70');
   assert.equal(draftPlayerStat(player, {}), 'Rifler 80');
-  assert.equal(draftPlayerStat(player, team, { mainAwperUid: '0', iglUid: '0' }, 0), 'AWP 90');
+  assert.equal(draftPlayerStat(player, team, { mainAwperUid: '0', iglUid: '0' }, 0), 'AWP 90 · IGL 70');
   assert.equal(draftPlayerStat(player, team, { mainAwperUid: '1', iglUid: '0' }, 0), 'IGL 70');
 });

@@ -1,18 +1,17 @@
 "use client";
 import PlayerIdentity from "@/components/PlayerIdentity";
 
-import { Suspense, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import AppBar from "@/components/AppBar";
 import OrganizationAbandonments from "@/components/OrganizationAbandonments";
 import { useTournament } from "@/context/TournamentContext";
 import { organizationProfile, careerPlayerRating, careerPlayerMatches } from "@/lib/organizationProfile.mjs";
-import { matchFormat, opponentOf, record, rosterPlayerAttribute, ROLE_FIELDS } from "@/lib/majorDisplay.mjs";
-import TeamName from "@/components/major/TeamName";
+import { rosterPlayerAttribute, ROLE_FIELDS } from "@/lib/majorDisplay.mjs";
 import DraftBoard from "@/components/play/DraftBoard";
 import teams from "@/data/teams.json";
-import { replacementOffer } from "@/lib/rosterLifecycle.mjs";
+import { replacementOffer, rosterDepartureMessage } from "@/lib/rosterLifecycle.mjs";
 import { useRoomSession } from "@/context/RoomSessionContext";
 import { rosterMajorFromRoom } from "@/lib/rosterRoom.mjs";
 
@@ -31,53 +30,10 @@ function RoomReturnLink() {
   return /^[A-Z0-9]{4}$/.test(room || "") ? <Link href={`/room/${room}`} className="link">Back to room {room}</Link> : null;
 }
 
-function NextStep({ hasTournament, finished, stage, swissRound, standings, playerMatch, playHref, resuming, onStart, starting, lastOutcome, canStart, rosterTarget }) {
-  const me = standings.find(t => t.isPlayer);
-  if (hasTournament && !finished) {
-    const opponent = opponentOf(playerMatch, "player_team");
-    const phase = stage === "swiss" ? `Swiss stage · round ${swissRound}` : stage === "swiss_complete" ? "Swiss stage complete" : "Playoffs";
-    return (
-      <section className="card p-6" aria-labelledby="next-title">
-        <p className="text-ink-2"><span>{phase}</span> · <span className="tabular">record {record(me)}</span></p>
-        {rosterTarget && <p className="meta mt-2">Roster objective: {outcomes[rosterTarget]}. Missing it increases the chance of player departures.</p>}
-        {opponent ? <>
-          <h2 id="next-title" className="mt-3 flex items-center gap-3 text-[24px] font-medium">
-            <span className="text-ink-3">vs</span>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            {opponent.icon && <img src={opponent.icon} alt="" width="32" height="32" className="object-contain" />}
-            <TeamName team={opponent} />
-          </h2>
-          <p className="meta mt-1">{matchFormat(playerMatch)}{typeof playerMatch.round === "string" ? ` · ${playerMatch.round}` : ""}</p>
-          <div className="mt-6 flex flex-wrap items-center gap-6">
-            <Link href={playHref} className="btn btn-primary btn-lg">{resuming ? "Resume match" : "Play match"}</Link>
-            <Link href="/simulation" className="link">View the Major</Link>
-          </div>
-        </> : <>
-          <h2 id="next-title" className="mt-3 text-[24px] font-medium">Your match for this round is done</h2>
-          <div className="mt-6"><Link href="/simulation" className="btn btn-primary btn-lg">Go to the Major</Link></div>
-        </>}
-      </section>
-    );
-  }
-  return (
-    <section className="card p-6" aria-labelledby="next-title">
-      <h2 id="next-title" className="text-[24px] font-medium">{hasTournament ? "Ready for the next Major" : "No Major in progress"}</h2>
-      <p className="mt-2 text-ink-2">16 teams play a Swiss stage to three wins or three losses. The top eight go to a single-elimination playoff.</p>
-      <p className="meta mt-2">After each Major, 0–3 starters may leave based on your result against the roster objective. You receive one bench token, up to a maximum of one.</p>
-      {lastOutcome && <p className="mt-2 text-ink-2">Last Major: <span className="text-ink">{lastOutcome}</span>{me && <span className="tabular"> · {record(me)}</span>}</p>}
-      <div className="mt-6 flex flex-wrap items-center gap-6">
-        <button type="button" className="btn btn-primary btn-lg" onClick={onStart} disabled={starting || !canStart}>{starting ? "Starting…" : "Start Major"}</button>
-        {hasTournament && <Link href="/simulation" className="link">View last results</Link>}
-      </div>
-      {!canStart && <p className="meta mt-3">Complete your five-player roster and finish any active room before starting.</p>}
-    </section>
-  );
-}
-
 export default function OrganizationPage() {
   const router = useRouter();
   const roomSession = useRoomSession();
-  const { organization, ready, storageError, startOrganizationMajor, assignOrganizationRole, standings, matches, matchProgress, stage, swissRound, pendingResult, tournamentId, rosterLocked, rosterTarget, benchPlayer, swapBenchPlayer, promoteBench, releaseBench, recruitPlayer, acknowledgeRosterNotice } = useTournament();
+  const { organization, ready, storageError, startOrganizationMajor, assignOrganizationRole, standings, matches, stage, pendingResult, tournamentId, rosterLocked, benchPlayer, swapBenchPlayer, promoteBench, releaseBench, recruitPlayer, acknowledgeRosterNotice } = useTournament();
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(false);
   const [selectedRole, setSelectedRole] = useState(null);
@@ -87,6 +43,17 @@ export default function OrganizationPage() {
   const [recordMode, setRecordMode] = useState("offline");
   const [rivalMode, setRivalMode] = useState("offline");
   const roleHelp = useRef(null);
+  const departuresDialog = useRef(null);
+  const showDepartures = Boolean(ready && organization?.rosterNotice && !organization.rosterNotice.acknowledged);
+
+  useEffect(() => {
+    const dialog = departuresDialog.current;
+    if (!showDepartures || !dialog) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    dialog.showModal();
+    return () => { dialog.close(); document.body.style.overflow = previousOverflow; };
+  }, [showDepartures]);
 
   if (!ready) return <><AppBar /><main className="p-6 text-ink-2">Loading…</main></>;
   if (storageError && !organization) return <><AppBar /><main className="p-6 text-negative" role="alert">{storageError}</main></>;
@@ -101,16 +68,15 @@ export default function OrganizationPage() {
   const finished = ["won", "eliminated"].includes(stage) || (stage === "results_pending" && ["won", "eliminated"].includes(pendingResult));
   const playerMatch = matches.find(match => match.isPlayerMatch && !match.completed);
   const playHref = playerMatch ? `/simulation/match?id=${encodeURIComponent(playerMatch.id)}` : "/simulation";
-  const resuming = Boolean(playerMatch && matchProgress?.[playerMatch.id]);
   const profile = organizationProfile(organization, { tournamentId, stage, pendingResult, matches, standings });
   const onlineMajor = rosterMajorFromRoom(roomSession?.room, roomSession?.userUid, organization, { includeActive: true });
   const recordProfile = organizationProfile(organization, recordMode === "online" ? onlineMajor || {} : { tournamentId, stage, pendingResult, matches, standings }, recordMode);
   const rivalProfile = organizationProfile(organization, rivalMode === "online" ? onlineMajor || {} : { tournamentId, stage, pendingResult, matches, standings }, rivalMode);
   const currentRatingMatches = [...(organization.majorHistory?.some(major => major.id === tournamentId) ? [] : matches), ...(onlineMajor?.matches || [])];
   const founded = new Date(organization.createdAt).getFullYear();
-  const lastOutcome = finished ? outcomes[profile.recentMajors[0]?.outcome] : null;
   const locked = rosterLocked || !!storageError || starting;
   const benchUnlocked = (organization.majorHistory?.length ?? 0) > 0;
+  const needsReplacement = organization.squad.length < 5;
 
   async function rosterAction(action, ...args) {
     try { await action(...args); setError(""); }
@@ -137,7 +103,7 @@ export default function OrganizationPage() {
   return <>
     <AppBar><Suspense fallback={null}><RoomReturnLink /></Suspense></AppBar>
     <main className="mx-auto w-full max-w-[1440px] px-4 py-8 sm:px-6">
-      <header className="flex items-center gap-4">
+      <header className="flex flex-wrap items-center gap-4">
         <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-surface p-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={organization.icon} alt={`${organization.name} crest`} width="48" height="48" />
@@ -146,19 +112,27 @@ export default function OrganizationPage() {
           <h1 className="truncate text-[28px] font-medium leading-tight">{organization.name}</h1>
           <p className="meta tabular">Founded {Number.isFinite(founded) ? founded : "—"} · {profile.majorsPlayed} {profile.majorsPlayed === 1 ? "Major" : "Majors"} played</p>
         </div>
+        <nav aria-label="Play modes" className="flex flex-wrap items-center gap-3 sm:ml-auto">
+          {hasTournament && !finished ? <Link href={playHref} className="btn btn-primary btn-lg">Continue singleplayer</Link> :
+            <button type="button" className="btn btn-primary btn-lg" onClick={start} disabled={starting || needsReplacement || rosterLocked || !!storageError}>{starting ? "Starting…" : "Singleplayer"}</button>}
+          <Link href="/multiplayer" className="btn btn-secondary btn-lg">Multiplayer</Link>
+        </nav>
       </header>
+      {!(hasTournament && !finished) && (needsReplacement || rosterLocked) && <p className="meta mt-3">{needsReplacement ? "Complete your five-player roster to start a Major." : "Finish your active room before starting a singleplayer Major."}</p>}
       {error && <p role="alert" className="mt-4 text-negative">{error}</p>}
-      {organization.rosterNotice && !organization.rosterNotice.acknowledged && <section className="card mt-4 p-6" aria-labelledby="departures-title">
-        <h2 id="departures-title" className="font-medium">Roster departures</h2>
-        <ul className="mt-2 text-ink-2">{organization.rosterNotice.departed.map((entry, index) => <li key={index}>{entry.name} — {entry.reason === "bench" ? "left after two consecutive Majors on the bench" : "left due to performance"}</li>)}</ul>
-        <button type="button" className="link mt-3" onClick={() => rosterAction(acknowledgeRosterNotice)}>Dismiss notice</button>
-      </section>}
+      {showDepartures && <dialog ref={departuresDialog} aria-labelledby="departures-title" aria-modal="true" closedby="none" onCancel={event => event.preventDefault()}
+        className="m-auto max-h-[calc(100dvh-32px)] w-[min(560px,calc(100%-32px))] overflow-y-auto rounded-2xl bg-surface p-6 text-ink backdrop:bg-black/80">
+        <h2 id="departures-title" className="text-[20px] font-medium">Roster departures</h2>
+        <ul className="mt-4 space-y-4 text-ink-2">{organization.rosterNotice.departed.map((entry, index) => <li key={index}>
+          <PlayerIdentity player={entry.country ? entry : organization.formerPlayers?.find(slot => slot.player.name === entry.name)?.player ?? entry} />
+          {" — "}{rosterDepartureMessage(entry, organization.rosterNotice.majorId)}
+        </li>)}</ul>
+        {error && <p role="alert" className="mt-4 text-negative">{error}</p>}
+        <button type="button" className="btn btn-primary mt-6" onClick={() => rosterAction(acknowledgeRosterNotice)}>Dismiss</button>
+      </dialog>}
 
-      <div className="mt-8 grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <div className="grid content-start gap-4">
-          <NextStep hasTournament={hasTournament} finished={finished} stage={stage} swissRound={swissRound} standings={standings}
-            playerMatch={playerMatch} playHref={playHref} resuming={resuming} onStart={start} starting={starting} lastOutcome={lastOutcome} rosterTarget={rosterTarget} canStart={organization.squad.length === 5 && !rosterLocked && !storageError} />
-
+      <div className={`mt-8 grid items-start gap-4 ${needsReplacement ? "lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]" : "lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]"}`}>
+        <div className={`grid content-start gap-4 ${needsReplacement ? "order-2 lg:order-1" : ""}`}>
           <section className="card p-6" aria-labelledby="active-roster">
             <header className="flex items-center justify-between gap-4">
               <h2 id="active-roster" className="text-[16px] font-medium">Active roster</h2>
@@ -237,14 +211,14 @@ export default function OrganizationPage() {
             </> : <p className="mt-3 text-ink-2">No player on the bench.</p>}
             {locked && <p className="meta mt-3">Roster changes are locked during a Major or active room.</p>}
           </section>
-          {organization.squad.length < 5 && <section aria-labelledby="recruit-title">
-            <h2 id="recruit-title" className="text-[16px] font-medium">Recruit a player</h2>
-            <p className="mt-1 text-ink-2">Choose a player to fill your roster. A new selection appears after each pick.</p>
-            {locked ? <p className="meta mt-3">Recruitment is locked during a Major or active room.</p> : <div className="mt-4"><DraftBoard teams={replacementOffer(organization, teams).map(id => teams.find(team => team.id === id)).filter(Boolean)} pickedPlayers={[...organization.squad, ...(organization.bench ? [organization.bench] : [])].map(entry => entry.player)} onPick={(player, team) => rosterAction(recruitPlayer, player, team)} /></div>}
-          </section>}
         </div>
 
-        <div className="grid content-start gap-4">
+        <div className={`grid content-start gap-4 ${needsReplacement ? "order-1 lg:order-2" : ""}`}>
+          {needsReplacement ? <section aria-labelledby="recruit-title">
+            <h2 id="recruit-title" className="text-[16px] font-medium">Recruit a player</h2>
+            <p className="mt-1 text-ink-2">Choose a player to fill your roster. A new selection appears after each pick.</p>
+            {locked ? <p className="meta mt-3">Recruitment is locked during a Major or active room.</p> : <div className="mt-4 [&>ul>li>div]:flex-wrap"><DraftBoard teams={replacementOffer(organization, teams).map(id => teams.find(team => team.id === id)).filter(Boolean)} pickedPlayers={[...organization.squad, ...(organization.bench ? [organization.bench] : [])].map(entry => entry.player)} onPick={(player, team) => rosterAction(recruitPlayer, player, team)} /></div>}
+          </section> : <>
           <section className="card p-6" aria-labelledby="record-title">
             <h2 id="record-title" className="text-[16px] font-medium">Record</h2>
             <ModeTabs value={recordMode} onChange={setRecordMode} label="Record mode" />
@@ -272,6 +246,7 @@ export default function OrganizationPage() {
             <p className="meta mt-1">The five former players with the most matches for your organization.</p>
             {organization.formerPlayers?.length ? <ul className="mt-3">{organization.formerPlayers.map((entry, index) => <li key={index} className="flex min-h-14 items-center justify-between gap-3 border-t border-rule"><PlayerIdentity player={entry.player} /><span className="flex shrink-0 items-center gap-3 tabular text-[13px]"><span className="meta">{entry.gamesPlayed} Matches</span><span aria-label={`${entry.player.name} average rating`}>{careerPlayerRating(entry)?.toFixed(2) ?? "—"}</span></span></li>)}</ul> : <p className="mt-2 text-ink-2">Players who leave your roster will appear here with their organization stats.</p>}
           </section>
+          </>}
 
           <section className="card p-6" aria-labelledby="rivalries">
             <h2 id="rivalries" className="text-[16px] font-medium">Rivalries</h2>

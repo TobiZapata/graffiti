@@ -13,6 +13,29 @@ const play = (a, b, seed) => {
   return { rounds, score: [director.scoreTeam1, director.scoreTeam2], director };
 };
 
+test('match-ending preview follows the actual winner in regulation and overtime without advancing play', () => {
+  for (const overtime of [false, true]) {
+    const director = createMacroDirector(team('A'), team('B'), 'finish-preview');
+    const winner = director.plan.winnerTeam, loser = winner === 'A' ? 'B' : 'A';
+    const sideFor = key => key === 'A' ? director.peek().teamASide : director.peek().teamASide === 'T' ? 'CT' : 'T';
+    const win = key => director.next(sideFor(key));
+    for (let i = 0; i < 12; i++) win(winner);
+    for (let i = 0; i < (overtime ? 12 : 7); i++) win(loser);
+    if (overtime) for (let i = 0; i < 3; i++) win(winner);
+    const pending = director.peek(), scores = [director.scoreTeam1, director.scoreTeam2];
+    assert.equal(director.wouldFinish(sideFor(winner)), true);
+    assert.equal(director.wouldFinish(sideFor(loser)), false);
+    assert.equal(director.peek(), pending);
+    assert.deepEqual([director.scoreTeam1, director.scoreTeam2], scores);
+    win(loser);
+    assert.equal(director.done, false, 'losing a match point keeps normal playback');
+    assert.equal(director.wouldFinish(sideFor(winner)), true);
+    win(winner);
+    assert.equal(director.done, true);
+    assert.equal(director.scoreTeam1 + director.scoreTeam2, overtime ? 29 : 21);
+  }
+});
+
 test('validates teams, unique players and numeric stats without coercion', () => {
   const a = team('A'), b = team('B');
   validateTeams(a, b);

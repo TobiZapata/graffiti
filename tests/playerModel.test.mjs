@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { isV2Player, validateV2Player } from '../src/lib/playerModel.mjs';
 import { prepareReplayTeam } from '../src/lib/replayTeam.mjs';
 import { expandPlayerStats, formatTeamForSimulation } from '../src/app/utils/playerExpansion.js';
+import { selectReplayMap } from '../src/lib/replayMaps.mjs';
 import { simulateNpcMatch } from '../src/lib/simulateNpcMatch.mjs';
 import { readFileSync } from 'node:fs';
 import { upgradeOrganization } from '../src/lib/upgradeOrganization.mjs';
@@ -63,6 +64,7 @@ test('NPC results are deterministic, respect series formats and need no round ba
     const match = { id: 'test', round, teamA, teamB };
     const result = simulateNpcMatch(match, 'seed');
     assert.deepEqual(result, simulateNpcMatch(match, 'seed'));
+    assert.ok(result.maps.every(map => map.map === selectReplayMap('seed', match.id)));
     assert.ok(result.maps.length <= maxMaps);
     if (wins) assert.equal(Math.max(result.scoreA, result.scoreB), wins);
   }
@@ -81,4 +83,11 @@ test('NPC maps select the saved engine version instead of upgrading old Majors',
       assert.equal(map.winnerId, plan.winnerTeam === 'A' ? 'A' : 'B');
     }
   }
+});
+
+test('map selection is stable and uses both maps across matches', () => {
+  const selections = Array.from({ length: 100 }, (_, index) => selectReplayMap('major', String(index)));
+  assert.deepEqual(selections, Array.from({ length: 100 }, (_, index) => selectReplayMap('major', String(index))));
+  assert.ok(selections.filter(map => map === 'de_mirage').length > 25);
+  assert.ok(selections.filter(map => map === 'de_dust2').length > 25);
 });
