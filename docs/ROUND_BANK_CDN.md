@@ -45,7 +45,7 @@ compatible. Mirage keeps its existing configuration.
 
 ## Reader configuration
 
-The published Mirage and Dust2 v1.0.0 Pages roots are built-in defaults, so a
+The published Mirage, Dust2 and Nuke v1.0.0 Pages roots are built-in defaults, so a
 production build does not depend on local environment files. Environment values
 can override each root; an explicitly empty value uses imported local files from
 `/round-bank/` or `/round-bank-dust2/`. Dust2's metrics and resolutions use the same
@@ -60,10 +60,44 @@ NEXT_PUBLIC_ROUND_BANK_DUST2_BASE_URL=https://tobizapata.github.io/major-rounds-
 
 The URL points to the directory containing `economy-index.json`, not to the file itself. Next.js embeds public environment variables at build time, so rebuild after changing an override. No credentials belong in these URLs. The CDN must allow browser cross-origin requests and serve the published files; check both the index and a replay URL after publishing.
 
-Production matches choose Mirage or Dust2 through a seeded 50/50 draw shared by
+Production matches choose Mirage, Dust2 or Nuke through a seeded equal draw shared by
 player and NPC matches. The choice is fixed per matchup/series, so refreshing does
 not reroll it. Existing progress keeps its stored map; legacy progress without a
 map stays on Mirage. The BO1 lab retains manual controls for testing.
+
+## Nuke bank and composite radar
+
+Nuke uses its independent, immutable Pages root:
+
+The v1.0.0 release contains 981 eligible rounds from 49 unique demos (51 source
+files); 888 rounds support the assembler's equipment model and have metrics
+and resolutions. Its 985 bank files total 109,154,153 bytes.
+
+```env
+NEXT_PUBLIC_ROUND_BANK_NUKE_BASE_URL=https://tobizapata.github.io/major-rounds-nuke/v1.0.0
+```
+
+The built-in default uses that URL; an explicitly empty override uses local
+`/round-bank-nuke/` files. Original demos are not published. New Nuke progress
+records `nukeBankVersion: "v1.0.0"`. Keep this root fixed for saved matches; future
+bank upgrades must route old progress to its original version before changing it.
+
+The 1024 x 1088 radar combines the upper floor with a masked lower floor.
+`public/maps/nuke/de_nuke_composite_radar.json` records its source crops and offsets.
+Both floors keep origin (-3453, 2887), scale 7. Heights below -495 use lower;
+the boundary belongs to upper. Grenade trails split at floor transitions.
+
+Prepare a new bank from CS2 Data Lab, then from this directory:
+
+```powershell
+node scripts/import-round-bank.mjs ../cs2-data-lab/output/round-bank-nuke ../major-rounds-nuke/NEW_VERSION de_nuke
+node scripts/build-round-metrics.mjs de_nuke ../major-rounds-nuke/NEW_VERSION
+node scripts/build-round-resolution.mjs de_nuke ../major-rounds-nuke/NEW_VERSION
+node scripts/prepare-nuke-radar.mjs ../cs2-data-lab/output/round-bank-nuke/demos
+```
+
+The radar command checks that living lower-floor samples stay within the mask.
+New demos can reveal unvisited edges; validate the complete bank before releasing.
 
 To prepare a future Dust2 version from CS2 Data Lab, use a new destination:
 

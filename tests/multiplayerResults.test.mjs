@@ -75,5 +75,6 @@ test('rejects malformed optional compact ratings while accepting old results', (
 
 test('accepts Dust2 results and rejects unknown maps', () => {
   assert.ok(validMatchResult(match, { ...result, maps: [{ ...map, map: 'de_dust2' }] }));
+  assert.ok(validMatchResult(match, { ...result, maps: [{ ...map, map: 'de_nuke' }] }));
   assert.equal(validMatchResult(match, { ...result, maps: [{ ...map, map: 'de_other' }] }), false);
 });

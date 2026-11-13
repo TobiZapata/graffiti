@@ -204,3 +204,10 @@ test('rejects malformed supplied weapon evidence before decoding', () => {
     assert.throws(() => decodeReplay(raw, metadata), /evidencia de armas/);
   }
 });
+
+test('Nuke radar projects both floors into the composite image', async () => {
+  const { REPLAY_MAPS } = await import('../src/lib/replayMaps.mjs');
+  const nuke = REPLAY_MAPS.de_nuke;
+  assert.deepEqual(worldToRadar({ x: -3453 + 560 * 7, y: 2887 - 280 * 7, z: -495 }, nuke), { x: 544, y: 32 });
+  assert.deepEqual(worldToRadar({ x: -3453 + 560 * 7, y: 2887 - 280 * 7, z: -496 }, nuke), { x: 448, y: 568 });
+});

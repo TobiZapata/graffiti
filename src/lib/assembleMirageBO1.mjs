@@ -10,7 +10,7 @@ const requireValue = (value, message) => { if (!value) throw new Error(`Banco in
 const coverageError = message => Object.assign(new Error(message), { code: 'ROUND_BANK_COVERAGE' });
 
 export function validateBankCatalog(catalog, map = 'de_mirage') {
-  requireValue(['de_mirage', 'de_dust2'].includes(map), 'mapa desconocido');
+  requireValue(['de_mirage', 'de_dust2', 'de_nuke'].includes(map), 'mapa desconocido');
   requireValue(catalog?.schema_version === 1 && Array.isArray(catalog.rounds), 'esquema o catálogo');
   const ids = new Set();
   const rounds = catalog.rounds.filter(r => r.eligible === true && r.map === map);
@@ -20,7 +20,7 @@ export function validateBankCatalog(catalog, map = 'de_mirage') {
     requireValue(typeof r.demo_id === 'string' && r.tail_complete === true &&
       Array.isArray(r.exclusions) && !r.exclusions.length, 'procedencia o elegibilidad');
     requireValue(['T', 'CT'].includes(r.winner_side) && ['ELIMINATION', 'DEFUSE', 'BOMB_EXPLOSION', 'TIME'].includes(r.win_condition), 'resultado');
-    requireValue(/^\/(round-bank(?:-dust2)?\/demos\/[a-f0-9]{64}\/r\d+\.json\.gz|round-bank-lab\/r\d+\.json)$/.test(r.replay_data_ref), 'referencia de replay');
+    requireValue(/^\/(round-bank(?:-dust2|-nuke)?\/demos\/[a-f0-9]{64}\/r\d+\.json\.gz|round-bank-lab\/r\d+\.json)$/.test(r.replay_data_ref), 'referencia de replay');
     requireValue(Array.isArray(r.actors) && r.actors.length === 10 && new Set(r.actors.map(a => a.actor_id)).size === 10, 'diez actores únicos');
     for (const side of ['T', 'CT']) {
       requireValue(r.actors.filter(a => a.side === side).length === 5 &&
@@ -204,5 +204,5 @@ export function assembleMirageBO1(catalog, teamA, teamB, seed = 'mirage-bo1', as
   if (engineVersion < 3) for (const player of stats) player.killDeviation = player.kills - player.targetKills;
   return { map, seed, macroPlan: director.plan, scoreTeam1: director.scoreTeam1, scoreTeam2: director.scoreTeam2,
     winner: director.scoreTeam1 > director.scoreTeam2 ? 'A' : 'B', playerStats: stats, economyFinal: state, economySearch: { attempts, backtracks },
-    catalog: { schema_version: 1, source: { demo: `${teamA.name} vs ${teamB.name} · BO1 ${map === 'de_dust2' ? 'Dust2' : 'Mirage'}` }, names: {}, rounds } };
+    catalog: { schema_version: 1, source: { demo: `${teamA.name} vs ${teamB.name} · BO1 ${map === 'de_dust2' ? 'Dust2' : map === 'de_nuke' ? 'Nuke' : 'Mirage'}` }, names: {}, rounds } };
 }

@@ -185,7 +185,7 @@ service cloud.firestore {
           let a = m.scoreA;
           let b = m.scoreB;
           return m.keys().hasOnly(['map','scoreA','scoreB','winnerId']) &&
-            m.map in ['de_mirage', 'de_dust2'] && a is int && b is int && a >= 0 && b >= 0 &&
+            m.map.matches('^de_(mirage|dust2|nuke)$') && a is int && b is int && a >= 0 && b >= 0 &&
             (a > b ? m.winnerId == game.teamA.id : b > a && m.winnerId == game.teamB.id);
         }
         function wins(maps, id) {

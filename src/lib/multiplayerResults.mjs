@@ -12,7 +12,7 @@ export function validMatchResult(match, result) {
     result.winner === (result.scoreA > result.scoreB ? match.teamA.id : match.teamB.id))) return false;
   const maps = result.maps;
   if (!Array.isArray(maps) || maps.length < 1 || maps.length > replayBestOf(match) || !maps.every(map =>
-    ['de_mirage', 'de_dust2'].includes(map?.map) && validMapPlayerStats(match, map) && Number.isInteger(map.scoreA) && Number.isInteger(map.scoreB) && map.scoreA >= 0 && map.scoreB >= 0 &&
+    ['de_mirage', 'de_dust2', 'de_nuke'].includes(map?.map) && validMapPlayerStats(match, map) && Number.isInteger(map.scoreA) && Number.isInteger(map.scoreB) && map.scoreA >= 0 && map.scoreB >= 0 &&
     map.scoreA !== map.scoreB && map.winnerId === (map.scoreA > map.scoreB ? match.teamA.id : match.teamB.id))) return false;
   const outcome = replaySeriesResult(match, maps);
   return outcome.done && !replaySeriesResult(match, maps.slice(0, -1)).done &&

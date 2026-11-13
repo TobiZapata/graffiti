@@ -46,3 +46,4 @@ next-env.d.ts
 # Banco generado desde CS2 Data Lab (replays gzip)
 /public/round-bank/
 /public/round-bank-dust2/
+/public/round-bank-nuke/
