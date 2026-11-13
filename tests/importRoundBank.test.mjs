@@ -53,17 +53,17 @@ test('imports eligible rounds and can be repeated without changing files', async
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test('imports only eligible Dust2 rounds into a separate public bank', async () => {
+for (const map of ['de_dust2', 'de_nuke']) test(`imports only eligible ${map} rounds into a separate public bank`, async () => {
   const { root, source, dest, catalog } = await fixture();
   try {
-    catalog.rounds[0].map = 'de_dust2';
-    catalog.rounds[1].map = 'de_dust2';
+    catalog.rounds[0].map = map;
+    catalog.rounds[1].map = map;
     catalog.rounds[1].eligible = false;
     await writeFile(path.join(source, 'catalog.json'), JSON.stringify(catalog));
-    assert.equal(await importRoundBank(source, dest, 'de_dust2'), 1);
+    assert.equal(await importRoundBank(source, dest, map), 1);
     for (const name of ['index.json', 'economy-index.json']) {
       const index = JSON.parse(await readFile(path.join(dest, name)));
-      assert.deepEqual(index.rounds.map(round => round.replay_data_ref), [`/round-bank-dust2/${catalog.rounds[0].replay_data_ref}.gz`]);
+      assert.deepEqual(index.rounds.map(round => round.replay_data_ref), [`/round-bank-${map.slice(3)}/${catalog.rounds[0].replay_data_ref}.gz`]);
     }
     await assert.rejects(importRoundBank(source, dest, 'de_unknown'), /Mapa no soportado/);
   } finally { await rm(root, { recursive: true, force: true }); }

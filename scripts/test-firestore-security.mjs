@@ -211,7 +211,14 @@ try {
   await check('eighth v2 member readies in a full room',true,()=>updateDoc(doc(lastClient,'rooms/MAX8'),{[`players.${lastUid}.isReady`]:true}));
   await check('v2 roles update in a full room keeps shared assignment',true,()=>updateDoc(doc(host,'rooms/MAX8'),{'players.host.organization.mainAwperUid':'2','players.host.organization.iglUid':'2'}));
   const maxTournament={...tournament,simulation:{engineVersion:3,playerDataVersion:'players-v2.0.0',bankVersion:'mirage-economy-v1'},matchesStarted:false,participantUids:maxUids};
-  await check('unknown simulation cannot start a major',false,()=>updateDoc(doc(host,'rooms/MAX8'),{status:'playing',generation:1,tournament:{...maxTournament,simulation:{...maxTournament.simulation,engineVersion:999}}}));
+  for (const [field, value] of [['engineVersion',999], ['bankVersion','unknown'], ['playerDataVersion','unknown']]) {
+    await check(`unknown ${field} cannot start a major`,false,async()=>{
+      const batch=writeBatch(host);
+      batch.update(doc(host,'rooms/MAX8'),{status:'playing',generation:1,tournament:{...maxTournament,simulation:{...maxTournament.simulation,[field]:value}}});
+      for (const uid of maxUids) batch.set(doc(host,`organizationSessions/org-${uid}`),{ownerUid:uid,roomId:'MAX8',tournamentId:maxTournament.tournamentId});
+      await batch.commit();
+    });
+  }
   await check('eight v2 members start with all organization locks',true,async()=>{
     const batch=writeBatch(host);
     batch.update(doc(host,'rooms/MAX8'),{status:'playing',generation:1,tournament:maxTournament});
@@ -366,6 +373,15 @@ try {
   await check('return cannot leave organization locks behind', false, () => updateDoc(doc(host, 'rooms/RETURNBAD'), { status: 'lobby', lastMajor: { tournamentId: 'major1', winner: 'a' } }));
   await seed('roomSessions/host', session('host', 'PLAYING', new Date()));
   await seed('roomSessions/guest', session('guest', 'PLAYING', new Date()));
+  await seed('rooms/NUKE', playing('NUKE'));
+  await check('unknown result map denied', false, () => setDoc(doc(host, 'rooms/NUKE/results/major1~match1'), { ...submission, result: { ...result, maps: [{ ...result.maps[0], map: 'de_other' }] } }));
+  await check('non-string result map denied', false, () => setDoc(doc(host, 'rooms/NUKE/results/major1~match1'), { ...submission, result: { ...result, maps: [{ ...result.maps[0], map: 1 }] } }));
+  await check('Nuke result accepted', true, () => setDoc(doc(host, 'rooms/NUKE/results/major1~match1'), { ...submission, result: { ...result, maps: [{ ...result.maps[0], map: 'de_nuke' }] } }));
+  await check('member reads saved Nuke result', true, async () => assert.equal((await getDoc(doc(guest, 'rooms/NUKE/results/major1~match1'))).data().result.maps[0].map, 'de_nuke'));
+  await check('outsider cannot read saved Nuke result', false, () => getDoc(doc(outsider, 'rooms/NUKE/results/major1~match1')));
+  await check('saved Nuke result is immutable', false, () => setDoc(doc(host, 'rooms/NUKE/results/major1~match1'), submission));
+  await seed('roomSessions/host', session('host', 'PLAYING', new Date()));
+  await seed('roomSessions/guest', session('guest', 'PLAYING', new Date()));
   for (const [map, allowed] of [['de_other', false], ['de_dust2', true]]) {
     await check(`result map ${map}`, allowed, () => setDoc(doc(host, 'rooms/PLAYING/results/major1~match1'), { ...submission, result: { ...result, maps: [{ ...result.maps[0], map }] } }));
   }
@@ -419,6 +435,10 @@ try {
     await seed(`rooms/${id}BAD`, { ...playing(`${id}BAD`), tournament: { ...tournament, matches: [{ ...match, round }] } });
     await check(`${id} inconsistent series`, false, () => setDoc(doc(host, `rooms/${id}BAD/results/major1~match1`), { ...series, result: { ...series.result, scoreA: 1 } }));
   }
+  await seed('rooms/NUKEBO3', { ...playing('NUKEBO3'), tournament: { ...tournament, matches: [{ ...match, round: 'Quarterfinals' }] } });
+  const nukeSeries = { ...submission, result: { ...result, scoreA: 2, scoreB: 0, maps: [result.maps[0], { ...result.maps[0], map: 'de_nuke' }] } };
+  await check('series rejects unknown map in history', false, () => setDoc(doc(host, 'rooms/NUKEBO3/results/major1~match1'), { ...nukeSeries, result: { ...nukeSeries.result, maps: [result.maps[0], { ...result.maps[0], map: 'de_other' }] } }));
+  await check('series accepts Nuke in history', true, () => setDoc(doc(host, 'rooms/NUKEBO3/results/major1~match1'), nukeSeries));
   for (const [round, winners] of [['Quarterfinals', ['a', 'b', 'a']], ['Quarterfinals', ['b', 'a', 'b']], ['Final', ['a', 'b', 'a', 'b', 'a']], ['Final', ['b', 'a', 'b', 'a', 'b']], ['Final', ['a', 'a', 'b', 'a']], ['Final', ['b', 'b', 'a', 'b']]]) {
     const id = `LONG${round}${winners.length}${winners.at(-1)}`;
     await seed(`rooms/${id}`, { ...playing(id), tournament: { ...tournament, matches: [{ ...match, round }] } });

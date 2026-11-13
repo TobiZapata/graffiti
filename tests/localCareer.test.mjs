@@ -83,3 +83,12 @@ test('rejects broken rosters and completed or invalid progress without overwriti
   ];
   for (const value of invalid) { assert.equal(validCareer(value),false); assert.ok(saveCareer(store,value)); assert.equal(store.value(),'original'); }
 });
+
+test('career saves preserve Nuke and legacy map progress', () => {
+  for (const progress of [{ ...data.matchProgress.m, map: 'de_nuke', nukeBankVersion: 'v1.0.0' }, { ...data.matchProgress.m, map: 'de_dust2' }, data.matchProgress.m]) {
+    const saved = { ...data, matchProgress: { m: progress } }, store = storage();
+    assert.equal(saveCareer(store, saved), null);
+    assert.deepEqual(loadCareer(store).data, saved);
+  }
+  assert.equal(validCareer({ ...data, matchProgress: { m: { ...data.matchProgress.m, map: 'de_nuke', nukeBankVersion: 'v2' } } }), false);
+});

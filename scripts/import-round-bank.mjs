@@ -89,8 +89,8 @@ async function publishIndex(indexPath, index) {
 
 export async function importRoundBank(sourceDir, destDir, map = 'de_mirage') {
   try {
-    if (!['de_mirage', 'de_dust2'].includes(map)) throw new Error(`Mapa no soportado: ${map}`);
-    const publicPath = map === 'de_dust2' ? '/round-bank-dust2' : '/round-bank';
+    if (!['de_mirage', 'de_dust2', 'de_nuke'].includes(map)) throw new Error(`Mapa no soportado: ${map}`);
+    const publicPath = map === 'de_mirage' ? '/round-bank' : `/round-bank-${map.slice(3)}`;
     await noLinks(sourceDir);
     await noLinks(destDir);
     const catalogPath = path.join(sourceDir, 'catalog.json');
@@ -147,7 +147,7 @@ export async function importRoundBank(sourceDir, destDir, map = 'de_mirage') {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const map = process.argv[4] ?? 'de_mirage';
-  importRoundBank(process.argv[2] ?? '../cs2-data-lab/output/round-bank', process.argv[3] ?? (map === 'de_dust2' ? 'public/round-bank-dust2' : 'public/round-bank'), map)
+  importRoundBank(process.argv[2] ?? '../cs2-data-lab/output/round-bank', process.argv[3] ?? (map === 'de_mirage' ? 'public/round-bank' : `public/round-bank-${map.slice(3)}`), map)
     .then(count => console.log(`Importadas ${count} rondas`))
     .catch(error => { console.error(error.message); process.exitCode = 1; });
 }

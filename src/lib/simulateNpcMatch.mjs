@@ -6,7 +6,7 @@ import { CURRENT_SIMULATION, simulationEngineVersion } from './simulationVersion
 
 // NPCs use the same seeded macro plan without fetching or assembling replay rounds.
 export function simulateNpcMatch(match, tournamentId, simulation = CURRENT_SIMULATION, map = selectReplayMap(tournamentId, match.id)) {
-  if (!['de_mirage', 'de_dust2'].includes(map)) throw new Error('Invalid map');
+  if (!['de_mirage', 'de_dust2', 'de_nuke'].includes(map)) throw new Error('Invalid map');
   const engineVersion = simulationEngineVersion(simulation);
   const teamA = prepareReplayTeam(match.teamA), teamB = prepareReplayTeam(match.teamB);
   const maps = [];

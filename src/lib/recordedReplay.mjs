@@ -3,7 +3,8 @@ export function worldToRadar(point, map) {
   if (![point.x, point.y, map.originX, map.originY, map.scale].every(Number.isFinite) || map.scale <= 0) {
     throw new RangeError('Coordenadas o escala inválidas');
   }
-  return { x: (point.x - map.originX) / map.scale, y: (map.originY - point.y) / map.scale };
+  const offset = map.composite && (point.z < map.composite.lowerBelowZ ? map.composite.lower : map.composite.upper);
+  return { x: (point.x - map.originX) / map.scale + (offset?.x ?? 0), y: (map.originY - point.y) / map.scale + (offset?.y ?? 0) };
 }
 
 function preceding(rows, time) {

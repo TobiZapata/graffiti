@@ -4,8 +4,8 @@ import { gzipSync, gunzipSync } from 'node:zlib';
 import { calculateRoundMetrics } from '../src/lib/matchMetrics.mjs';
 
 const map = process.argv[2] ?? 'de_mirage';
-if (!['de_mirage', 'de_dust2'].includes(map)) throw new Error(`Unsupported map: ${map}`);
-const bank = map === 'de_dust2' ? 'round-bank-dust2' : 'round-bank';
+if (!['de_mirage', 'de_dust2', 'de_nuke'].includes(map)) throw new Error(`Unsupported map: ${map}`);
+const bank = map === 'de_mirage' ? 'round-bank' : `round-bank-${map.slice(3)}`;
 const bankDir = process.argv[3] ?? `public/${bank}`;
 const catalog = JSON.parse(await readFile(`${bankDir}/economy-index.json`, 'utf8'));
 const rounds = {};
@@ -18,5 +18,5 @@ for (const round of catalog.rounds.filter(r => r.eligible && r.equipment?.suppor
     actors: Object.fromEntries(Object.entries(metrics).map(([id, p]) => [id, [p.damage, p.kastRounds, p.swing]])) };
 }
 const output = gzipSync(JSON.stringify({ version: 1, rounds }), { level: 9 });
-await writeFile(process.argv[3] || map === 'de_dust2' ? `${bankDir}/round-metrics-v1.json.gz` : 'public/round-metrics-v1.json.gz', output);
+await writeFile(process.argv[3] || map !== 'de_mirage' ? `${bankDir}/round-metrics-v1.json.gz` : 'public/round-metrics-v1.json.gz', output);
 console.log(`Round metrics: ${Object.keys(rounds).length} rounds, ${output.length} bytes`);

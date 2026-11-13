@@ -85,9 +85,10 @@ test('NPC maps select the saved engine version instead of upgrading old Majors',
   }
 });
 
-test('map selection is stable and uses both maps across matches', () => {
+test('map selection is stable and uses all maps across matches', () => {
   const selections = Array.from({ length: 100 }, (_, index) => selectReplayMap('major', String(index)));
   assert.deepEqual(selections, Array.from({ length: 100 }, (_, index) => selectReplayMap('major', String(index))));
-  assert.ok(selections.filter(map => map === 'de_mirage').length > 25);
-  assert.ok(selections.filter(map => map === 'de_dust2').length > 25);
+  assert.ok(selections.filter(map => map === 'de_mirage').length > 20);
+  assert.ok(selections.filter(map => map === 'de_dust2').length > 20);
+  assert.ok(selections.filter(map => map === 'de_nuke').length > 20);
 });

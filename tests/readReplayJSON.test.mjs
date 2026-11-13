@@ -98,3 +98,16 @@ test('reports HTTP failures, invalid JSON, corrupt gzip and passes cancellation 
   t.mock.method(globalThis, 'fetch', async (url, options) => { options.signal.throwIfAborted(); });
   await assert.rejects(readReplayJSON('/abort', controller.signal), { name: 'AbortError' });
 });
+
+test('Nuke uses its pinned bank for index, replay, metrics and resolution', async t => {
+  const original = process.env.NEXT_PUBLIC_ROUND_BANK_NUKE_BASE_URL;
+  t.after(() => { if (original === undefined) delete process.env.NEXT_PUBLIC_ROUND_BANK_NUKE_BASE_URL; else process.env.NEXT_PUBLIC_ROUND_BANK_NUKE_BASE_URL = original; });
+  delete process.env.NEXT_PUBLIC_ROUND_BANK_NUKE_BASE_URL;
+  const urls = [];
+  t.mock.method(globalThis, 'fetch', async url => { urls.push(url); return new Response('{}'); });
+  for (const file of ['economy-index.json', 'demos/demo/r1.json.gz', 'round-metrics-v1.json.gz', 'round-resolution-v1.json.gz']) await readReplayJSON('/round-bank-nuke/' + file);
+  assert.deepEqual(urls, ['economy-index.json', 'demos/demo/r1.json.gz', 'round-metrics-v1.json.gz', 'round-resolution-v1.json.gz'].map(file => 'https://tobizapata.github.io/major-rounds-nuke/v1.0.0/' + file));
+  process.env.NEXT_PUBLIC_ROUND_BANK_NUKE_BASE_URL = '';
+  await readReplayJSON('/round-bank-nuke/economy-index.json');
+  assert.equal(urls.at(-1), '/round-bank-nuke/economy-index.json');
+});

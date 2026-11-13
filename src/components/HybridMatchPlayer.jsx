@@ -18,7 +18,7 @@ import RoundBankViewer from "./RoundBankViewer";
 
 async function assembleMap(bank, match, tournamentId, index, signal, simulation, metrics, map) {
   const engineVersion = simulationEngineVersion(simulation);
-  if (map === 'de_dust2' || simulation?.bankVersion === 'mirage-economy-v2') {
+  if (map === 'de_dust2' || map === 'de_nuke' || simulation?.bankVersion === 'mirage-economy-v2') {
     bank = attachRoundResolutions(bank, await readReplayJSON(REPLAY_MAPS[map].resolution, signal));
   }
   const teamA = prepareReplayTeam(match.teamA), teamB = prepareReplayTeam(match.teamB);
@@ -36,8 +36,11 @@ async function assembleMap(bank, match, tournamentId, index, signal, simulation,
 }
 
 export default function HybridMatchPlayer({ match, onFinish, backHref = "/simulation", tournamentId = "", initialProgress = null, onSaveProgress, playbackMode = "full", simulation = null }) {
-  const [map] = useState(() => initialProgress ? initialProgress.map ?? 'de_mirage' : selectReplayMap(tournamentId, match.id));
+  const [map] = useState(() => initialProgress ? initialProgress.map ?? 'de_mirage' : match.completed ? match.result?.maps?.[0]?.map ?? 'de_mirage' : selectReplayMap(tournamentId, match.id));
   const dust2BankVersion = initialProgress || match.completed ? initialProgress?.dust2BankVersion : 'v1.0.0';
+  const nukeBankVersion = initialProgress || match.completed ? initialProgress?.nukeBankVersion : 'v1.0.0';
+  const bankVersions = useMemo(() => ({ ...(map === 'de_dust2' && dust2BankVersion ? { dust2BankVersion } : {}),
+    ...(map === 'de_nuke' && nukeBankVersion ? { nukeBankVersion } : {}) }), [map, dust2BankVersion, nukeBankVersion]);
   const bankUrl = useCallback(map => map === 'de_dust2' && !dust2BankVersion && !match.completed
     ? 'https://tobizapata.github.io/major-rounds-dust2/v0.0.0/economy-index.json'
     : REPLAY_MAPS[map].bank, [dust2BankVersion, match.completed]);
@@ -113,8 +116,8 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
 
   const savePlayback = useCallback(position => {
     playback.current = position;
-    onSaveProgress?.({ map, history, watchedMap, playback: position, ...(map === 'de_dust2' && dust2BankVersion ? { dust2BankVersion } : {}) });
-  }, [map, history, watchedMap, onSaveProgress, dust2BankVersion]);
+    onSaveProgress?.({ map, history, watchedMap, playback: position, ...bankVersions });
+  }, [map, history, watchedMap, onSaveProgress, bankVersions]);
 
   function markWatched() {
     if (data && replaySeriesResult(match, [...history, { winnerId: data.winner === "A" ? match.teamA.id : match.teamB.id }]).done) {
@@ -122,7 +125,7 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
       return;
     }
     setWatchedMap(index);
-    onSaveProgress?.({ map, history, watchedMap: index, playback: playback.current, ...(map === 'de_dust2' && dust2BankVersion ? { dust2BankVersion } : {}) });
+    onSaveProgress?.({ map, history, watchedMap: index, playback: playback.current, ...bankVersions });
   }
 
   async function submitResult(outcome) {
@@ -145,7 +148,7 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
     if (!outcome.done) {
       playback.current = null;
       setHistory(next); setWatchedMap(-1);
-      onSaveProgress?.({ map, history: next, watchedMap: -1, playback: null, ...(map === 'de_dust2' && dust2BankVersion ? { dust2BankVersion } : {}) });
+      onSaveProgress?.({ map, history: next, watchedMap: -1, playback: null, ...bankVersions });
       return;
     }
     setHistory(next);
@@ -187,7 +190,7 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
       {!data && <button type="button" className="btn btn-secondary mt-3" onClick={() => setRetry(value => value + 1)}>Try again</button>}</div>}
     {!started && <form className="mx-auto flex max-w-[1480px] items-center gap-4 px-4 py-6 sm:px-6" onSubmit={event => {
       event.preventDefault();
-      onSaveProgress?.({ map, history, watchedMap, playback: null, ...(map === 'de_dust2' && dust2BankVersion ? { dust2BankVersion } : {}) });
+      onSaveProgress?.({ map, history, watchedMap, playback: null, ...bankVersions });
       setStarted(true);
     }}>
       <span>{series.bestOf > 1 ? 'Map for this series' : 'Map'}: {REPLAY_MAPS[map].label}</span>

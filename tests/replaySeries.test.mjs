@@ -37,3 +37,11 @@ test('supports Dust2 progress while retaining legacy saves', () => {
   assert.equal(validSeriesProgress(match('Final'), { ...progress, dust2BankVersion: 'unknown' }), false);
   assert.equal(validSeriesProgress(match('Final'), { ...progress, map: 'de_other' }), false);
 });
+
+test('supports Nuke progress and rejects unknown maps', () => {
+  const progress = { map: 'de_nuke', history: [{ ...map('a'), map: 'de_nuke' }], watchedMap: 0, playback: null };
+  assert.ok(validSeriesProgress(match('Final'), progress));
+  assert.ok(validSeriesProgress(match('Final'), { ...progress, nukeBankVersion: 'v1.0.0' }));
+  assert.equal(validSeriesProgress(match('Final'), { ...progress, nukeBankVersion: 'unknown' }), false);
+  assert.equal(validSeriesProgress(match('Final'), { ...progress, history: [{ ...map('a'), map: 'de_other' }] }), false);
+});

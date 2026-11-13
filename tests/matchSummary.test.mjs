@@ -89,5 +89,6 @@ test('recovery tries the legacy bank only when the current bank does not match',
 test('preserves the selected map in summaries', () => {
   assert.equal(createMapSummary(match, data).map, 'de_mirage');
   assert.equal(createMapSummary(match, { ...data, map: 'de_dust2' }).map, 'de_dust2');
+  assert.equal(createMapSummary(match, { ...data, map: 'de_nuke' }).map, 'de_nuke');
   assert.throws(() => createMapSummary(match, { ...data, map: 'de_other' }));
 });
