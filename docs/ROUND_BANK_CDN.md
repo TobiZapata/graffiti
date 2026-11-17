@@ -1,5 +1,24 @@
 # Round bank CDN
 
+## Initial local banks: Anubis, Cache, Inferno and Ancient
+
+All four maps are supported in the BO1 lab, viewer, import/metrics/resolution
+scripts and result/progress validators. Their generated banks are local at
+`public/round-bank-{anubis,cache,inferno,ancient}/`; no CDN roots or production
+deployment have been published for them. Keep these directories when testing.
+
+Eligible / assembler-compatible rounds: Anubis 56/50 (three demos), Cache 28/28,
+Inferno 19/19, Ancient 28/27. Cache, Inferno and Ancient assembled three tested
+seeds; the expanded Anubis bank assembled ten seeds without retries. Its initial
+one-demo bank is preserved in CS2 Data Lab output/anubis-initial-public-backup/.
+The automatic seeded draw includes all seven maps with equal probability.
+Existing progress retains its stored map; new selections use the expanded pool.
+The four initial banks remain local and need publication before deployment.
+
+Extraction commands, calibration sources and verification evidence are in
+`../cs2-data-lab/docs/NEW_MAPS_INITIAL_BANKS.md`. Import future expansions into a
+new destination; do not overwrite existing indexes or published bank versions.
+
 ## Published Mirage bank
 
 Repository: https://github.com/TobiZapata/major-rounds-mirage
@@ -60,8 +79,8 @@ NEXT_PUBLIC_ROUND_BANK_DUST2_BASE_URL=https://tobizapata.github.io/major-rounds-
 
 The URL points to the directory containing `economy-index.json`, not to the file itself. Next.js embeds public environment variables at build time, so rebuild after changing an override. No credentials belong in these URLs. The CDN must allow browser cross-origin requests and serve the published files; check both the index and a replay URL after publishing.
 
-Production matches choose Mirage, Dust2 or Nuke through a seeded equal draw shared by
-player and NPC matches. The choice is fixed per matchup/series, so refreshing does
+Matches choose Mirage, Dust2, Nuke, Anubis, Cache, Inferno or Ancient through a
+seeded equal draw shared by player and NPC matches. The choice is fixed per matchup/series, so refreshing does
 not reroll it. Existing progress keeps its stored map; legacy progress without a
 map stays on Mirage. The BO1 lab retains manual controls for testing.
 

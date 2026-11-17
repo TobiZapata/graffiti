@@ -18,7 +18,7 @@ import RoundBankViewer from "./RoundBankViewer";
 
 async function assembleMap(bank, match, tournamentId, index, signal, simulation, metrics, map) {
   const engineVersion = simulationEngineVersion(simulation);
-  if (map === 'de_dust2' || map === 'de_nuke' || simulation?.bankVersion === 'mirage-economy-v2') {
+  if (map !== 'de_mirage' || simulation?.bankVersion === 'mirage-economy-v2') {
     bank = attachRoundResolutions(bank, await readReplayJSON(REPLAY_MAPS[map].resolution, signal));
   }
   const teamA = prepareReplayTeam(match.teamA), teamB = prepareReplayTeam(match.teamB);

@@ -45,3 +45,9 @@ test('supports Nuke progress and rejects unknown maps', () => {
   assert.equal(validSeriesProgress(match('Final'), { ...progress, nukeBankVersion: 'unknown' }), false);
   assert.equal(validSeriesProgress(match('Final'), { ...progress, history: [{ ...map('a'), map: 'de_other' }] }), false);
 });
+
+test('new maps survive saved series validation', () => {
+  for (const id of ['de_anubis', 'de_cache', 'de_inferno', 'de_ancient']) {
+    assert.ok(validSeriesProgress(match('Final'), { map: id, history: [{ ...map('a'), map: id }], watchedMap: 0, playback: null }));
+  }
+});

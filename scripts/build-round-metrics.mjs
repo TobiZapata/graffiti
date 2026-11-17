@@ -4,7 +4,7 @@ import { gzipSync, gunzipSync } from 'node:zlib';
 import { calculateRoundMetrics } from '../src/lib/matchMetrics.mjs';
 
 const map = process.argv[2] ?? 'de_mirage';
-if (!['de_mirage', 'de_dust2', 'de_nuke'].includes(map)) throw new Error(`Unsupported map: ${map}`);
+if (!['de_mirage', 'de_dust2', 'de_nuke', 'de_anubis', 'de_cache', 'de_inferno', 'de_ancient'].includes(map)) throw new Error(`Unsupported map: ${map}`);
 const bank = map === 'de_mirage' ? 'round-bank' : `round-bank-${map.slice(3)}`;
 const bankDir = process.argv[3] ?? `public/${bank}`;
 const catalog = JSON.parse(await readFile(`${bankDir}/economy-index.json`, 'utf8'));

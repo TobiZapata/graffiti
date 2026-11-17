@@ -89,7 +89,7 @@ async function publishIndex(indexPath, index) {
 
 export async function importRoundBank(sourceDir, destDir, map = 'de_mirage') {
   try {
-    if (!['de_mirage', 'de_dust2', 'de_nuke'].includes(map)) throw new Error(`Mapa no soportado: ${map}`);
+    if (!['de_mirage', 'de_dust2', 'de_nuke', 'de_anubis', 'de_cache', 'de_inferno', 'de_ancient'].includes(map)) throw new Error(`Mapa no soportado: ${map}`);
     const publicPath = map === 'de_mirage' ? '/round-bank' : `/round-bank-${map.slice(3)}`;
     await noLinks(sourceDir);
     await noLinks(destDir);

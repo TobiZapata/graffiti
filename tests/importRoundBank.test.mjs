@@ -53,7 +53,7 @@ test('imports eligible rounds and can be repeated without changing files', async
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-for (const map of ['de_dust2', 'de_nuke']) test(`imports only eligible ${map} rounds into a separate public bank`, async () => {
+for (const map of ['de_dust2', 'de_nuke', 'de_anubis', 'de_cache', 'de_inferno', 'de_ancient']) test(`imports only eligible ${map} rounds into a separate public bank`, async () => {
   const { root, source, dest, catalog } = await fixture();
   try {
     catalog.rounds[0].map = map;

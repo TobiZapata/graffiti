@@ -8,6 +8,10 @@ import { cachedWeaponIcon, replayWeaponIcon } from "../lib/replayWeaponIcon.mjs"
 import mirageRadar from "../../public/maps/mirage/de_mirage_radar_psd.webp";
 import dust2Radar from "../../public/maps/dust/de_dust2_radar_psd.png";
 import nukeRadar from "../../public/maps/nuke/de_nuke_composite_radar.webp";
+import anubisRadar from "../../public/maps/anubis/de_anubis_radar_psd.png";
+import cacheRadar from "../../public/maps/cache/de_cache_radar_psd.png";
+import infernoRadar from "../../public/maps/inferno/de_inferno_radar_psd.png";
+import ancientRadar from "../../public/maps/ancient/de_ancient_radar_psd.png";
 import { splitRadarTrail } from "./splitRadarTrail.mjs";
 import { REPLAY_MAPS } from "../lib/replayMaps.mjs";
 import { replayProgress } from "../lib/replayProgress.mjs";
@@ -66,7 +70,7 @@ function Radar({ sample, round }) {
     <defs><mask id={bombMask} maskUnits="userSpaceOnUse" x="-10" y="-10" width="20" height="20">
       <image href={`/weapons/other/${sample.bomb?.status === "exploded" ? "planted_c4" : "c4"}.svg`} x="-10" y="-10" width="20" height="20" />
     </mask></defs>
-    <image href={({ de_mirage: mirageRadar, de_dust2: dust2Radar, de_nuke: nukeRadar })[round.meta.map].src} width="1024" height={map.composite ? 1088 : 1024} />
+    <image href={({ de_mirage: mirageRadar, de_dust2: dust2Radar, de_nuke: nukeRadar, de_anubis: anubisRadar, de_cache: cacheRadar, de_inferno: infernoRadar, de_ancient: ancientRadar })[round.meta.map].src} width="1024" height={map.composite ? 1088 : 1024} />
     {sample.effects.map((effect) => {
       const p = point(effect);
       return <circle key={effect.id} cx={p.x} cy={p.y} r={effect.kind === "smoke" ? 29 : effect.kind === "fire" ? 22 : 8}

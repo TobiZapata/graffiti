@@ -28,7 +28,7 @@ export function createMapSummary(match, data) {
     winnerId: data.winner === 'A' ? match.teamA.id : match.teamB.id,
     playerStats: data.playerStats.map(({ uid, kills, deaths, assists, flashAssists, damage, kastRounds, swingTotal }) => ({ uid, kills, deaths, assists, flashAssists,
       ...(damage !== undefined ? { damage, kastRounds, swingTotal } : {}) })) };
-  if (!['de_mirage', 'de_dust2', 'de_nuke'].includes(map.map) || !validMapPlayerStats(match, map)) throw new Error('Invalid map player statistics');
+  if (!['de_mirage', 'de_dust2', 'de_nuke', 'de_anubis', 'de_cache', 'de_inferno', 'de_ancient'].includes(map.map) || !validMapPlayerStats(match, map)) throw new Error('Invalid map player statistics');
   return map;
 }
 
