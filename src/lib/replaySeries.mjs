@@ -1,4 +1,5 @@
 import { validMapPlayerStats } from './matchSummary.mjs';
+import { validMapVeto, vetoStatus } from './mapVeto.mjs';
 
 export function replayBestOf(match) {
   if (match.round === 'Final') return 5;
@@ -21,6 +22,14 @@ export function replaySeriesResult(match, history) {
 }
 
 export function validSeriesProgress(match, progress) {
+  if (progress?.veto !== undefined) {
+    if (!validMapVeto(progress.veto, replayBestOf(match)) || typeof progress.vetoStarted !== 'boolean' || !Array.isArray(progress.history)) return false;
+    const status = vetoStatus(progress.veto);
+    if (progress.vetoStarted) {
+      if (!status.done || progress.map !== status.maps[progress.history.length] ||
+          !progress.history.every((map, index) => map?.map === status.maps[index])) return false;
+    } else if (progress.history.length || progress.watchedMap !== -1 || progress.playback !== null || progress.map !== undefined) return false;
+  } else if (progress?.vetoStarted !== undefined) return false;
   return !!progress && (progress.dust2BankVersion === undefined || progress.dust2BankVersion === 'v1.0.0') && (progress.nukeBankVersion === undefined || progress.nukeBankVersion === 'v1.0.0') && (progress.map === undefined || ['de_mirage', 'de_dust2', 'de_nuke', 'de_anubis', 'de_cache', 'de_inferno', 'de_ancient'].includes(progress.map)) && Array.isArray(progress.history) && progress.history.length < replayBestOf(match) &&
     progress.history.every(map => map && validMapPlayerStats(match, map) && ['de_mirage', 'de_dust2', 'de_nuke', 'de_anubis', 'de_cache', 'de_inferno', 'de_ancient'].includes(map.map) && Number.isInteger(map.scoreA) && map.scoreA >= 0 &&
       Number.isInteger(map.scoreB) && map.scoreB >= 0 && (map.winnerId === match.teamA.id && map.scoreA > map.scoreB || map.winnerId === match.teamB.id && map.scoreB > map.scoreA)) &&

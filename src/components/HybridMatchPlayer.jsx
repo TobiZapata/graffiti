@@ -13,6 +13,8 @@ import { attachReplayMetrics } from "@/lib/replayMetrics.mjs";
 import { selectHighlightRounds } from "@/lib/replayHighlights.mjs";
 import { attachRoundResolutions } from "@/lib/replayResolution.mjs";
 import { REPLAY_MAPS, selectReplayMap } from "@/lib/replayMaps.mjs";
+import { createMapVeto, vetoStatus, applyMapVeto, advanceNpcVeto } from "@/lib/mapVeto.mjs";
+import MapVeto from "./MapVeto";
 import MatchSummary from "./MatchSummary";
 import RoundBankViewer from "./RoundBankViewer";
 
@@ -35,17 +37,22 @@ async function assembleMap(bank, match, tournamentId, index, signal, simulation,
   }
 }
 
-export default function HybridMatchPlayer({ match, onFinish, backHref = "/simulation", tournamentId = "", initialProgress = null, onSaveProgress, playbackMode = "full", simulation = null }) {
-  const [map] = useState(() => initialProgress ? initialProgress.map ?? 'de_mirage' : match.completed ? match.result?.maps?.[0]?.map ?? 'de_mirage' : selectReplayMap(tournamentId, match.id));
-  const dust2BankVersion = initialProgress || match.completed ? initialProgress?.dust2BankVersion : 'v1.0.0';
-  const nukeBankVersion = initialProgress || match.completed ? initialProgress?.nukeBankVersion : 'v1.0.0';
-  const bankVersions = useMemo(() => ({ ...(map === 'de_dust2' && dust2BankVersion ? { dust2BankVersion } : {}),
-    ...(map === 'de_nuke' && nukeBankVersion ? { nukeBankVersion } : {}) }), [map, dust2BankVersion, nukeBankVersion]);
+export default function HybridMatchPlayer({ match, onFinish, backHref = "/simulation", tournamentId = "", initialProgress = null, onSaveProgress, playbackMode = "full", simulation = null, vetoPlayer = null }) {
+  const vetoSeed = `${tournamentId}:${match.id}:veto`;
+  const [veto, setVeto] = useState(() => initialProgress?.veto ?? (!initialProgress && !match.completed && vetoPlayer
+    ? advanceNpcVeto(createMapVeto(replaySeriesResult(match, []).bestOf, vetoSeed, vetoPlayer), vetoSeed, vetoPlayer) : null));
+  const [history, setHistory] = useState(initialProgress?.history ?? []);
+  const [started, setStarted] = useState(initialProgress?.veto ? initialProgress.vetoStarted : !!initialProgress);
+  const [legacyMap] = useState(() => initialProgress ? initialProgress.map ?? 'de_mirage' : match.completed ? match.result?.maps?.[0]?.map ?? 'de_mirage' : selectReplayMap(tournamentId, match.id));
+  const map = veto ? vetoStatus(veto).maps[history.length] ?? legacyMap : legacyMap;
+  const dust2BankVersion = veto ? 'v1.0.0' : initialProgress || match.completed ? initialProgress?.dust2BankVersion : 'v1.0.0';
+  const nukeBankVersion = veto ? 'v1.0.0' : initialProgress || match.completed ? initialProgress?.nukeBankVersion : 'v1.0.0';
+  const bankVersions = useMemo(() => ({ ...((veto || map === 'de_dust2') && dust2BankVersion ? { dust2BankVersion } : {}),
+    ...((veto || map === 'de_nuke') && nukeBankVersion ? { nukeBankVersion } : {}) }), [map, dust2BankVersion, nukeBankVersion, veto]);
+  const vetoProgress = useMemo(() => veto ? { veto, vetoStarted: started } : {}, [veto, started]);
   const bankUrl = useCallback(map => map === 'de_dust2' && !dust2BankVersion && !match.completed
     ? 'https://tobizapata.github.io/major-rounds-dust2/v0.0.0/economy-index.json'
     : REPLAY_MAPS[map].bank, [dust2BankVersion, match.completed]);
-  const [started, setStarted] = useState(!!initialProgress);
-  const [history, setHistory] = useState(initialProgress?.history ?? []);
   const [loaded, setLoaded] = useState(null);
   const [error, setError] = useState(null);
   const [retry, setRetry] = useState(0);
@@ -116,8 +123,8 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
 
   const savePlayback = useCallback(position => {
     playback.current = position;
-    onSaveProgress?.({ map, history, watchedMap, playback: position, ...bankVersions });
-  }, [map, history, watchedMap, onSaveProgress, bankVersions]);
+    onSaveProgress?.({ map, history, watchedMap, playback: position, ...bankVersions, ...vetoProgress });
+  }, [map, history, watchedMap, onSaveProgress, bankVersions, vetoProgress]);
 
   function markWatched() {
     if (data && replaySeriesResult(match, [...history, { winnerId: data.winner === "A" ? match.teamA.id : match.teamB.id }]).done) {
@@ -125,7 +132,7 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
       return;
     }
     setWatchedMap(index);
-    onSaveProgress?.({ map, history, watchedMap: index, playback: playback.current, ...bankVersions });
+    onSaveProgress?.({ map, history, watchedMap: index, playback: playback.current, ...bankVersions, ...vetoProgress });
   }
 
   async function submitResult(outcome) {
@@ -148,7 +155,7 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
     if (!outcome.done) {
       playback.current = null;
       setHistory(next); setWatchedMap(-1);
-      onSaveProgress?.({ map, history: next, watchedMap: -1, playback: null, ...bankVersions });
+      onSaveProgress?.({ map: veto ? vetoStatus(veto).maps[next.length] : map, history: next, watchedMap: -1, playback: null, ...bankVersions, ...vetoProgress });
       return;
     }
     setHistory(next);
@@ -161,6 +168,16 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
   if (result) return <MatchSummary match={match} result={result} backHref={backHref}
     loadingStats={needsStats && recovered?.source !== finalized}
     saving={saving || (!saved && !match.completed && !saveError)} error={match.completed ? "" : saveError} onRetry={() => submitResult(result)} />;
+
+  if (veto && !started) return <MapVeto veto={veto} match={match} playerTeam={vetoPlayer} backHref={backHref}
+    onChoose={id => {
+      const next = advanceNpcVeto(applyMapVeto(veto, id), vetoSeed, vetoPlayer);
+      onSaveProgress?.({ veto: next, vetoStarted: false, history, watchedMap, playback: null, ...bankVersions });
+      setVeto(next);
+    }} onStart={() => {
+      onSaveProgress?.({ map, history, watchedMap, playback: null, ...bankVersions, veto, vetoStarted: true });
+      setStarted(true);
+    }} />;
 
   return <div className="min-h-screen bg-bg text-ink">
     <header className="border-b border-rule">

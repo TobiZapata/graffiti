@@ -11,8 +11,9 @@ Eligible / assembler-compatible rounds: Anubis 56/50 (three demos), Cache 28/28,
 Inferno 19/19, Ancient 28/27. Cache, Inferno and Ancient assembled three tested
 seeds; the expanded Anubis bank assembled ten seeds without retries. Its initial
 one-demo bank is preserved in CS2 Data Lab output/anubis-initial-public-backup/.
-The automatic seeded draw includes all seven maps with equal probability.
-Existing progress retains its stored map; new selections use the expanded pool.
+The seeded draw includes all seven maps with equal probability; new matches
+against NPC use the [pre-match veto](MAP_VETO.md) instead. Existing progress
+retains its stored map.
 The four initial banks remain local and need publication before deployment.
 
 Extraction commands, calibration sources and verification evidence are in
@@ -79,9 +80,10 @@ NEXT_PUBLIC_ROUND_BANK_DUST2_BASE_URL=https://tobizapata.github.io/major-rounds-
 
 The URL points to the directory containing `economy-index.json`, not to the file itself. Next.js embeds public environment variables at build time, so rebuild after changing an override. No credentials belong in these URLs. The CDN must allow browser cross-origin requests and serve the published files; check both the index and a replay URL after publishing.
 
-Matches choose Mirage, Dust2, Nuke, Anubis, Cache, Inferno or Ancient through a
-seeded equal draw shared by player and NPC matches. The choice is fixed per matchup/series, so refreshing does
-not reroll it. Existing progress keeps its stored map; legacy progress without a
+The map pool includes Mirage, Dust2, Nuke, Anubis, Cache, Inferno and Ancient.
+New human-versus-NPC matches use the [pre-match veto](MAP_VETO.md) to choose an
+ordered series. Other matches retain the seeded draw. Reloading does not reroll
+a saved choice or restart a saved veto. Existing progress keeps its stored map; legacy progress without a
 map stays on Mirage. The BO1 lab retains manual controls for testing.
 
 ## Nuke bank and composite radar

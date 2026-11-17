@@ -1,0 +1,34 @@
+.page { width: 100%; max-width: 1200px; margin: 0 auto; padding: 0 24px 40px; }
+.header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 20px 0; color: var(--ink-2); border-bottom: 1px solid var(--rule); }
+.title { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; padding: 28px 0 24px; }
+.title h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
+.title p { font-size: 18px; }
+.title p span { color: var(--ink-3); margin: 0 12px; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 40px; }
+.turn { margin-bottom: 16px; font-weight: 500; }
+.pool { list-style: none; padding: 0; }
+.pool li { display: grid; grid-template-columns: 40px minmax(80px, 1fr) minmax(0, 1.5fr) 76px; align-items: center; gap: 16px; min-height: 76px; border-top: 1px solid var(--rule); }
+.pool img { object-fit: contain; }
+.pool strong { font-weight: 500; }
+.result, .order, .hint { color: var(--ink-2); font-size: 13px; }
+.order { text-align: right; }
+.banned img { filter: grayscale(1); opacity: .5; }
+.banned strong { color: var(--ink-3); text-decoration: line-through; }
+.history h2 { font-weight: 500; margin-bottom: 16px; }
+.actions { list-style: none; padding: 0; margin: 20px 0 24px; }
+.actions li { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 16px; padding: 10px 0; border-top: 1px solid var(--rule); font-size: 13px; color: var(--ink-2); }
+.actions strong { font-weight: 500; color: var(--ink); }
+.series { list-style: none; padding: 0; }
+.series li { display: grid; grid-template-columns: 44px 1fr auto; gap: 12px; align-items: center; padding: 12px 0; border-top: 1px solid var(--rule); }
+.series span { font-size: 13px; color: var(--ink-2); }
+.series strong { font-weight: 500; }
+@media (max-width: 850px) { .layout { grid-template-columns: 1fr; gap: 28px; } }
+@media (max-width: 480px) {
+  .page { padding: 0 16px 32px; }
+  .header { font-size: 12px; }
+  .pool li { grid-template-columns: 36px minmax(0, 1fr) 72px; gap: 4px 12px; padding: 12px 0; }
+  .pool img { grid-row: span 2; width: 36px; height: 36px; }
+  .pool .result { grid-column: 2; grid-row: 2; font-size: 12px; }
+  .pool button, .pool .order { grid-column: 3; grid-row: 1 / span 2; }
+  .pool button { min-height: 44px; }
+}

@@ -26,6 +26,7 @@ function RoomReplay({ match, roomId, tournamentId, userUid, completeMatch, playb
     <button type="button" className="btn btn-secondary mt-4" onClick={() => { sessionStorage.removeItem(key); window.location.reload(); }}>Restart playback</button></main>;
   return <>{error && <p role="alert" className="p-4 text-negative">{error}</p>}
     <HybridMatchPlayer match={match} simulation={simulation} playbackMode={playbackMode} tournamentId={`${roomId}:${tournamentId}`} initialProgress={resume} onSaveProgress={save}
+      vetoPlayer={match.playerUids?.length === 1 ? match.teamA.uid === userUid ? 'A' : 'B' : null}
       backHref={`/room/${roomId}/simulation`} onFinish={async result => {
         const accepted = await completeMatch(match.id, result);
         try { sessionStorage.removeItem(key); } catch { /* A completed match no longer uses its saved playback. */ }
