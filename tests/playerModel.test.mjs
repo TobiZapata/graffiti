@@ -28,7 +28,7 @@ test('future-Major upgrades preserve slots, unknown entries and original active 
 });
 
 test('approved catalog prepares all players without manufacturing legacy stats', () => {
-  assert.equal(catalog.length, 96);
+  assert.equal(catalog.length, 384);
   const ids = new Set(), playerIds = new Set();
   for (const team of catalog) {
     assert.ok(!ids.has(team.id)); ids.add(team.id);
@@ -44,7 +44,7 @@ test('approved catalog prepares all players without manufacturing legacy stats',
       assert.deepEqual(expandPlayerStats(player), player);
     }
   }
-  assert.equal(playerIds.size, 480);
+  assert.equal(playerIds.size, 1920);
 });
 
 test('partial, missing and invalid new scores fail instead of creating random players', () => {

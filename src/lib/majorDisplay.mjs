@@ -9,10 +9,21 @@ export const ROLE_FIELDS = { mainAwperUid: 'AWPer', iglUid: 'IGL', starUid: 'Sta
 // "ESL One Cologne 2014" -> "Cologne '14". The same team often played several Majors, and two of them
 // were in 2014, so the event's short name is what tells two rosters apart.
 const EVENT_NAMES = [
+  ['Cluj-Napoca', 'Cluj-Napoca'],
   ['Katowice', 'Katowice'],
   ['Cologne', 'Cologne'],
   ['DreamHack', 'DreamHack'],
+  ['Columbus', 'Columbus'],
+  ['Atlanta', 'Atlanta'],
   ['Krakow', 'Krakow'],
+  ['Boston', 'Boston'],
+  ['FACEIT', 'London'],
+  ['Berlin', 'Berlin'],
+  ['Stockholm', 'Stockholm'],
+  ['Antwerp', 'Antwerp'],
+  ['Rio', 'Rio'],
+  ['Paris', 'Paris'],
+  ['Copenhagen', 'Copenhagen'],
   ['Shanghai', 'Shanghai'],
   ['Austin', 'Austin'],
   ['Budapest', 'Budapest'],
