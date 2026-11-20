@@ -1,24 +1,30 @@
 # Round bank CDN
 
-## Initial local banks: Anubis, Cache, Inferno and Ancient
+## Published banks: Anubis, Cache, Inferno and Ancient
 
 All four maps are supported in the BO1 lab, viewer, import/metrics/resolution
-scripts and result/progress validators. Their generated banks are local at
-`public/round-bank-{anubis,cache,inferno,ancient}/`; no CDN roots or production
-deployment have been published for them. Keep these directories when testing.
+scripts, pre-match map veto and result/progress validators, and are now published
+as immutable `v1.0.0` GitHub Pages banks with built-in defaults in `readReplayJSON.mjs`:
 
-Eligible / assembler-compatible rounds: Anubis 56/50 (three demos), Cache 28/28,
-Inferno 19/19, Ancient 28/27. Cache, Inferno and Ancient assembled three tested
-seeds; the expanded Anubis bank assembled ten seeds without retries. Its initial
-one-demo bank is preserved in CS2 Data Lab output/anubis-initial-public-backup/.
-The seeded draw includes all seven maps with equal probability; new matches
-against NPC use the [pre-match veto](MAP_VETO.md) instead. Existing progress
-retains its stored map.
-The four initial banks remain local and need publication before deployment.
+- Anubis (`TobiZapata/major-rounds-anubis`): 1,096 eligible / 979 compatible rounds (62 demos)
+  `NEXT_PUBLIC_ROUND_BANK_ANUBIS_BASE_URL=https://tobizapata.github.io/major-rounds-anubis/v1.0.0`
+- Cache (`TobiZapata/major-rounds-cache`): 1,014 eligible / 973 compatible rounds (50 demos)
+  `NEXT_PUBLIC_ROUND_BANK_CACHE_BASE_URL=https://tobizapata.github.io/major-rounds-cache/v1.0.0`
+- Inferno (`TobiZapata/major-rounds-inferno`): 999 eligible / 880 compatible rounds (53 demos)
+  `NEXT_PUBLIC_ROUND_BANK_INFERNO_BASE_URL=https://tobizapata.github.io/major-rounds-inferno/v1.0.0`
+- Ancient (`TobiZapata/major-rounds-ancient`): 971 eligible / 902 compatible rounds (50 demos)
+  `NEXT_PUBLIC_ROUND_BANK_ANCIENT_BASE_URL=https://tobizapata.github.io/major-rounds-ancient/v1.0.0`
+
+An explicitly empty environment override uses local `/round-bank-<map>/` files.
+All four Pages roots were verified `built` with HTTP 200 and `Access-Control-Allow-Origin: *`
+for `economy-index.json`, `round-metrics-v1.json.gz`, `round-resolution-v1.json.gz`
+and sample `.json.gz` replays. The seeded draw includes all seven maps with equal
+probability; new matches against NPC use the [pre-match veto](MAP_VETO.md) instead.
+Existing progress retains its stored map.
 
 Extraction commands, calibration sources and verification evidence are in
 `../cs2-data-lab/docs/NEW_MAPS_INITIAL_BANKS.md`. Import future expansions into a
-new destination; do not overwrite existing indexes or published bank versions.
+new version directory; do not overwrite existing indexes or published bank versions.
 
 ## Published Mirage bank
 
