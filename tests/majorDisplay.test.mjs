@@ -7,6 +7,10 @@ test('new player presentation exposes four visible scores and no overall or fire
   assert.equal(playerOverall(player), null);
   assert.equal(playerAttributes(player), 'AWP 95 · Rifler 86 · IGL 30 · Clutch 80');
   assert.equal(playerOverall({ aim: 80, clutch: 60 }), 70);
+  assert.equal(teamEvent({ major: 'DreamHack Open Cluj-Napoca 2015' }), "Cluj-Napoca '15");
+  assert.equal(teamEvent({ major: 'FACEIT Major 2018' }), "London '18");
+  assert.equal(teamEvent({ major: 'PGL Major Stockholm 2021' }), "Stockholm '21");
+  assert.equal(teamEvent({ major: 'PGL Major Copenhagen 2024' }), "Copenhagen '24");
   assert.equal(teamEvent({ major: 'PGL Major Krakow 2017' }), "Krakow '17");
   assert.equal(teamEvent({ major: 'Perfect World Shanghai Major 2024' }), "Shanghai '24");
   assert.equal(teamEvent({ major: 'BLAST.tv Austin Major 2025' }), "Austin '25");
