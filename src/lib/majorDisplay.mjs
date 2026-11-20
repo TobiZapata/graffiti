@@ -8,7 +8,15 @@ export const ROLE_FIELDS = { mainAwperUid: 'AWPer', iglUid: 'IGL', starUid: 'Sta
 
 // "ESL One Cologne 2014" -> "Cologne '14". The same team often played several Majors, and two of them
 // were in 2014, so the event's short name is what tells two rosters apart.
-const EVENT_NAMES = [['Katowice', 'Katowice'], ['Cologne', 'Cologne'], ['DreamHack', 'DreamHack'], ['Krakow', 'Krakow']];
+const EVENT_NAMES = [
+  ['Katowice', 'Katowice'],
+  ['Cologne', 'Cologne'],
+  ['DreamHack', 'DreamHack'],
+  ['Krakow', 'Krakow'],
+  ['Shanghai', 'Shanghai'],
+  ['Austin', 'Austin'],
+  ['Budapest', 'Budapest'],
+];
 
 export function teamEvent(team) {
   const major = team?.major || '';
