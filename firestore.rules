@@ -76,7 +76,7 @@ service cloud.firestore {
     function validSimulation(t) {
       let s = t.get('simulation',null);
       return s == null || (s.keys().hasOnly(['engineVersion','playerDataVersion','bankVersion']) &&
-        s.engineVersion in [2,3] && s.playerDataVersion == 'players-v2.0.0' && s.bankVersion == 'mirage-economy-v1');
+        s.engineVersion in [2,3] && s.playerDataVersion == 'players-v2.0.0' && s.bankVersion in ['mirage-economy-v1','mirage-economy-v2']);
     }
     function start(old, next) {
       return old.hostId == request.auth.uid && old.status == 'lobby' && next.status == 'playing' &&
