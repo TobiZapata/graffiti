@@ -39,6 +39,7 @@ test('approved catalog prepares all players without manufacturing legacy stats',
     for (const player of prepared.players) {
       assert.ok(!playerIds.has(player.id)); playerIds.add(player.id);
       validateV2Player(player);
+      for (const stat of ['awp', 'rifler', 'igl', 'firepower', 'clutch']) assert.ok(player[stat] <= 99);
       assert.equal(player.aim, undefined);
       assert.deepEqual(expandPlayerStats(player), player);
     }
