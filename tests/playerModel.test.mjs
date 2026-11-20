@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { isV2Player, validateV2Player } from '../src/lib/playerModel.mjs';
 import { prepareReplayTeam } from '../src/lib/replayTeam.mjs';
 import { expandPlayerStats, formatTeamForSimulation } from '../src/app/utils/playerExpansion.js';
-import { selectReplayMap } from '../src/lib/replayMaps.mjs';
+import { REPLAY_MAPS, selectReplayMap } from '../src/lib/replayMaps.mjs';
 import { simulateNpcMatch } from '../src/lib/simulateNpcMatch.mjs';
 import { readFileSync } from 'node:fs';
 import { upgradeOrganization } from '../src/lib/upgradeOrganization.mjs';
@@ -88,7 +88,5 @@ test('NPC maps select the saved engine version instead of upgrading old Majors',
 test('map selection is stable and uses all maps across matches', () => {
   const selections = Array.from({ length: 100 }, (_, index) => selectReplayMap('major', String(index)));
   assert.deepEqual(selections, Array.from({ length: 100 }, (_, index) => selectReplayMap('major', String(index))));
-  assert.ok(selections.filter(map => map === 'de_mirage').length > 20);
-  assert.ok(selections.filter(map => map === 'de_dust2').length > 20);
-  assert.ok(selections.filter(map => map === 'de_nuke').length > 20);
+  assert.deepEqual(new Set(selections), new Set(Object.keys(REPLAY_MAPS)));
 });

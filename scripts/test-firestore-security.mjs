@@ -380,6 +380,14 @@ try {
   await check('member reads saved Nuke result', true, async () => assert.equal((await getDoc(doc(guest, 'rooms/NUKE/results/major1~match1'))).data().result.maps[0].map, 'de_nuke'));
   await check('outsider cannot read saved Nuke result', false, () => getDoc(doc(outsider, 'rooms/NUKE/results/major1~match1')));
   await check('saved Nuke result is immutable', false, () => setDoc(doc(host, 'rooms/NUKE/results/major1~match1'), submission));
+  for (const map of ['de_anubis', 'de_cache', 'de_inferno', 'de_ancient']) {
+    const roomId = map.toUpperCase();
+    await seed(`rooms/${roomId}`, playing(roomId));
+    const target = doc(host, `rooms/${roomId}/results/major1~match1`);
+    await check(`${map} result accepted`, true, () => setDoc(target, { ...submission, result: { ...result, maps: [{ ...result.maps[0], map }] } }));
+    await check(`${map} result preserved`, true, async () => assert.equal((await getDoc(target)).data().result.maps[0].map, map));
+    await check(`${map} result immutable`, false, () => setDoc(target, submission));
+  }
   await seed('roomSessions/host', session('host', 'PLAYING', new Date()));
   await seed('roomSessions/guest', session('guest', 'PLAYING', new Date()));
   for (const [map, allowed] of [['de_other', false], ['de_dust2', true]]) {

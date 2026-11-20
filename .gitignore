@@ -47,3 +47,7 @@ next-env.d.ts
 /public/round-bank/
 /public/round-bank-dust2/
 /public/round-bank-nuke/
+/public/round-bank-anubis/
+/public/round-bank-cache/
+/public/round-bank-inferno/
+/public/round-bank-ancient/

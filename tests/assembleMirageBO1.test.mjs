@@ -198,6 +198,10 @@ test('validates only the selected map and accepts its bank paths', () => {
   assert.equal(validateBankCatalog(catalog, 'de_dust2').length, 4);
   catalog.rounds = catalog.rounds.map(round => ({ ...round, map: 'de_nuke', replay_data_ref: round.replay_data_ref.replace('round-bank-dust2', 'round-bank-nuke') }));
   assert.equal(validateBankCatalog(catalog, 'de_nuke').length, 4);
+  for (const map of ['de_anubis', 'de_cache', 'de_inferno', 'de_ancient']) {
+    catalog.rounds = catalog.rounds.map(round => ({ ...round, map, replay_data_ref: '/round-bank-' + map.slice(3) + '/demos/' + 'a'.repeat(64) + '/r001.json.gz' }));
+    assert.equal(validateBankCatalog(catalog, map).length, 4);
+  }
   assert.throws(() => validateBankCatalog(catalog));
   assert.throws(() => validateBankCatalog(catalog, 'de_other'));
 });

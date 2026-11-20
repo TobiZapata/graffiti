@@ -111,3 +111,28 @@ test('Nuke uses its pinned bank for index, replay, metrics and resolution', asyn
   await readReplayJSON('/round-bank-nuke/economy-index.json');
   assert.equal(urls.at(-1), '/round-bank-nuke/economy-index.json');
 });
+
+test('Anubis, Cache, Inferno and Ancient use their pinned v1.0.0 Pages banks and support local overrides', async t => {
+  const cases = [
+    ['anubis', 'NEXT_PUBLIC_ROUND_BANK_ANUBIS_BASE_URL'],
+    ['cache', 'NEXT_PUBLIC_ROUND_BANK_CACHE_BASE_URL'],
+    ['inferno', 'NEXT_PUBLIC_ROUND_BANK_INFERNO_BASE_URL'],
+    ['ancient', 'NEXT_PUBLIC_ROUND_BANK_ANCIENT_BASE_URL'],
+  ];
+  for (const [, key] of cases) {
+    const original = process.env[key];
+    t.after(() => { if (original === undefined) delete process.env[key]; else process.env[key] = original; });
+    delete process.env[key];
+  }
+  const urls = [];
+  t.mock.method(globalThis, 'fetch', async url => { urls.push(url); return new Response('{}'); });
+  const files = ['economy-index.json', 'demos/demo/r1.json.gz', 'round-metrics-v1.json.gz', 'round-resolution-v1.json.gz'];
+  for (const [map, key] of cases) {
+    urls.length = 0;
+    for (const file of files) await readReplayJSON(`/round-bank-${map}/${file}`);
+    assert.deepEqual(urls, files.map(file => `https://tobizapata.github.io/major-rounds-${map}/v1.0.0/${file}`));
+    process.env[key] = '';
+    await readReplayJSON(`/round-bank-${map}/economy-index.json`);
+    assert.equal(urls.at(-1), `/round-bank-${map}/economy-index.json`);
+  }
+});

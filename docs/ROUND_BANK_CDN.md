@@ -1,5 +1,31 @@
 # Round bank CDN
 
+## Published banks: Anubis, Cache, Inferno and Ancient
+
+All four maps are supported in the BO1 lab, viewer, import/metrics/resolution
+scripts, pre-match map veto and result/progress validators, and are now published
+as immutable `v1.0.0` GitHub Pages banks with built-in defaults in `readReplayJSON.mjs`:
+
+- Anubis (`TobiZapata/major-rounds-anubis`): 1,096 eligible / 979 compatible rounds (62 demos)
+  `NEXT_PUBLIC_ROUND_BANK_ANUBIS_BASE_URL=https://tobizapata.github.io/major-rounds-anubis/v1.0.0`
+- Cache (`TobiZapata/major-rounds-cache`): 1,014 eligible / 973 compatible rounds (50 demos)
+  `NEXT_PUBLIC_ROUND_BANK_CACHE_BASE_URL=https://tobizapata.github.io/major-rounds-cache/v1.0.0`
+- Inferno (`TobiZapata/major-rounds-inferno`): 999 eligible / 880 compatible rounds (53 demos)
+  `NEXT_PUBLIC_ROUND_BANK_INFERNO_BASE_URL=https://tobizapata.github.io/major-rounds-inferno/v1.0.0`
+- Ancient (`TobiZapata/major-rounds-ancient`): 971 eligible / 902 compatible rounds (50 demos)
+  `NEXT_PUBLIC_ROUND_BANK_ANCIENT_BASE_URL=https://tobizapata.github.io/major-rounds-ancient/v1.0.0`
+
+An explicitly empty environment override uses local `/round-bank-<map>/` files.
+All four Pages roots were verified `built` with HTTP 200 and `Access-Control-Allow-Origin: *`
+for `economy-index.json`, `round-metrics-v1.json.gz`, `round-resolution-v1.json.gz`
+and sample `.json.gz` replays. The seeded draw includes all seven maps with equal
+probability; new matches against NPC use the [pre-match veto](MAP_VETO.md) instead.
+Existing progress retains its stored map.
+
+Extraction commands, calibration sources and verification evidence are in
+`../cs2-data-lab/docs/NEW_MAPS_INITIAL_BANKS.md`. Import future expansions into a
+new version directory; do not overwrite existing indexes or published bank versions.
+
 ## Published Mirage bank
 
 Repository: https://github.com/TobiZapata/major-rounds-mirage
@@ -60,9 +86,10 @@ NEXT_PUBLIC_ROUND_BANK_DUST2_BASE_URL=https://tobizapata.github.io/major-rounds-
 
 The URL points to the directory containing `economy-index.json`, not to the file itself. Next.js embeds public environment variables at build time, so rebuild after changing an override. No credentials belong in these URLs. The CDN must allow browser cross-origin requests and serve the published files; check both the index and a replay URL after publishing.
 
-Production matches choose Mirage, Dust2 or Nuke through a seeded equal draw shared by
-player and NPC matches. The choice is fixed per matchup/series, so refreshing does
-not reroll it. Existing progress keeps its stored map; legacy progress without a
+The map pool includes Mirage, Dust2, Nuke, Anubis, Cache, Inferno and Ancient.
+New human-versus-NPC matches use the [pre-match veto](MAP_VETO.md) to choose an
+ordered series. Other matches retain the seeded draw. Reloading does not reroll
+a saved choice or restart a saved veto. Existing progress keeps its stored map; legacy progress without a
 map stays on Mirage. The BO1 lab retains manual controls for testing.
 
 ## Nuke bank and composite radar

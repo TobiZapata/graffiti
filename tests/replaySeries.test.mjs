@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { replayBestOf, replaySeriesResult, validSeriesProgress } from '../src/lib/replaySeries.mjs';
+import { createMapVeto, applyMapVeto, vetoStatus } from '../src/lib/mapVeto.mjs';
 
 const match = (round = 1, wins = 0, losses = 0) => ({round, teamA:{id:'a',wins,losses},teamB:{id:'b',wins,losses}});
 const map = winnerId => ({map:'de_mirage',scoreA:winnerId==='a'?13:8,scoreB:winnerId==='b'?13:8,winnerId});
@@ -44,4 +45,23 @@ test('supports Nuke progress and rejects unknown maps', () => {
   assert.ok(validSeriesProgress(match('Final'), { ...progress, nukeBankVersion: 'v1.0.0' }));
   assert.equal(validSeriesProgress(match('Final'), { ...progress, nukeBankVersion: 'unknown' }), false);
   assert.equal(validSeriesProgress(match('Final'), { ...progress, history: [{ ...map('a'), map: 'de_other' }] }), false);
+});
+
+test('new maps survive saved series validation', () => {
+  for (const id of ['de_anubis', 'de_cache', 'de_inferno', 'de_ancient']) {
+    assert.ok(validSeriesProgress(match('Final'), { map: id, history: [{ ...map('a'), map: id }], watchedMap: 0, playback: null }));
+  }
+});
+
+test('series progress follows the veto order and rejects changed or premature maps', () => {
+  const m = match('Semifinals');
+  let veto = createMapVeto(3, 'series-veto');
+  while (!vetoStatus(veto).done) veto = applyMapVeto(veto, vetoStatus(veto).remaining[0]);
+  const maps = vetoStatus(veto).maps;
+  const progress = { veto, vetoStarted: true, map: maps[1], history: [{ ...map('a'), map: maps[0] }], watchedMap: -1, playback: null };
+  assert.ok(validSeriesProgress(m, progress));
+  assert.equal(validSeriesProgress(m, { ...progress, map: maps[0] }), false);
+  assert.equal(validSeriesProgress(m, { ...progress, history: [{ ...map('a'), map: maps[2] }] }), false);
+  assert.equal(validSeriesProgress(m, { ...progress, veto: { ...veto, actions: veto.actions.slice(0, 3) } }), false);
+  assert.equal(validSeriesProgress(m, { ...progress, vetoStarted: false }), false);
 });

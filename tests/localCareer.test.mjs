@@ -2,12 +2,27 @@
 import assert from 'node:assert/strict';
 import { CAREER_KEY, loadCareer, saveCareer, validCareer, validOrganization } from '../src/lib/localCareer.mjs';
 import { upgradeOrganization } from '../src/lib/upgradeOrganization.mjs';
+import { createMapVeto, applyMapVeto, vetoStatus } from '../src/lib/mapVeto.mjs';
 const organization = { id:'id', name:'Team', icon:'/icon', colors:['#123456','#abcdef'], squad:Array.from({length:5},(_,i)=>({player:{name:`P${i}`}})), mainAwperUid:'0', iglUid:'1', starUid:'2', createdAt:'2026-01-01' };
 const standings = Array.from({length:16},(_,i)=>({id:i ? `team${i}` : 'player_team',name:`Team${i}`,players:organization.squad.map(s=>s.player),isPlayer:i === 0,wins:0,losses:0}));
 const match = { id:'m', round:1, teamA:standings[0], teamB:standings[1], completed:false, isPlayerMatch:true, result:null };
 const data = {version:1, organization, tournament:{tournamentId:'major',mySquad:organization.squad,teamName:'Team',stage:'swiss',pendingResult:null,swissRound:1,standings,matches:[match]},matchProgress:{m:{history:[],watchedMap:-1,playback:{selection:0,time:0,speed:1}}}};
 function storage(initial = null) { let value=initial; return {getItem:()=>value,setItem:(key,v)=>{assert.equal(key,CAREER_KEY);value=v}, value:()=>value}; }
 test('round trips career and progress',()=>{ const store=storage(); assert.equal(saveCareer(store,data),null); assert.deepEqual(loadCareer(store).data,data); });
+test('career resumes pending and completed veto without starting playback early', () => {
+  let veto = createMapVeto(1, 'career-veto');
+  const store = storage();
+  const progress = { veto, vetoStarted: false, history: [], watchedMap: -1, playback: null };
+  const pending = { ...data, matchProgress: { m: progress } };
+  assert.equal(saveCareer(store, pending), null);
+  assert.deepEqual(loadCareer(store).data.matchProgress.m, progress);
+  while (!vetoStatus(veto).done) veto = applyMapVeto(veto, vetoStatus(veto).remaining[0]);
+  const started = { ...progress, veto, vetoStarted: true, map: vetoStatus(veto).maps[0] };
+  assert.equal(saveCareer(store, { ...data, matchProgress: { m: started } }), null);
+  assert.deepEqual(loadCareer(store).data.matchProgress.m, started);
+  assert.equal(validCareer({ ...data, matchProgress: { m: { ...progress, vetoStarted: true } } }), false);
+  assert.equal(validCareer({ ...data, matchProgress: { m: { ...started, map: 'de_other' } } }), false);
+});
 test('upgrades the benched player without losing slot metadata or changing identities',()=>{
   const player={id:1,name:'Bench',personId:'person',awp:70,rifler:70,igl:70,firepower:70,clutch:70};
   const slot={player:{id:1,name:'Bench',personId:'person'},team:{name:'Team',major:'Major'},gamesPlayed:3,benchMajors:1};

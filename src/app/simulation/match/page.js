@@ -10,9 +10,10 @@ function MatchContent() {
   const matchId = searchParams.get("id");
   const match = matches.find(candidate => candidate.id === matchId);
   const persistProgress = useCallback(progress => saveMatchProgress(matchId, progress), [matchId, saveMatchProgress]);
-  if (!match) return <main className="p-6"><p>There is no match waiting to be played.</p>
+  if (!match || !match.isPlayerMatch) return <main className="p-6"><p>There is no match waiting to be played.</p>
     <Link href="/simulation" className="link mt-2 inline-block underline">Back to the Major</Link></main>;
   return <HybridMatchPlayer key={`${tournamentId}:${match.id}`} match={match} tournamentId={tournamentId} simulation={simulation}
+    vetoPlayer={match.teamA.isPlayer ? 'A' : 'B'}
     initialProgress={matchProgress?.[match.id]} onSaveProgress={persistProgress} onFinish={result => {
     return completeMatch(match.id, result);
   }} />;
