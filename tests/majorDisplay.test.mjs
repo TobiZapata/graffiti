@@ -8,6 +8,10 @@ test('new player presentation exposes four visible scores and no overall or fire
   assert.equal(playerAttributes(player), 'AWP 95 · Rifler 86 · IGL 30 · Clutch 80');
   assert.equal(playerOverall({ aim: 80, clutch: 60 }), 70);
   assert.equal(teamEvent({ major: 'PGL Major Krakow 2017' }), "Krakow '17");
+  assert.equal(teamEvent({ major: 'Perfect World Shanghai Major 2024' }), "Shanghai '24");
+  assert.equal(teamEvent({ major: 'BLAST.tv Austin Major 2025' }), "Austin '25");
+  assert.equal(teamEvent({ major: 'StarLadder Budapest Major 2025' }), "Budapest '25");
+  assert.equal(teamEvent({ major: 'IEM Cologne Major 2026' }), "Cologne '26");
 });
 
 test('roster shows both scores for shared AWPer and IGL roles', () => {
