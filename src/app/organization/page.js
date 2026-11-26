@@ -1,7 +1,7 @@
 "use client";
 import PlayerIdentity from "@/components/PlayerIdentity";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import AppBar from "@/components/AppBar";
@@ -36,6 +36,9 @@ export default function OrganizationPage() {
   const { organization, ready, storageError, startOrganizationMajor, assignOrganizationRole, standings, matches, stage, pendingResult, tournamentId, rosterLocked, benchPlayer, swapBenchPlayer, promoteBench, releaseBench, recruitPlayer, acknowledgeRosterNotice } = useTournament();
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(false);
+  const [showPlaybackModes, setShowPlaybackModes] = useState(false);
+  const singleplayerToggle = useRef(null);
+  const playbackModesId = useId();
   const [selectedRole, setSelectedRole] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const [roleNotice, setRoleNotice] = useState("");
@@ -66,6 +69,7 @@ export default function OrganizationPage() {
 
   const hasTournament = standings.length > 0;
   const finished = ["won", "eliminated"].includes(stage) || (stage === "results_pending" && ["won", "eliminated"].includes(pendingResult));
+  const continuing = hasTournament && !finished;
   const playerMatch = matches.find(match => match.isPlayerMatch && !match.completed);
   const playHref = playerMatch ? `/simulation/match?id=${encodeURIComponent(playerMatch.id)}` : "/simulation";
   const profile = organizationProfile(organization, { tournamentId, stage, pendingResult, matches, standings });
@@ -77,15 +81,27 @@ export default function OrganizationPage() {
   const locked = rosterLocked || !!storageError || starting;
   const benchUnlocked = (organization.majorHistory?.length ?? 0) > 0;
   const needsReplacement = organization.squad.length < 5;
+  const singleplayerDisabled = starting || (!continuing && (needsReplacement || rosterLocked || !!storageError));
 
   async function rosterAction(action, ...args) {
     try { await action(...args); setError(""); }
     catch (e) { setError(e.message || "Roster change failed. Try again."); }
   }
 
-  async function start() {
+  async function start(mode) {
+    try { localStorage.setItem("major-mvp:sp-playback-mode", mode); }
+    catch { /* The career is still available when storage is blocked. */ }
+    if (continuing) {
+      setShowPlaybackModes(false);
+      router.push(playHref);
+      return;
+    }
     setStarting(true); setError("");
-    try { await startOrganizationMajor(); router.push("/simulation"); }
+    try {
+      await startOrganizationMajor();
+      setShowPlaybackModes(false);
+      router.push("/simulation");
+    }
     catch (e) { setError(e.message || "The Major could not be started. Try again."); }
     finally { setStarting(false); }
   }
@@ -113,12 +129,26 @@ export default function OrganizationPage() {
           <p className="meta tabular">Founded {Number.isFinite(founded) ? founded : "—"} · {profile.majorsPlayed} {profile.majorsPlayed === 1 ? "Major" : "Majors"} played</p>
         </div>
         <nav aria-label="Play modes" className="flex flex-wrap items-center gap-3 sm:ml-auto">
-          {hasTournament && !finished ? <Link href={playHref} className="btn btn-primary btn-lg">Continue singleplayer</Link> :
-            <button type="button" className="btn btn-primary btn-lg" onClick={start} disabled={starting || needsReplacement || rosterLocked || !!storageError}>{starting ? "Starting…" : "Singleplayer"}</button>}
+          <div className="flex flex-wrap items-center gap-3" onKeyDown={event => {
+            if (event.key === "Escape" && showPlaybackModes) {
+              setShowPlaybackModes(false);
+              singleplayerToggle.current?.focus();
+            }
+          }}>
+            <button type="button" ref={singleplayerToggle} className="btn btn-primary btn-lg"
+              aria-expanded={showPlaybackModes} aria-controls={playbackModesId} disabled={singleplayerDisabled}
+              onClick={() => setShowPlaybackModes(open => !open)}>
+              {starting ? "Starting…" : continuing ? "Continue singleplayer" : "Singleplayer"}
+            </button>
+            <div id={playbackModesId} hidden={!showPlaybackModes} className="flex-wrap gap-2 not-hidden:flex">
+              <button type="button" className="btn btn-secondary btn-lg" disabled={singleplayerDisabled} onClick={() => start("highlights")}>Highlights</button>
+              <button type="button" className="btn btn-secondary btn-lg" disabled={singleplayerDisabled} onClick={() => start("full")}>Full match</button>
+            </div>
+          </div>
           <Link href="/multiplayer" className="btn btn-secondary btn-lg">Multiplayer</Link>
         </nav>
       </header>
-      {!(hasTournament && !finished) && (needsReplacement || rosterLocked) && <p className="meta mt-3">{needsReplacement ? "Complete your five-player roster to start a Major." : "Finish your active room before starting a singleplayer Major."}</p>}
+      {!continuing && (needsReplacement || rosterLocked) && <p className="meta mt-3">{needsReplacement ? "Complete your five-player roster to start a Major." : "Finish your active room before starting a singleplayer Major."}</p>}
       {error && <p role="alert" className="mt-4 text-negative">{error}</p>}
       {showDepartures && <dialog ref={departuresDialog} aria-labelledby="departures-title" aria-modal="true" closedby="none" onCancel={event => event.preventDefault()}
         className="m-auto max-h-[calc(100dvh-32px)] w-[min(560px,calc(100%-32px))] overflow-y-auto rounded-2xl bg-surface p-6 text-ink backdrop:bg-black/80">

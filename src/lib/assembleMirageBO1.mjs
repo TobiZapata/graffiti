@@ -3,6 +3,7 @@ import seedrandom from 'seedrandom';
 import { createMacroDirector } from './macroDirector.mjs';
 import { createReplayEconomy, beginReplayRound, prepareReplayBuys, finishReplayRound, inventoryItem, normalizeInventory } from './replayEconomy.mjs';
 import { buildWeaponAppearance, validWeaponEvidence } from './weaponAppearance.mjs';
+import { replayKnifeSkins } from './replayWeaponIcon.mjs';
 import { mustContestRound } from './replayRoundContext.mjs';
 import { isV2Player } from './playerModel.mjs';
 import { resolutionRound } from './replayResolution.mjs';
@@ -202,6 +203,13 @@ export function assembleMirageBO1(catalog, teamA, teamB, seed = 'mirage-bo1', as
   const result = search([], createReplayEconomy(teamA, teamB), initialStats, new Map());
   if (!result) throw coverageError('Sin cobertura económica para completar el partido');
   const { rounds, state, stats, director } = result;
+  const knives = new Map(stats.map(({ uid }) => {
+    const random = seedrandom(JSON.stringify([seed, map, uid, 'knife']));
+    return [uid, replayKnifeSkins[Math.floor(random() * replayKnifeSkins.length)]];
+  }));
+  for (const round of rounds) {
+    round.knifeAppearance = Object.fromEntries(round.assignments.map(({ actorId, playerUid }) => [actorId, knives.get(playerUid)]));
+  }
   if (engineVersion < 3) for (const player of stats) player.killDeviation = player.kills - player.targetKills;
   return { map, seed, macroPlan: director.plan, scoreTeam1: director.scoreTeam1, scoreTeam2: director.scoreTeam2,
     winner: director.scoreTeam1 > director.scoreTeam2 ? 'A' : 'B', playerStats: stats, economyFinal: state, economySearch: { attempts, backtracks },

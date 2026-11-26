@@ -29,9 +29,10 @@ service cloud.firestore {
     }
     function validNewRoom(code, r) {
       let uid = request.auth.uid;
-      return code.matches('^[A-Z0-9]{4}$') && r.keys().hasOnly(['id','name','hostId','status','visibility','playbackMode','players','schemaVersion','generation','createdAt']) &&
+      return code.matches('^[A-Z0-9]{4}$') && r.keys().hasOnly(['id','name','hostId','status','visibility','playbackMode','playbackSpeed','players','schemaVersion','generation','createdAt']) &&
         r.get('name','Room').matches('(?s)^.{1,35}$') &&
-        r.get('playbackMode','full') in ['full','highlights'] && r.id == code && r.hostId == uid && r.schemaVersion == 3 &&
+        r.get('playbackMode','full') in ['full','highlights'] && r.get('playbackSpeed', 1) in [1, 2, 4] &&
+        r.id == code && r.hostId == uid && r.schemaVersion == 3 &&
         r.status == 'lobby' && r.visibility in ['public','private'] && r.generation == 0 &&
         r.createdAt is string && r.createdAt.size() <= 40 && r.players.size() == 1 && uid in r.players &&
         member(r.players[uid],uid,true) && r.players[uid].participating && !r.players[uid].isReady && claimed(r,uid);
@@ -102,6 +103,7 @@ service cloud.firestore {
       let uid = request.auth.uid;
       let changed = next.players.diff(old.players).affectedKeys();
       return old.status == 'lobby' && next.status == 'lobby' && (
+        (uid == old.hostId && next.diff(old).affectedKeys().hasOnly(['playbackSpeed']) && next.get('playbackSpeed', 1) in [1, 2, 4]) ||
         // A new member adds only their own entry.
         (!(uid in old.players) && next.diff(old).affectedKeys().hasOnly(['players']) && changed.hasOnly([uid]) && next.players.size() == old.players.size() + 1 && next.players.size() <= 8 && member(next.players[uid],uid,false) && next.players[uid].participating && !next.players[uid].isReady) ||
         // Members may change their own readiness or validated organization.
@@ -179,6 +181,48 @@ service cloud.firestore {
         allow list: if signed() && active(room()) && request.auth.uid == room().hostId && request.query.limit <= 8;
         allow create, update: if signed() && active(room()) && (guestOffer(room(),request.resource.data) || hostAnswer(room(),request.resource.data));
         allow delete: if signed() && active(room()) && (request.auth.uid == guestUid || request.auth.uid == room().hostId);
+      }
+      match /vetos/{vetoId} {
+        function room() { return get(roomPath(code)).data; }
+        function same(old, next, i) { return old.size() <= i || old[i] == next[i]; }
+        function unused(actions, map, i) { return actions.size() <= i || actions[i].map != map; }
+        function canWrite(r, d) {
+          let t = r.tournament;
+          let m = t.matches[d.matchIndex];
+          return r.schemaVersion == 3 && live(r,request.auth.uid) && r.status == 'playing' && t.stage in ['swiss','playoffs'] && t.matchesStarted == true &&
+            d.keys().hasOnly(['tournamentId','matchId','matchIndex','veto','turnDeadlineMs']) && d.tournamentId == t.tournamentId &&
+            d.matchId is string && d.matchId.size() <= 200 && vetoId == d.tournamentId + '~' + d.matchId &&
+            d.matchIndex is int && d.matchIndex >= 0 && d.matchIndex < t.matches.size() && m.id == d.matchId && !m.completed &&
+            m.playerUids is list && m.playerUids.size() == 2 && m.playerUids.toSet().size() == 2 &&
+            m.teamA.uid in m.playerUids && m.teamB.uid in m.playerUids && m.playerUids.toSet().difference(t.participantUids.toSet()).size() == 0 &&
+            !m.playerUids.toSet().hasAny(t.get('abandonedUids',[])) && request.auth.uid in m.playerUids &&
+            !exists(/databases/$(database)/documents/rooms/$(code)/results/$(vetoId)) &&
+            d.veto is map && d.veto.keys().hasOnly(['version','bestOf','firstTeam','actions']) && d.veto.version == 1 &&
+            d.veto.bestOf == (m.round == 'Final' ? 5 : m.round in ['Quarterfinals','Semifinals'] || m.teamA.get('wins',0) == 2 || m.teamA.get('losses',0) == 2 || m.teamB.get('wins',0) == 2 || m.teamB.get('losses',0) == 2 ? 3 : 1) &&
+            d.veto.firstTeam in ['A','B'] && d.veto.actions is list && d.veto.actions.size() <= 6 &&
+            (d.veto.actions.size() == 6 ? d.turnDeadlineMs == null :
+              d.turnDeadlineMs is int && d.turnDeadlineMs >= request.time.toMillis() + 15000 && d.turnDeadlineMs <= request.time.toMillis() + 35000);
+        }
+        function nextAction(r, d) {
+          let old = resource.data.veto;
+          let actions = old.actions;
+          let n = actions.size();
+          let action = d.veto.actions[n];
+          let firstTurn = old.bestOf == 1 ? n in [0,1,5] : n in [0,2,5];
+          let side = firstTurn ? old.firstTeam : (old.firstTeam == 'A' ? 'B' : 'A');
+          let expected = old.bestOf == 1 || n < 2 || (old.bestOf == 3 && n >= 4) ? 'ban' : 'pick';
+          let m = r.tournament.matches[d.matchIndex];
+          return d.diff(resource.data).affectedKeys().hasOnly(['veto','turnDeadlineMs']) && d.veto.diff(old).affectedKeys().hasOnly(['actions']) &&
+            n < 6 && d.veto.actions.size() == n + 1 && same(actions,d.veto.actions,0) && same(actions,d.veto.actions,1) &&
+            same(actions,d.veto.actions,2) && same(actions,d.veto.actions,3) && same(actions,d.veto.actions,4) &&
+            action.keys().hasOnly(['team','action','map']) && action.team == side && action.action == expected &&
+            action.map.matches('^de_(mirage|dust2|nuke|anubis|cache|inferno|ancient)$') &&
+            unused(actions,action.map,0) && unused(actions,action.map,1) && unused(actions,action.map,2) && unused(actions,action.map,3) && unused(actions,action.map,4) &&
+            (request.auth.uid == (side == 'A' ? m.teamA.uid : m.teamB.uid) || request.time.toMillis() >= resource.data.turnDeadlineMs);
+        }
+        allow read: if signed() && request.auth.uid in room().players && !room().players[request.auth.uid].left;
+        allow create: if signed() && canWrite(room(),request.resource.data) && request.resource.data.veto.actions.size() == 0;
+        allow update: if signed() && canWrite(room(),request.resource.data) && nextAction(room(),request.resource.data);
       }
       match /results/{resultId} {
         function validMap(m, game) {

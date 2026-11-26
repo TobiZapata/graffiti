@@ -299,6 +299,7 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
   const contextValue = {
     isMultiplayer: true,
     playbackMode: room.playbackMode ?? "full",
+    playbackSpeed: room.playbackSpeed,
     isHost,
     roomId,
     tournamentId,

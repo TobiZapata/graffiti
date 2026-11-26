@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useId, useRef, useState, useSyncExternalStore } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { decodeReplay, sampleReplay, worldToRadar } from "../lib/roundBankReplay.mjs";
 import { readReplayJSON } from "../lib/readReplayJSON.mjs";
 import { cachedWeaponIcon, replayWeaponIcon } from "../lib/replayWeaponIcon.mjs";
 import mirageRadar from "../../public/maps/mirage/de_mirage_radar_psd.webp";
 import dust2Radar from "../../public/maps/dust/de_dust2_radar_psd.png";
-import nukeRadar from "../../public/maps/nuke/de_nuke_composite_radar.webp";
+import nukeRadar from "../../public/maps/nuke/de_nuke_composite_radar.png";
 import anubisRadar from "../../public/maps/anubis/de_anubis_radar_psd.png";
 import cacheRadar from "../../public/maps/cache/de_cache_radar_psd.png";
 import infernoRadar from "../../public/maps/inferno/de_inferno_radar_psd.png";
@@ -17,6 +18,7 @@ import { REPLAY_MAPS } from "../lib/replayMaps.mjs";
 import { replayProgress } from "../lib/replayProgress.mjs";
 import { anchorReplay, nextReplayRound, replayTime } from "../lib/replayClock.mjs";
 import { mostExpensiveWeapon } from "../lib/replayEquipment.mjs";
+import { isMuted, playBombDefused, playBombPlanted, prepareSoundEffects, subscribeMuted, toggleMuted } from "../lib/soundEffects.mjs";
 import styles from "./RoundBankViewer.module.css";
 import ReplayMatchLayout from "./ReplayMatchLayout";
 import ReplayRoundTimer from "./ReplayRoundTimer";
@@ -24,6 +26,7 @@ import PlayerIdentity from "./PlayerIdentity";
 
 const BASE = "/round-bank-lab";
 const COLORS = { T: "#e0b45a", CT: "#79a6dc" };
+const GRENADE_EFFECT_COLORS = { smoke: "#b2bcb988", fire: "#ee9d4588", he: "#4ade80aa" };
 const WIN_LABELS = { ELIMINATION: "elimination", DEFUSE: "bomb defused", BOMB_EXPLOSION: "bomb exploded", TIME: "time ran out" };
 const timeLabel = (time) => `${Math.floor(time / 60)}:${String(Math.floor(time % 60)).padStart(2, "0")}`;
 
@@ -62,29 +65,50 @@ function TeamList({ side, sample, round }) {
   </section>;
 }
 
-function Radar({ sample, round }) {
+function playerRadarLayers(p, map) {
+  if (!map.composite || typeof p.z !== "number") return [{ key: p.id, position: worldToRadar(p, map), alpha: 1 }];
+  const band = 55;
+  const threshold = map.composite.lowerBelowZ;
+  if (p.z >= threshold + band || p.z <= threshold - band) {
+    return [{ key: p.id, position: worldToRadar(p, map), alpha: 1 }];
+  }
+  const upperAlpha = (p.z - (threshold - band)) / (2 * band);
+  return [
+    { key: `${p.id}:u`, position: worldToRadar({ ...p, z: threshold + band }, map), alpha: upperAlpha },
+    { key: `${p.id}:l`, position: worldToRadar({ ...p, z: threshold - band }, map), alpha: 1 - upperAlpha },
+  ];
+}
+
+function Radar({ sample, round, matchMode }) {
   const bombMask = useId();
   const map = REPLAY_MAPS[round.meta.map];
   const point = (p) => worldToRadar(p, map);
-  return <svg className={styles.radar} viewBox={`0 0 1024 ${map.composite ? 1088 : 1024}`} role="img" aria-label={`${map.label} radar with player positions`}>
+  return <svg className={matchMode ? `${styles.radar} ${styles.matchRadar}` : styles.radar} viewBox={`0 0 1024 ${map.composite ? 1088 : 1024}`} role="img" aria-label={`${map.label} radar with player positions`}>
     <defs><mask id={bombMask} maskUnits="userSpaceOnUse" x="-10" y="-10" width="20" height="20">
       <image href={`/weapons/other/${sample.bomb?.status === "exploded" ? "planted_c4" : "c4"}.svg`} x="-10" y="-10" width="20" height="20" />
     </mask></defs>
     <image href={({ de_mirage: mirageRadar, de_dust2: dust2Radar, de_nuke: nukeRadar, de_anubis: anubisRadar, de_cache: cacheRadar, de_inferno: infernoRadar, de_ancient: ancientRadar })[round.meta.map].src} width="1024" height={map.composite ? 1088 : 1024} />
+    {map.composite && <g opacity="0.45" fill="#d4d4d8" fontSize="22" fontWeight="700" letterSpacing="3">
+      <text x="36" y="54">UPPER · A</text>
+      <line x1="36" y1="548" x2="988" y2="548" stroke="#ffffff" strokeOpacity="0.22" strokeWidth="2" strokeDasharray="8 8" />
+      <text x="36" y="586">LOWER · B</text>
+    </g>}
     {sample.effects.map((effect) => {
       const p = point(effect);
       return <circle key={effect.id} cx={p.x} cy={p.y} r={effect.kind === "smoke" ? 29 : effect.kind === "fire" ? 22 : 8}
-        fill={effect.kind === "smoke" ? "#b2bcb988" : effect.kind === "fire" ? "#ee9d4588" : "#fff3bcaa"} />;
+        fill={GRENADE_EFFECT_COLORS[effect.kind] ?? "#fff3bcaa"} />;
     })}
     {sample.grenades.map((grenade) => {
       const p = point(grenade);
+      const color = grenade.kind === "he" ? "#4ade80" : "#fff0b8";
       return <g key={grenade.id}>{splitRadarTrail(grenade.trail, map).map((trail, index) => <polyline key={index}
         points={trail.map((v) => { const q = point(v); return `${q.x},${q.y}`; }).join(" ")}
-        fill="none" stroke="#fff0b8" strokeWidth="2" />)}<circle cx={p.x} cy={p.y} r="5" fill="#fff0b8" /></g>;
+        fill="none" stroke={color} strokeWidth="2" />)}<circle cx={p.x} cy={p.y} r="5" fill={color} /></g>;
     })}
-    {sample.players.map((p) => {
-      const position = point(p), actor = round.players.find((a) => a.id === p.id);
-      return <g key={p.id} transform={`translate(${position.x},${position.y})`} opacity={p.alive ? 1 : .45}>
+    {sample.players.flatMap((p) => {
+      const actor = round.players.find((a) => a.id === p.id);
+      return playerRadarLayers(p, map).map(({ key, position, alpha }) => (
+      <g key={key} transform={`translate(${position.x},${position.y})`} opacity={(p.alive ? 1 : .45) * alpha}>
         <title>{actor.name}: {p.alive ? `${p.health} HP, ${p.weapon}` : "dead"}</title>
         {p.alive ? <><circle r="10" fill={COLORS[actor.side]} stroke="#000" strokeWidth="2" />
           <path d="M 12 -5 L 21 0 L 12 5" fill={COLORS[actor.side]} transform={`rotate(${-p.yaw})`} /></> :
@@ -93,7 +117,7 @@ function Radar({ sample, round }) {
         {p.defuse && <g><image href={`${BASE}/map_defuse.svg`} x="-9" y="14" width="18" height="18" />
           <rect x="-20" y="34" width="40" height="5" fill="#000" />
           <rect x="-20" y="34" width={40 * p.defuse.progress} height="5" fill="#5cc489" /></g>}
-      </g>;
+      </g>));
     })}
     {sample.bomb && (() => { const p = point(sample.bomb), carried = sample.bomb.status === "carried";
       return <g transform={`translate(${p.x + (carried ? 13 : 0)},${p.y + (carried ? 13 : 0)}) scale(${carried ? .8 : 1})`}>
@@ -104,41 +128,44 @@ function Radar({ sample, round }) {
   </svg>;
 }
 
-function ReplayKillFeed({ deaths, name, sides = {}, compact = false }) {
-  const events = deaths.slice(compact ? -5 : -8);
-  if (compact) events.reverse();
-  const color = id => compact ? COLORS[sides[id]] : undefined;
-  return <section className={`${styles.feed} ${compact ? styles.compactFeed : ""}`} aria-label="Round kills">
-    {!compact && <h2>Kill feed · {deaths.length} kills</h2>}
-    {deaths.length ? events.map((e, i) => {
+function ReplayKillFeed({ deaths, name, sides }) {
+  return <section className={styles.compactFeed} aria-label="Round kills">
+    {deaths.slice(-3).map((e, i) => {
       const bombKill = ["c4", "planted_c4"].includes(e.weapon);
       return <p key={`${e.t}-${i}`}>
-      {!compact && !bombKill && <time>{timeLabel(e.t)}</time>}
-      {!bombKill && <strong style={{color: color(e.attacker)}}>{name(e.attacker)}</strong>}
-      <span className={styles.killWeapon}><WeaponIcon weapon={bombKill ? "planted_c4" : e.weapon} />
-        {!bombKill && e.headshot && <img src="/modifiers/icon_headshot.svg" alt="Headshot" width="13" height="13" />}
-        {!bombKill && e.thrusmoke && <img src="/modifiers/smoke_kill.svg" alt="Through smoke" width="13" height="13" />}
-        {!bombKill && e.penetrated > 0 && <img src="/modifiers/penetrate.svg" alt="Wallbang" width="13" height="13" />}</span>
-      <strong style={{color: color(e.victim)}}>{name(e.victim)}</strong>{!compact && !bombKill && e.assister && <small>Assist: {name(e.assister)}{e.assistedflash ? " (flash)" : ""}</small>}
-    </p>; }) : !compact && <p>No kills yet.</p>}
+        {!bombKill && <strong style={{ color: COLORS[sides[e.attacker]] }}>{name(e.attacker)}</strong>}
+        <span className={styles.killWeapon}><WeaponIcon weapon={bombKill ? "planted_c4" : e.weapon} />
+          {!bombKill && e.headshot && <Image src="/modifiers/icon_headshot.svg" alt="Headshot" width={13} height={13} />}
+          {!bombKill && e.thrusmoke && <Image src="/modifiers/smoke_kill.svg" alt="Through smoke" width={13} height={13} />}
+          {!bombKill && e.penetrated > 0 && <Image src="/modifiers/penetrate.svg" alt="Wallbang" width={13} height={13} />}
+        </span>
+        <strong style={{ color: COLORS[sides[e.victim]] }}>{name(e.victim)}</strong>
+      </p>;
+    })}
   </section>;
 }
 
-export default function RoundBankViewer({ catalog: suppliedCatalog = null, matchMode = false, onComplete, backHref = "/", teamA, teamB, seriesState, initialPlayback = null, onPlaybackChange, selectedRounds = null }) {
+export default function RoundBankViewer({ catalog: suppliedCatalog = null, matchMode = false, onComplete, backHref = "/", teamA, teamB, seriesState, initialPlayback = null, onPlaybackChange, selectedRounds = null, allowShortcuts = true, initialSpeed = 1, showControls = process.env.NODE_ENV === "development", isMultiplayer = false }) {
+  const canControl = showControls && !isMultiplayer && process.env.NODE_ENV === "development";
   const [fetchedCatalog, setCatalog] = useState(null);
   const catalog = suppliedCatalog ?? fetchedCatalog;
-  const [selection, setSelection] = useState(Math.min(initialPlayback?.selection ?? 0, Math.max(0, (suppliedCatalog?.rounds.length ?? 1) - 1)));
+  const [selection, setSelection] = useState(() => {
+    const saved = Math.min(initialPlayback?.selection ?? 0, Math.max(0, (suppliedCatalog?.rounds.length ?? 1) - 1));
+    return selectedRounds?.find(index => index >= saved) ?? selectedRounds?.at(-1) ?? saved;
+  });
   const [furthestSelection, setFurthestSelection] = useState(selection);
   const [loaded, setLoaded] = useState(null);
   const [error, setError] = useState("");
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [speed, setSpeed] = useState(initialPlayback?.speed ?? 1);
+  const [speed, setSpeed] = useState(canControl ? initialPlayback?.speed ?? initialSpeed : initialSpeed);
   const speedRef = useRef(speed);
   const restoredPlayback = useRef(initialPlayback);
   const clock = useRef(null);
   const continuing = useRef(false);
   const completed = useRef(false);
+  const previousBomb = useRef(null);
+  const muted = useSyncExternalStore(subscribeMuted, isMuted, () => false);
   const [retry, setRetry] = useState(0);
   const round = loaded?.selection === selection ? loaded.round : null;
   const nextSelection = selectedRounds ? selectedRounds.find(index => index > selection) : selection + 1;
@@ -167,7 +194,7 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
       restoredPlayback.current = null;
       if (!continuing.current) {
         clock.current = anchorReplay(position, speedRef.current, performance.now());
-        setPlaying(matchMode && !saved);
+        setPlaying(!canControl || (matchMode && saved?.selection !== selection));
       }
       continuing.current = false;
       setTime(position);
@@ -175,12 +202,15 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
       setLoaded({ selection, round: decoded });
     }).catch((e) => { if (e.name !== "AbortError") setError(e.message); });
     return () => controller.abort();
-  }, [catalog, selection, matchMode, retry]);
+  }, [catalog, selection, matchMode, retry, canControl]);
+
+  const notifyPlaybackChange = useEffectEvent((state) => onPlaybackChange?.(state));
+  const notifyComplete = useEffectEvent(() => onComplete?.());
 
   const elapsedSecond = Math.floor(time);
   useEffect(() => {
-    if (round) onPlaybackChange?.({ selection, time: elapsedSecond, speed });
-  }, [round, selection, elapsedSecond, speed, onPlaybackChange]);
+    if (round) notifyPlaybackChange({ selection, time: elapsedSecond, speed });
+  }, [round, selection, elapsedSecond, speed]);
 
   useEffect(() => {
     if (!playing || !round) return;
@@ -199,7 +229,7 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
         } else {
           clock.current = anchorReplay(round.duration, speed, now);
           setPlaying(false);
-          if (matchMode && !completed.current) { completed.current = true; onComplete?.(); }
+          if (matchMode && !completed.current) { completed.current = true; notifyComplete(); }
         }
       }
     };
@@ -210,10 +240,78 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
     const timer = setInterval(tick, 1000), initial = setTimeout(tick, 0);
     document.addEventListener('visibilitychange', tick);
     return () => { clearTimeout(initial); clearInterval(timer); cancelAnimationFrame(request); document.removeEventListener('visibilitychange', tick); };
-  }, [playing, round, speed, matchMode, selection, nextSelection, catalog, onComplete]);
+  }, [playing, round, speed, matchMode, selection, nextSelection, catalog]);
 
   const seek = (value) => { clock.current = anchorReplay(value, speed, performance.now()); setTime(value); };
   const sample = round ? sampleReplay(round, time) : null;
+  const bombStatus = sample?.bomb?.status;
+
+  useEffect(() => {
+    const activateAudio = (event) => {
+      if (!event.isTrusted) return;
+      void prepareSoundEffects();
+      window.removeEventListener("click", activateAudio);
+    };
+    window.addEventListener("click", activateAudio);
+    return () => window.removeEventListener("click", activateAudio);
+  }, []);
+
+  useEffect(() => {
+    const previous = previousBomb.current;
+    previousBomb.current = { round, status: bombStatus };
+    if (!round || previous?.round !== round || previous.status === bombStatus) return;
+    if (bombStatus === "planted") void playBombPlanted();
+    if (bombStatus === "defused") void playBombDefused();
+  }, [round, bombStatus]);
+
+  const togglePlayback = () => {
+    if (!round) return;
+    if (playing) seek(Math.min(round.duration, replayTime(clock.current, performance.now())));
+    else seek(time >= round.duration ? 0 : time);
+    setPlaying(!playing);
+  };
+
+  const changeSpeed = (value) => {
+    const now = performance.now();
+    speedRef.current = value;
+    clock.current = anchorReplay(playing ? replayTime(clock.current, now) : time, value, now);
+    setSpeed(value);
+  };
+
+  const changeRound = (index) => {
+    continuing.current = false;
+    setPlaying(false);
+    setError("");
+    setSelection(index);
+    setFurthestSelection(previous => Math.max(previous, index));
+  };
+
+  const handleShortcut = useEffectEvent((event) => {
+    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    if (event.target instanceof HTMLElement &&
+      (event.target.closest("button, input, textarea, select") || event.target.isContentEditable)) return;
+    if (event.code === "Space" || event.key === " ") {
+      event.preventDefault();
+      if (!event.repeat) {
+        void prepareSoundEffects();
+        togglePlayback();
+      }
+    } else if (["1", "2", "4"].includes(event.key)) {
+      event.preventDefault();
+      if (!event.repeat) changeSpeed(Number(event.key));
+    } else if (event.key === "ArrowRight" && nextSelection !== undefined && nextSelection < (catalog?.rounds.length ?? 0)) {
+      event.preventDefault();
+      if (!event.repeat) changeRound(nextSelection);
+    }
+  });
+
+  useEffect(() => {
+    if (!canControl || !allowShortcuts) return;
+    const onKeyDown = (event) => handleShortcut(event);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [allowShortcuts, canControl]);
+
   const name = (id) => round?.players.find(p => p.id === id)?.name || "World";
   const deaths = sample?.events.filter((e) => e.type === "player_death") || [];
   const finished = Boolean(sample?.result);
@@ -221,20 +319,30 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
 
   const controls = <div className={styles.toolbar}>
     <div className={styles.controls}>
-      {!matchMode && round && <ReplayRoundTimer round={round} sample={sample} />}
-      <button type="button" disabled={!round} onClick={() => { if (playing) seek(Math.min(round.duration, replayTime(clock.current, performance.now()))); else seek(time >= round?.duration ? 0 : time); setPlaying(!playing); }}>{playing ? "Pause" : "Play"}</button>
-      <label>Round <select value={selection} disabled={!catalog} onChange={(e) => {
-        continuing.current = false; setPlaying(false); setError(""); setSelection(Number(e.target.value));
-      }}>{catalog?.rounds.map((r, i) => (!selectedRounds || (selectedRounds.includes(i) && i <= furthestSelection)) && <option key={`${r.round_id}:${i}`} value={i}>Round {r.round}{!matchMode && ` · ${r.win_condition}`}</option>)}</select></label>
-      {selectedRounds && <span role="status">Highlights{omittedRounds > 0 && ` · ${omittedRounds} round${omittedRounds === 1 ? "" : "s"} omitted`}</span>}
-      <button type="button" disabled={!round} onClick={() => { setPlaying(false); seek(0); }}>Restart round</button>
-      <label>Speed <select value={speed} onChange={(e) => { const now = performance.now(); speedRef.current = Number(e.target.value); clock.current = anchorReplay(playing ? replayTime(clock.current, now) : time, speedRef.current, now); setSpeed(speedRef.current); }}>
-        {[.5, 1, 2, 4, 8].map((s) => <option key={s} value={s}>{s}×</option>)}</select></label>
-      {round && <span className={styles.status} aria-live="polite">{finished ? `${round.meta.winner_side} win · ${WIN_LABELS[round.meta.win_condition] || round.meta.win_condition}` : "Round in progress"}
-        {sample.bomb && ` · bomb ${sample.bomb.status}`}</span>}
-      <output>{timeLabel(time)} / {timeLabel(round?.duration || 0)}</output>
+      {canControl && <>
+        {!matchMode && round && <ReplayRoundTimer round={round} sample={sample} />}
+        <button type="button" disabled={!round} onClick={togglePlayback}>{playing ? "Pause" : "Play"}</button>
+        <label>Round <select value={selection} disabled={!catalog} onChange={(e) => changeRound(Number(e.target.value))}>
+          {catalog?.rounds.map((r, i) => (!selectedRounds || i === selection || (selectedRounds.includes(i) && i <= furthestSelection)) && <option key={`${r.round_id}:${i}`} value={i}>Round {r.round}{!matchMode && ` · ${r.win_condition}`}</option>)}</select></label>
+        {selectedRounds && <span role="status">Highlights{omittedRounds > 0 && ` · ${omittedRounds} round${omittedRounds === 1 ? "" : "s"} omitted`}</span>}
+        <button type="button" disabled={!round} onClick={() => { setPlaying(false); seek(0); }}>Restart round</button>
+        <label>Speed <select value={speed} onChange={(e) => changeSpeed(Number(e.target.value))}>
+          {[.5, 1, 2, 4, 8].map((s) => <option key={s} value={s}>{s}×</option>)}</select></label>
+      </>}
+      <button type="button" className={styles.soundButton} aria-label="Mute sound" aria-pressed={muted}
+        title={muted ? "Unmute sound" : "Mute sound"} onClick={toggleMuted}>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M3 9v6h4l5 4V5L7 9H3Z" />
+          {muted ? <path d="m16 10 5 5m0-5-5 5" /> : <path d="M16 9a4 4 0 0 1 0 6m3-9a8 8 0 0 1 0 12" />}
+        </svg>
+      </button>
+      {canControl && <>
+        {round && <span className={styles.status} aria-live="polite">{finished ? `${round.meta.winner_side} win · ${WIN_LABELS[round.meta.win_condition] || round.meta.win_condition}` : "Round in progress"}
+          {sample.bomb && ` · bomb ${sample.bomb.status}`}</span>}
+        <output>{timeLabel(time)} / {timeLabel(round?.duration || 0)}</output>
+      </>}
     </div>
-    {round && <input className={styles.seek} aria-label="Playback position" type="range" min="0" max={round.duration} step=".015625" value={time}
+    {canControl && round && <input className={styles.seek} aria-label="Playback position" type="range" min="0" max={round.duration} step=".015625" value={time}
       onChange={(e) => seek(Number(e.target.value))} />}
   </div>;
 
@@ -252,9 +360,11 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
       </p>}
       {matchMode ? <ReplayMatchLayout catalog={catalog} selection={selection} round={round} sample={sample}
         progress={progress} teamA={teamA} teamB={teamB} seriesState={seriesState} controls={controls}
-        radar={<Radar sample={sample} round={round} />}
-        killfeed={<ReplayKillFeed deaths={deaths} name={name} sides={round.sides} compact />} /> : <div className={styles.match}>
-        <TeamList side="T" sample={sample} round={round} /><Radar sample={sample} round={round} /><TeamList side="CT" sample={sample} round={round} />
+        radar={<><Radar sample={sample} round={round} matchMode />
+          <ReplayKillFeed deaths={deaths} name={name} sides={round.sides} /></>} /> : <div className={styles.match}>
+        <TeamList side="T" sample={sample} round={round} /><Radar sample={sample} round={round} />
+        <ReplayKillFeed deaths={deaths} name={name} sides={round.sides} />
+        <TeamList side="CT" sample={sample} round={round} />
       </div>}
       {progress && <details className={styles.stats}><summary>Match stats</summary>
         <table><thead><tr><th>Player</th><th>Team</th><th>K</th><th>D</th><th>A</th><th>Flash assists</th></tr></thead>
@@ -264,7 +374,6 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
             return <tr key={i}><td><PlayerIdentity player={identity} /></td><td>{player.team === "A" ? (round.meta.macro.teamASide === "T" ? round.meta.macro.teamT : round.meta.macro.teamCT) : (round.meta.macro.teamASide === "T" ? round.meta.macro.teamCT : round.meta.macro.teamT)}</td><td>{player.kills}</td><td>{player.deaths}</td><td>{player.assists}</td><td>{player.flashAssists}</td></tr>;
           })}</tbody></table>
       </details>}
-      {!matchMode && <ReplayKillFeed deaths={deaths} name={name} />}
       {!matchMode && <p className={styles.note}>Recorded round. The defuse bar uses sampled states and may differ slightly from the exact start. Utility areas are approximate.</p>}
     </>}
   </main>;

@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { assembleMirageBO1 as assembleVersionedMirageBO1, validateBankCatalog, compositionMatches, roundFitsSaveContext, rankReplayAssignments } from '../src/lib/assembleMirageBO1.mjs';
 import { inventoryItem } from '../src/lib/replayEconomy.mjs';
 import { visibleWeapon, buildWeaponAppearance } from '../src/lib/weaponAppearance.mjs';
+import { replayKnifeSkins, replayWeaponIcon } from '../src/lib/replayWeaponIcon.mjs';
 
 const assembleMirageBO1 = (catalog, a, b, seed, assemblySeed = seed) => assembleVersionedMirageBO1(catalog, a, b, seed, assemblySeed, 2);
 
@@ -63,6 +64,7 @@ test('real matches preserve source evidence, purchased appearances and player st
     assert.equal(match.winner, match.macroPlan.winnerTeam);
     assert.equal(match.catalog.rounds.length, match.scoreTeam1 + match.scoreTeam2);
     assert.deepEqual(match.economyFinal, match.catalog.rounds.at(-1).economyAudit.after);
+    const knifeByPlayer = new Map();
     for (const [i, round] of match.catalog.rounds.entries()) {
       const previous = match.catalog.rounds[i - 1]?.macro;
       assert.ok(roundFitsSaveContext(round, { round: i + 1, teamASide: round.macro.teamASide,
@@ -73,6 +75,12 @@ test('real matches preserve source evidence, purchased appearances and player st
       assert.equal(round.replay_data_ref, source.replay_data_ref);
       assert.equal(new Set(round.assignments.map(x => x.playerUid)).size, 10);
       for (const assignment of round.assignments) {
+        const knife = round.knifeAppearance[assignment.actorId];
+        const icon = replayWeaponIcon(knife);
+        assert.ok(replayKnifeSkins.includes(knife));
+        assert.ok(existsSync(new URL(`../public${icon}`, import.meta.url)));
+        if (knifeByPlayer.has(assignment.playerUid)) assert.equal(knife, knifeByPlayer.get(assignment.playerUid));
+        knifeByPlayer.set(assignment.playerUid, knife);
         const actor = round.equipment.actors[assignment.actorId];
         const player = round.economyAudit.afterPreparation[assignment.team].players.find(p => p.uid === assignment.playerUid);
         for (const kind of ['primary', 'pistol']) {

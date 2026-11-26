@@ -11,9 +11,9 @@ import RoomRolesDialog from "@/components/RoomRolesDialog";
 import { useAuth } from "@/context/AuthContext";
 import { useTournament } from "@/context/TournamentContext";
 import { validOrganization } from "@/lib/localCareer.mjs";
-import { kickRoomMember, leaveRoom, setRoomReady, startRoomMajor } from "@/lib/roomService";
+import { kickRoomMember, leaveRoom, setRoomPlaybackSpeed, setRoomReady, startRoomMajor } from "@/lib/roomService";
 import { ROLE_FIELDS } from "@/lib/majorDisplay.mjs";
-import { decodeRoom } from "@/lib/roomStorage.mjs";
+import { decodeRoom, PLAYBACK_SPEEDS } from "@/lib/roomStorage.mjs";
 
 export default function RoomPage({ params }) {
   const roomId = use(params).id;
@@ -65,6 +65,18 @@ export default function RoomPage({ params }) {
           <h1 className="text-[20px] font-medium break-words">{room.name || `Room ${roomId}`}</h1>
           <p className="meta mt-2">Room code: <span className="tabular tracking-[0.1em]">{roomId}</span></p>
           <p className="meta mt-2">{room.playbackMode === "highlights" ? "Highlights · one third of rounds, rounded up. All rounds count." : "Full match · every round."}</p>
+          {isHost && me && inLobby && room.schemaVersion === 3 ? (
+            <label className="meta mt-2 flex items-center gap-2">
+              Simulation speed
+              <select className="rounded-lg bg-control p-2 text-ink" value={room.playbackSpeed} disabled={!!busy}
+                onChange={event => {
+                  const speed = Number(event.target.value);
+                  run("speed", () => setRoomPlaybackSpeed(roomId, user.uid, speed));
+                }}>
+                {PLAYBACK_SPEEDS.map(speed => <option key={speed} value={speed}>{speed}x</option>)}
+              </select>
+            </label>
+          ) : <p className="meta mt-2">Simulation speed: {room.playbackSpeed}x</p>}
           <p className="mt-1 text-ink-2">{inLobby ? "Share the code. The host starts the Major once everyone in the room is ready." : "A Major is being played in this room."}</p>
         </div>
         {me && inLobby && <button type="button" disabled={!!busy} className="link disabled:opacity-40"

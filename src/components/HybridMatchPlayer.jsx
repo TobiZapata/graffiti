@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { simulationEngineVersion } from "@/lib/simulationVersion.mjs";
 import { assembleMirageBO1 } from "@/lib/assembleMirageBO1.mjs";
@@ -13,8 +14,8 @@ import { attachReplayMetrics } from "@/lib/replayMetrics.mjs";
 import { selectHighlightRounds } from "@/lib/replayHighlights.mjs";
 import { attachRoundResolutions } from "@/lib/replayResolution.mjs";
 import { REPLAY_MAPS, selectReplayMap } from "@/lib/replayMaps.mjs";
-import { createMapVeto, vetoStatus, applyMapVeto, advanceNpcVeto } from "@/lib/mapVeto.mjs";
-import MapVeto from "./MapVeto";
+import { createMapVeto, vetoStatus, applyMapVeto, stepNpcVeto } from "@/lib/mapVeto.mjs";
+import MapVeto, { mapArtPath } from "./MapVeto";
 import MatchSummary from "./MatchSummary";
 import RoundBankViewer from "./RoundBankViewer";
 
@@ -37,10 +38,43 @@ async function assembleMap(bank, match, tournamentId, index, signal, simulation,
   }
 }
 
-export default function HybridMatchPlayer({ match, onFinish, backHref = "/simulation", tournamentId = "", initialProgress = null, onSaveProgress, playbackMode = "full", simulation = null, vetoPlayer = null }) {
+function MapLoading({ map, teamA, teamB }) {
+  return (
+    <main className="mx-auto max-w-[1480px] px-4 py-4 sm:px-6 sm:py-6">
+      <div className="relative isolate flex min-h-[clamp(20rem,60vh,38rem)] flex-col justify-end overflow-hidden bg-surface px-5 py-6 sm:px-10 sm:py-9">
+        <Image src={mapArtPath(map)} alt="" fill sizes="(max-width: 1480px) 100vw, 1432px"
+          loading="eager" className="-z-20 object-cover" />
+        <div aria-hidden="true" className="absolute inset-0 -z-10 bg-linear-to-t from-black via-black/70 to-black/10" />
+        <h1 className="text-4xl font-bold tracking-tight sm:text-6xl">{REPLAY_MAPS[map].label}</h1>
+        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-base font-semibold sm:text-lg">
+          {[["A", teamA], ["B", teamB]].map(([side, team]) => (
+            <Fragment key={side}>
+              <div className="flex min-w-0 items-center gap-2">
+                {team.icon && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={team.icon} alt="" width={32} height={32} className="size-8 shrink-0 object-contain" />
+                )}
+                <span className="wrap-anywhere">{team.name}</span>
+              </div>
+              {side === "A" && <span className="text-ink-2">vs</span>}
+            </Fragment>
+          ))}
+        </div>
+        <p role="status" className="mt-7 flex items-center gap-2 text-sm text-ink-2">
+          <span aria-hidden="true" className="size-4 rounded-full border-2 border-white/25 border-t-accent motion-safe:animate-spin" />
+          Loading map…
+        </p>
+      </div>
+    </main>
+  );
+}
+
+export default function HybridMatchPlayer({ match, onFinish, backHref = "/simulation", tournamentId = "", initialProgress = null, onSaveProgress, playbackMode = "full", onPlaybackModeChange, playbackSpeed = 1, isMultiplayer = false, simulation = null, vetoPlayer = null, pvpVeto = null, allowShortcuts = true }) {
+  const showControls = !isMultiplayer && process.env.NODE_ENV === "development";
   const vetoSeed = `${tournamentId}:${match.id}:veto`;
-  const [veto, setVeto] = useState(() => initialProgress?.veto ?? (!initialProgress && !match.completed && vetoPlayer
-    ? advanceNpcVeto(createMapVeto(replaySeriesResult(match, []).bestOf, vetoSeed, vetoPlayer), vetoSeed, vetoPlayer) : null));
+  const [localVeto, setVeto] = useState(() => initialProgress?.veto ?? (!pvpVeto && !initialProgress && !match.completed && vetoPlayer
+    ? createMapVeto(replaySeriesResult(match, []).bestOf, vetoSeed, vetoPlayer) : null));
+  const veto = pvpVeto ? pvpVeto.veto : localVeto;
   const [history, setHistory] = useState(initialProgress?.history ?? []);
   const [started, setStarted] = useState(initialProgress?.veto ? initialProgress.vetoStarted : !!initialProgress);
   const [legacyMap] = useState(() => initialProgress ? initialProgress.map ?? 'de_mirage' : match.completed ? match.result?.maps?.[0]?.map ?? 'de_mirage' : selectReplayMap(tournamentId, match.id));
@@ -80,6 +114,22 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
   const finalized = match.completed ? match.result : confirmed || series.result;
   const needsStats = finalized?.maps?.some(map => !hasMapMetrics(map));
   const result = finalized && { ...finalized, maps: recovered?.source === finalized ? recovered.maps : finalized.maps };
+
+  const saveVeto = useCallback(next => {
+    onSaveProgress?.({ veto: next, vetoStarted: false, history, watchedMap, playback: null, ...bankVersions });
+    setVeto(next);
+  }, [onSaveProgress, history, watchedMap, bankVersions]);
+
+  useEffect(() => {
+    if (pvpVeto || !veto || started || !vetoPlayer) return;
+    const status = vetoStatus(veto);
+    if (status.done || status.turn === vetoPlayer) return;
+
+    const lastAction = veto.actions[veto.actions.length - 1];
+    const delayMs = lastAction && lastAction.team !== vetoPlayer ? 1400 : 1050;
+    const timeout = setTimeout(() => saveVeto(stepNpcVeto(veto, vetoSeed, vetoPlayer)), delayMs);
+    return () => clearTimeout(timeout);
+  }, [pvpVeto, veto, started, vetoPlayer, vetoSeed, saveVeto]);
 
   useEffect(() => {
     if (!started || match.completed || series.done) return;
@@ -170,11 +220,10 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
     saving={saving || (!saved && !match.completed && !saveError)} error={match.completed ? "" : saveError} onRetry={() => submitResult(result)} />;
 
   if (veto && !started) return <MapVeto veto={veto} match={match} playerTeam={vetoPlayer} backHref={backHref}
-    onChoose={id => {
-      const next = advanceNpcVeto(applyMapVeto(veto, id), vetoSeed, vetoPlayer);
-      onSaveProgress?.({ veto: next, vetoStarted: false, history, watchedMap, playback: null, ...bankVersions });
-      setVeto(next);
-    }} onStart={() => {
+    isPvp={!!pvpVeto} turnDeadlineMs={pvpVeto?.turnDeadlineMs} busy={pvpVeto?.busy} error={pvpVeto?.error}
+    opponentAbandoned={!!pvpVeto && !!match.result?.forfeit}
+    onChoose={pvpVeto ? pvpVeto.onChoose : id => saveVeto(applyMapVeto(veto, id))} onStart={() => {
+      if (!vetoStatus(veto).done) return;
       onSaveProgress?.({ map, history, watchedMap, playback: null, ...bankVersions, veto, vetoStarted: true });
       setStarted(true);
     }} />;
@@ -189,7 +238,12 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
           {history.map((map, i) => <span key={i}> · map {i + 1} {map.scoreA}–{map.scoreB}</span>)}
         </p>
         <div className="ml-auto flex items-center gap-3">
-          {data && (watched ? (
+          {!isMultiplayer && onPlaybackModeChange && (!showControls || !watched) && <select aria-label="Playback mode"
+            className="btn btn-secondary" value={playbackMode} onChange={event => onPlaybackModeChange(event.target.value)}>
+            <option value="full">Full</option>
+            <option value="highlights">Highlights</option>
+          </select>}
+          {showControls && data && (watched ? (
             <button type="button" className="btn btn-primary" disabled={saving} onClick={finishMap}>
               {saving ? "Saving result…" : lastMap ? "Finish match" : "Next map"}
             </button>
@@ -213,10 +267,11 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
       <span>{series.bestOf > 1 ? 'Map for this series' : 'Map'}: {REPLAY_MAPS[map].label}</span>
       <button type="submit" className="btn btn-primary">Start match</button>
     </form>}
-    {started && !data && !currentError && <p role="status" className="mx-auto max-w-[1480px] px-4 py-6 text-ink-2 sm:px-6">Preparing {REPLAY_MAPS[map].label}…</p>}
+    {started && !data && !currentError && <MapLoading map={map} teamA={match.teamA} teamB={match.teamB} />}
     {data && <RoundBankViewer key={`${match.id}:${index}`} catalog={data.catalog} selectedRounds={selectedRounds} matchMode
       teamA={match.teamA} teamB={match.teamB} seriesState={{ ...series, mapsToWin: Math.ceil(series.bestOf / 2) }}
+      initialSpeed={playbackSpeed} showControls={showControls} isMultiplayer={isMultiplayer}
       initialPlayback={initialProgress?.history.length === index ? initialProgress.playback : null} onPlaybackChange={savePlayback}
-      backHref={backHref} onComplete={markWatched} />}
+      backHref={backHref} onComplete={showControls ? markWatched : finishMap} allowShortcuts={allowShortcuts} />}
   </div>;
 }

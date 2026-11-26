@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { decodeReplay, sampleReplay, worldToRadar } from '../src/lib/roundBankReplay.mjs';
+import { traceWeaponAppearances, weaponEvidenceFromRaw } from '../src/lib/weaponAppearance.mjs';
+import { WEAPONS } from '../src/app/engines/WeaponEngine.js';
 
 function fixture() {
   const actors = Array.from({ length: 10 }, (_, i) => String(100 + i));
@@ -15,6 +17,31 @@ function fixture() {
   raw.inventory_changes.push([25, 1, ['AWP']]);
   return { raw, metadata };
 }
+
+test('shows the assigned player knife across source demos and sides, including knife kills', () => {
+  const skin = 'knife_butterfly';
+  for (const [index, active, inventory, kill] of [
+    [1, 'Karambit', 'weapon_knife_karambit', 'karambit'],
+    [5, 'Knife', 'Skeleton Knife', 'weapon_knife_skeleton'],
+  ]) {
+    const { raw, metadata } = fixture();
+    const attacker = raw.actors[index], victim = raw.actors[index < 5 ? 5 : 0];
+    metadata.knifeAppearance = { [attacker]: skin };
+    raw.inventory_changes[index][2].push(inventory);
+    for (const [, rows] of raw.frames) rows[index][6] = active;
+    raw.events = [{ tick: 20, event: 'player_death', user_steamid: victim, attacker_steamid: attacker, weapon: kill }];
+    const round = decodeReplay(raw, metadata);
+    const state = sampleReplay(round, 20 / 64);
+    assert.equal(state.players[index].weapon, skin);
+    assert.ok(state.players[index].inventory.includes(skin));
+    assert.equal(state.events[0].weapon, skin);
+    assert.equal(state.events[0].rawWeapon, kill);
+    assert.equal(traceWeaponAppearances(weaponEvidenceFromRaw(raw, round.sides)).killRewards[attacker], WEAPONS.KNIFE.killReward);
+
+    delete metadata.knifeAppearance;
+    assert.equal(sampleReplay(decodeReplay(raw, metadata), 20 / 64).players[index].weapon, active);
+  }
+});
 
 test('global weapon appearances follow pickups and events without changing evidence', () => {
   const { raw, metadata } = fixture();

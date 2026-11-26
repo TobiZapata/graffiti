@@ -1,5 +1,5 @@
 ﻿import { WEAPONS } from '../app/engines/WeaponEngine.js';
-import { inventoryItem, normalizeInventory } from './replayEquipment.mjs';
+import { inventoryItem, isKnife, normalizeInventory } from './replayEquipment.mjs';
 
 const group = id => {
   const item = inventoryItem(id);
@@ -136,7 +136,7 @@ export function traceWeaponAppearances(evidence, appearances = {}) {
     const visible = resolve(token)?.visible ?? appearances[attacker]?.[item?.id] ?? item?.id;
     if (item && group(item.id)) eventWeapons[`${tick}:${attacker}:${item.id}`] = visible;
     if (credited) {
-      const reward = /^(?:weapon_)?(?:knife.*|.*knife|.*bayonet.*|.*karambit.*|cuchillo)$/i.test(weapon ?? '') ? WEAPONS.KNIFE.killReward : inventoryItem(visible ?? weapon)?.killReward ?? 0;
+      const reward = isKnife(weapon) ? WEAPONS.KNIFE.killReward : inventoryItem(visible ?? weapon)?.killReward ?? 0;
       killRewards[attacker] = (killRewards[attacker] ?? 0) + reward;
     }
   }

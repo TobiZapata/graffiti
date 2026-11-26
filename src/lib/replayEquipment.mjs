@@ -6,6 +6,9 @@ Object.assign(names, { 'p2000': 'P2000', 'flashbang': 'FLASH', 'smoke grenade': 
 const extras = { P2000: { ...WEAPONS.USP, id: 'P2000', name: 'P2000' }, FLASH: { id: 'FLASH', name: 'Flashbang', cost: 200, side: 'BOTH', killReward: 0 }, SMOKE: { id: 'SMOKE', name: 'Smoke Grenade', cost: 300, side: 'BOTH', killReward: 0 }, HE: { ...WEAPONS.HE, name: 'HE Grenade', cost: 300 }, DECOY: { id: 'DECOY', name: 'Decoy Grenade', cost: 50, side: 'BOTH', killReward: 0 } };
 Object.assign(names, { ak47: 'AK47', m4a1_silencer: 'M4A1S', m4a1: 'M4A4', galilar: 'GALIL', ssg08: 'SSG08', usp_silencer: 'USP', hkp2000: 'P2000', glock: 'GLOCK', deagle: 'DEAGLE', elite: 'DUALIES', tec9: 'TEC9', fiveseven: 'FIVESEVEN', mac10: 'MAC10', hegrenade: 'HE', smokegrenade: 'SMOKE', decoy: 'DECOY', incgrenade: 'INCENDIARY', inferno: 'MOLOTOV' });
 const canonical = { MOLOTOV: 'Molotov', INCENDIARY: 'Incendiary Grenade' };
+export const isKnife = name => typeof name === 'string' &&
+  /^(?:weapon_)?(?:knife.*|.*knife|.*bayonet.*|.*karambit.*|shadow daggers|cuchillo)$/i.test(name.trim());
+
 export function inventoryItem(name) {
   if (typeof name !== 'string') return null;
   const key = name.trim().toLowerCase().replace(/^weapon_/, '');
@@ -31,7 +34,7 @@ export function normalizeInventory(list) {
   const result = [];
   for (const name of list) {
     if (typeof name !== 'string') return null;
-    if (/^(?:weapon_)?(?:knife.*|.*knife|.*bayonet.*|.*karambit.*|cuchillo|c4|c4\s*explosive)$/i.test(name.trim())) continue;
+    if (isKnife(name) || /^(?:weapon_)?(?:c4|c4\s*explosive)$/i.test(name.trim())) continue;
     const canonicalName = itemName(name);
     if (!canonicalName) return null;
     result.push(canonicalName);

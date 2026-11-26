@@ -1,74 +1,153 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useId, useRef, useState } from "react";
 import { useTournament } from "@/context/TournamentContext";
 import { record } from "@/lib/majorDisplay.mjs";
+import styles from "./Home.module.css";
 
 function majorStatus({ standings, stage, swissRound, pendingResult }) {
-  const me = standings.find(t => t.isPlayer);
+  const me = standings.find(team => team.isPlayer);
   if (!me) return "No Major in progress";
-  if (stage === "won" || pendingResult === "won") return "Major champions";
-  if (stage === "eliminated" || pendingResult === "eliminated") return `Eliminated · ${record(me)}`;
-  if (stage === "swiss") return `Swiss stage, round ${swissRound} · ${record(me)}`;
-  if (stage === "swiss_complete") return `Qualified for the playoffs · ${record(me)}`;
-  return "Playoffs";
+
+  const phases = {
+    won: "Major champions",
+    eliminated: "Eliminated",
+    swiss: `Swiss stage, round ${swissRound}`,
+    swiss_complete: "Qualified for playoffs",
+    playoffs: "Playoffs",
+  };
+
+  return `${phases[pendingResult ?? stage] ?? "Playoffs"} · ${record(me)}`;
 }
 
-export default function Home({ majors, logos, rosterCount }) {
-  const tournament = useTournament();
-  const { organization, ready } = tournament;
+function Arrow() {
+  return <span aria-hidden="true" className={styles.arrow}>↗</span>;
+}
+
+function Crest({ src, alt, size, lazy = false, decorative = false }) {
+  const [failedSrc, setFailedSrc] = useState(null);
+  if (failedSrc === src && alt) {
+    const words = alt.trim().split(/\s+/);
+    const initials = words.length > 1 ? words.slice(0, 3).map(word => word[0]).join("") : alt.slice(0, 3);
+    return <span className={styles.crestFallback} role={decorative ? undefined : "img"} aria-label={decorative ? undefined : alt} aria-hidden={decorative || undefined}>{initials}</span>;
+  }
+
+  /* eslint-disable-next-line @next/next/no-img-element -- Team crests come from the roster CDN or saved organizations. */
+  return <img className={styles.crest} src={src} alt={decorative ? "" : alt} width={size} height={size} loading={lazy ? "lazy" : undefined} onError={alt ? () => setFailedSrc(src) : undefined} />;
+}
+
+function DraftPool({ logos }) {
+  return (
+    <figure className={styles.hubPool}>
+      <figcaption className={styles.poolCaption}>
+        <strong>Historical draft pool</strong>
+      </figcaption>
+      <ul className={styles.logos} aria-label="Teams in the draft pool">
+        {logos.map(team => (
+          <li key={team.icon} title={team.name}>
+            <Crest src={team.icon} alt={team.name} size={72} lazy />
+          </li>
+        ))}
+      </ul>
+    </figure>
+  );
+}
+
+function GameHub({ organization, ready, status, careerHref, logos }) {
+  const router = useRouter();
+  const [showPlaybackModes, setShowPlaybackModes] = useState(false);
+  const careerToggle = useRef(null);
+  const careerTitleId = useId();
+  const playbackModesId = useId();
+
+  function startCareer(mode) {
+    try { localStorage.setItem("major-mvp:sp-playback-mode", mode); }
+    catch { /* The career is still available when storage is blocked. */ }
+    setShowPlaybackModes(false);
+    router.push(careerHref);
+  }
+
+  const careerCardClass = `${styles.modeCard} ${styles.careerMode}`;
+  const careerLabel = <span className={styles.modeLabel}>Singleplayer</span>;
 
   return (
-    <main className="flex min-h-screen flex-col">
-      <header className="mx-auto flex h-14 w-full max-w-[1440px] items-center px-4 sm:px-6">
-        <span className="text-[15px] font-semibold">CS Major Simulator</span>
-      </header>
-
-      <section className="mx-auto grid w-full max-w-[1440px] flex-1 items-center gap-12 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-20">
-        <div className="max-w-[600px]">
-          <h1 className="text-[24px] font-medium leading-[1.15] tracking-[-0.01em] sm:text-[32px]">
-            Draft a squad from past Majors and play your own
-          </h1>
-          <p className="mt-4 text-[16px] leading-relaxed text-ink-2">
-            Pick from the rosters of {majors.slice(0, -1).join(", ")} and {majors.at(-1)}. Take five players through a 16-team Swiss stage and the playoffs, and watch every round on Mirage, Dust2 or Nuke.
-          </p>
-
-          {!ready ? <div className="mt-8 h-11" aria-hidden="true" /> : organization ? (
-            <div className="mt-8">
-              <Link prefetch={false} href="/organization" className="card flex items-center gap-4 p-4 transition-colors hover:bg-raised">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={organization.icon} alt="" width="48" height="48" />
-                <span className="min-w-0">
-                  <span className="block truncate text-[16px] font-medium">{organization.name}</span>
-                  <span className="meta tabular">{majorStatus(tournament)}</span>
-                </span>
-              </Link>
-              <div className="mt-6 flex flex-wrap items-center gap-6">
-                <Link prefetch={false} href="/organization" className="btn btn-primary btn-lg">Continue</Link>
-                <Link prefetch={false} href="/multiplayer" className="link">Play with friends</Link>
-              </div>
+    <div className={`${styles.frame} ${styles.hub}`}>
+      <section className={styles.modeGrid} aria-label="Game modes">
+        {organization ? <div className={careerCardClass} onKeyDown={event => {
+          if (event.key === "Escape" && showPlaybackModes) {
+            setShowPlaybackModes(false);
+            careerToggle.current?.focus();
+          }
+        }}>
+          <button ref={careerToggle} type="button" className={styles.careerToggle}
+            aria-labelledby={careerTitleId} aria-expanded={showPlaybackModes} aria-controls={playbackModesId}
+            aria-busy={!ready} disabled={!ready} onClick={() => setShowPlaybackModes(open => !open)} />
+          {careerLabel}
+          <div className={styles.modeDetails}>
+            <h2 id={careerTitleId}>Major Career</h2>
+            <p>{status}</p>
+            <div id={playbackModesId} className={styles.careerActions} hidden={!showPlaybackModes}>
+              <button type="button" onClick={() => startCareer("highlights")}>Highlights</button>
+              <button type="button" onClick={() => startCareer("full")}>Full match</button>
             </div>
-          ) : (
-            <div className="mt-8 flex flex-wrap items-center gap-6">
-              <Link prefetch={false} href="/play" className="btn btn-primary btn-lg">Create organization</Link>
-              <Link prefetch={false} href="/multiplayer" className="link">Play with friends</Link>
-            </div>
-          )}
-        </div>
-
-        <figure>
-          <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6" aria-label="Teams in the draft pool">
-            {logos.map(team => (
-              <li key={team.icon} className="card flex aspect-square items-center justify-center p-3" title={team.name}>
-                {/* Team logos are served from the team-logo CDN. */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={team.icon} alt={team.name} className="max-h-full max-w-full object-contain" loading="lazy" />
-              </li>
-            ))}
-          </ul>
-          <figcaption className="meta mt-3">{rosterCount} rosters from {majors.length} Majors, 2013–2014</figcaption>
-        </figure>
+          </div>
+          {!showPlaybackModes && <Arrow />}
+        </div> : <Link prefetch={false} href="/play" aria-busy={!ready} className={careerCardClass}>
+          {careerLabel}
+          <div className={styles.modeDetails}>
+            <h2>Major Career</h2>
+            <p>Draft a roster and play the Major.</p>
+          </div>
+          <Arrow />
+        </Link>}
+        <Link prefetch={false} href="/multiplayer" className={`${styles.modeCard} ${styles.roomMode}`}>
+          <span className={styles.modeLabel}>Play with friends</span>
+          <div className={styles.modeDetails}>
+            <h2>Multiplayer Room</h2>
+            <p>Create or join a room.</p>
+          </div>
+          <Arrow />
+        </Link>
       </section>
-    </main>
+      <ol className={styles.steps} aria-label="How it works">
+        <li><span>01</span><div><strong>Draft your 5</strong><p>Build a roster from historic Major teams.</p></div></li>
+        <li><span>02</span><div><strong>Map veto</strong><p>Ban and pick maps before each BO1, BO3 or BO5.</p></div></li>
+        <li><span>03</span><div><strong>Watch live</strong><p>Follow every round on the 2D tactical radar.</p></div></li>
+      </ol>
+      <footer>
+        <DraftPool logos={logos.slice(0, 8)} />
+      </footer>
+    </div>
+  );
+}
+
+export default function Home({ logos }) {
+  const tournament = useTournament();
+  const { organization, ready, stage, pendingResult, standings } = tournament;
+  const activeOrganization = ready ? organization : null;
+  const hasActiveMajor = Boolean(activeOrganization && standings.some(team => team.isPlayer)
+    && !["won", "eliminated"].includes(pendingResult ?? stage));
+  const careerHref = hasActiveMajor ? "/simulation" : activeOrganization ? "/organization" : "/play";
+
+  return (
+    <>
+      <header className={styles.frame + " " + styles.header}>
+        <h1 className={styles.wordmark}>CS Major Simulator</h1>
+        {activeOrganization && (
+          <Link prefetch={false} href="/organization" className={styles.headerOrg}
+            aria-label={"My Organization: " + activeOrganization.name}>
+            <Crest src={activeOrganization.icon} alt={activeOrganization.name} size={24} decorative />
+            <span>{activeOrganization.name}</span>
+          </Link>
+        )}
+      </header>
+      <main className={styles.main}>
+        <GameHub organization={activeOrganization} ready={ready}
+          status={activeOrganization ? majorStatus(tournament) : null}
+          careerHref={careerHref} logos={logos} />
+      </main>
+    </>
   );
 }

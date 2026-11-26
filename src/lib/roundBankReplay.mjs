@@ -1,6 +1,7 @@
 import { sampleRound } from './recordedReplay.mjs';
 import { validWeaponAppearance, visibleWeapon, traceWeaponAppearances, weaponEvidenceFromRaw, validWeaponEvidence } from './weaponAppearance.mjs';
-import { inventoryItem } from './replayEquipment.mjs';
+import { inventoryItem, isKnife } from './replayEquipment.mjs';
+import { replayKnifeSkins } from './replayWeaponIcon.mjs';
 import { isSideEndRound } from './replayResolution.mjs';
 export { worldToRadar } from './recordedReplay.mjs';
 
@@ -74,6 +75,8 @@ export function decodeReplay(raw, metadata, rosterNames = {}) {
     return found;
   };
   const weaponAt = (name, tick, actor, event = false) => {
+    const knifeSkin = metadata.knifeAppearance?.[actor];
+    if (knifeSkin && isKnife(name) && replayKnifeSkins.includes(knifeSkin)) return knifeSkin;
     const id = inventoryItem(name)?.id;
     let target = (event ? trace?.eventWeapons[`${tick}:${actor}:${id}`] : undefined) ?? heldAt(tick, actor).find(token => token.original === id)?.visible;
     if (!target && trace) {

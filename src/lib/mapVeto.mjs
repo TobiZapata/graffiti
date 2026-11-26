@@ -43,14 +43,20 @@ export function applyMapVeto(veto, map) {
   return { ...veto, actions: [...veto.actions, { team: status.turn, action: status.action, map }] };
 }
 
-export function advanceNpcVeto(veto, seed, playerTeam = 'A') {
+export function stepNpcVeto(veto, seed, playerTeam = 'A') {
   if (!['A', 'B'].includes(playerTeam)) throw new Error('Invalid player team');
+  const status = vetoStatus(veto);
+  if (status.done || status.turn === playerTeam) return veto;
+  const random = seedrandom(`${seed}:veto:npc:${veto.actions.length}`)();
+  return applyMapVeto(veto, status.remaining[Math.floor(random * status.remaining.length)]);
+}
+
+export function advanceNpcVeto(veto, seed, playerTeam = 'A') {
   let current = veto;
-  let status = vetoStatus(current);
-  while (!status.done && status.turn !== playerTeam) {
-    const random = seedrandom(`${seed}:veto:npc:${current.actions.length}`)();
-    current = applyMapVeto(current, status.remaining[Math.floor(random * status.remaining.length)]);
-    status = vetoStatus(current);
+  let next = stepNpcVeto(current, seed, playerTeam);
+  while (next !== current) {
+    current = next;
+    next = stepNpcVeto(current, seed, playerTeam);
   }
   return current;
 }

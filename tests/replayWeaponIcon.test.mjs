@@ -1,8 +1,9 @@
 ﻿import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { test } from 'node:test';
 import { WEAPONS } from '../src/app/engines/WeaponEngine.js';
-import { cachedWeaponIcon, replayWeaponIcon } from '../src/lib/replayWeaponIcon.mjs';
+import { cachedWeaponIcon, replayKnifeSkins, replayWeaponIcon } from '../src/lib/replayWeaponIcon.mjs';
+import { isKnife } from '../src/lib/replayEquipment.mjs';
 import nextConfig from '../next.config.mjs';
 
 test('weapon cache URLs match the content version required by the cache headers', async () => {
@@ -50,8 +51,41 @@ test('weapons and native killfeed aliases resolve to existing SVG assets', () =>
   }
 });
 
+test('each cosmetic knife SVG occurs once in the pool and resolves by its weapon ID', () => {
+  const assets = readdirSync(new URL('../public/weapons/knifes/', import.meta.url))
+    .filter(asset => asset.endsWith('.svg') && !['knife.svg', 'knife_t.svg'].includes(asset))
+    .map(asset => asset.slice(0, -4)).sort();
+  assert.deepEqual([...replayKnifeSkins].sort(), assets);
+  for (const id of replayKnifeSkins) {
+    assert.equal(replayWeaponIcon(id), `/weapons/knifes/${id}.svg`);
+    assert.equal(replayWeaponIcon(`weapon_${id}`), replayWeaponIcon(id));
+    assert.ok(isKnife(id));
+  }
+});
+
+test('additional knife display names and demo aliases resolve to their cosmetic SVGs', () => {
+  for (const [id, ...aliases] of [
+    ['bayonet', 'Bayonet', 'knife_bayonet'],
+    ['knife_bowie', 'Bowie Knife', 'knife_survival_bowie'],
+    ['knife_cord', 'Paracord Knife'],
+    ['knife_css', 'Classic Knife'],
+    ['knife_gut', 'Gut Knife'],
+    ['knife_gypsy_jackknife', 'Navaja Knife'],
+    ['knife_kukri', 'Kukri Knife'],
+    ['knife_outdoor', 'Nomad Knife'],
+    ['knife_push', 'Shadow Daggers'],
+    ['knife_ursus', 'Ursus Knife'],
+  ]) {
+    for (const alias of aliases) {
+      assert.equal(replayWeaponIcon(alias), `/weapons/knifes/${id}.svg`);
+      assert.equal(replayWeaponIcon(`weapon_${alias}`), replayWeaponIcon(alias));
+      assert.ok(isKnife(alias));
+    }
+  }
+});
+
 test('missing weapons keep text rather than substituting another gun or knife', () => {
-  for (const name of ['P2000', 'hkp2000', 'MP7', 'Bayonet', 'Nomad Knife', 'Ursus Knife', '', null]) {
+  for (const name of ['P2000', 'hkp2000', 'MP7', 'Unknown Knife', '', null]) {
     assert.equal(replayWeaponIcon(name), null);
   }
 });

@@ -11,9 +11,12 @@
 .controls label { display: flex; align-items: center; gap: 8px; }
 .controls select, .controls button { height: 32px; padding: 0 12px; border-radius: 16px; background: var(--control); color: var(--ink); font-size: 13px; cursor: pointer; transition: background-color 150ms var(--ease); }
 .controls select:hover, .controls button:hover:not(:disabled) { background: #363636; }
-.controls button:first-child { min-width: 72px; background: var(--ink); color: #000; font-weight: 500; }
-.controls button:first-child:hover:not(:disabled) { background: #fff; }
+.controls button:first-child:not(.soundButton) { min-width: 72px; background: var(--ink); color: #000; font-weight: 500; }
+.controls button:first-child:hover:not(:disabled, .soundButton) { background: #fff; }
 .controls button:disabled { opacity: .4; cursor: wait; }
+.controls .soundButton { display: inline-grid; place-items: center; width: 32px; padding: 0; }
+.soundButton:only-child { margin-left: auto; }
+.soundButton[aria-pressed="true"] { color: var(--ink-2); }
 .controls output { margin-left: auto; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .status { color: var(--ink); }
 .seek { width: 100%; accent-color: var(--ink); }
@@ -23,9 +26,9 @@
 .lab th, .lab td { height: 36px; padding: 0 8px; border-top: 1px solid var(--rule); }
 .lab th { color: var(--ink-3); font-weight: 400; }
 .match { display: grid; grid-template-columns: minmax(175px, 1fr) minmax(320px, 700px) minmax(175px, 1fr); gap: 16px; align-items: start; }
-.radar { width: 100%; background: var(--surface); border-radius: 12px; }
+.radar { display: block; width: 100%; background: var(--surface); border-radius: 12px; }
 .team { background: var(--surface); border-radius: 12px; padding: 16px; }
-.team h2, .feed h2 { font-size: 14px; font-weight: 500; margin-bottom: 8px; }
+.team h2 { font-size: 14px; font-weight: 500; margin-bottom: 8px; }
 .player { padding: 12px 0; border-top: 1px solid var(--rule); font-size: 12px; }
 .player > div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
 .player strong { font-size: 14px; font-weight: 500; }
@@ -37,14 +40,10 @@
 .activeWeapon .weaponIcon { width: 44px; height: 18px; }
 .weaponIcon { display: inline-block; width: 88px; height: 28px; object-fit: contain; object-position: left center; flex-shrink: 0; }
 .killWeapon { display: inline-flex; align-items: center; flex-shrink: 0; gap: 4px; }
-.killWeapon .weaponIcon { width: auto; height: 18px; max-width: 96px; object-position: center; }
+.killWeapon .weaponIcon { width: auto; max-width: 64px; height: 14px; object-position: center; }
 .dead { opacity: .5; }
 .defuse { display: grid; gap: 4px; margin-top: 4px; color: var(--positive); }
 .defuse progress { width: 100%; height: 6px; accent-color: var(--positive); }
-.feed { margin-top: 16px; padding: 16px; background: var(--surface); border-radius: 12px; }
-.feed p { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: 13px; padding: 4px 0; }
-.feed time { color: var(--ink-2); font-variant-numeric: tabular-nums; }
-.feed small { color: var(--ink-2); }
 .note { margin-top: 16px; }
 .error { padding: 12px; color: var(--negative); background: var(--surface); border-radius: 8px; margin: 16px 0; }
 .stats { margin-top: 16px; padding: 16px; overflow-x: auto; background: var(--surface); border-radius: 12px; font-size: 13px; }
@@ -52,10 +51,34 @@
 .stats summary:hover { color: #fff; }
 .stats[open] summary { margin-bottom: 8px; }
 .matchMode { padding-top: 20px; width: 100%; min-width: 0; }
-.compactFeed { margin: 0; padding: 0; border-radius: 0; background: transparent; }
-.compactFeed p { justify-content: flex-end; flex-wrap: nowrap; gap: 4px; width: max-content; max-width: 100%; margin: 0 0 4px auto; padding: 4px 8px; border-radius: 4px; background: #000000d9; font-size: 11px; line-height: 1.3; }
-.compactFeed strong { min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.compactFeed .weaponIcon { width: auto; max-width: 76px; height: 14px; }
-.compactFeed .killWeapon { gap: 4px; }
-@media (max-width: 900px) { .match { grid-template-columns: 1fr 1fr; } .radar { grid-column: 1 / -1; grid-row: 1; } }
+.compactFeed { grid-area: feed; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 3px; height: 68px; min-width: 0; overflow: hidden; }
+.compactFeed p { display: inline-flex; flex-shrink: 0; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.08); border-right: 2px solid rgba(229, 99, 77, 0.65); background: rgba(15, 15, 17, 0.92); font-size: 11px; line-height: 1.1; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
+.compactFeed strong { min-width: 0; font-weight: 600; letter-spacing: 0.01em; white-space: nowrap; }
+
+/* Put the radar and killfeed in separate grid cells within ReplayMatchLayout. */
+.matchMode div:has(> .matchRadar) { display: contents; }
+:is(.match, .matchMode div:has(> div > .matchRadar)) {
+  grid-template-areas: "feed feed feed" "t radar ct";
+  grid-template-rows: auto 1fr;
+}
+:is(.match, .matchMode) .radar { grid-area: radar; min-width: 0; }
+:is(.match, .matchMode div:has(> div > .matchRadar)) > section:first-child { grid-area: t; }
+:is(.match, .matchMode div:has(> div > .matchRadar)) > section:last-child { grid-area: ct; }
+
+@media (max-width: 900px) {
+  .match { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  :is(.match, .matchMode div:has(> div > .matchRadar)) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas: "feed feed" "radar radar" "t ct";
+    grid-template-rows: auto auto 1fr;
+  }
+}
+@media (max-width: 520px) {
+  :is(.match, .matchMode div:has(> div > .matchRadar)) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "feed" "radar" "ct" "t";
+    grid-template-rows: auto;
+  }
+  .matchMode div:has(> div > .matchRadar) { grid-template-areas: "feed" "radar" "t" "ct"; }
+}
 @media (max-width: 520px) { .lab { padding: 16px; } .header { align-items: start; flex-direction: column; } .controls output { margin-left: 0; } .team { padding: 12px; } }
