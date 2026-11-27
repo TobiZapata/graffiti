@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { doc, onSnapshot, runTransaction } from "firebase/firestore";
 import { MultiplayerProvider, useMultiplayerTournament } from "@/context/MultiplayerContext";
+import { useRoomSession } from "@/context/RoomSessionContext";
 import { db } from "@/lib/firebase";
+import { completeRoomSingleMatch } from "@/lib/roomService";
 import { replayBestOf, validSeriesProgress } from "@/lib/replaySeries.mjs";
 import { advanceMultiplayerVeto, createMultiplayerVeto, validMultiplayerVeto, vetoDocId } from "@/lib/multiplayerVeto.mjs";
 import HybridMatchPlayer from "@/components/HybridMatchPlayer";
@@ -87,9 +89,9 @@ function useRoomVeto({ enabled, roomId, tournamentId, matchId, matchIndex, bestO
     } };
 }
 
-function RoomReplay({ match, matchIndex, roomId, tournamentId, userUid, completeMatch, playbackMode, playbackSpeed, simulation }) {
+function RoomReplay({ match, matchIndex, roomId, tournamentId, userUid, completeMatch, playbackMode, playbackSpeed, simulation, singleMatch = false }) {
   const key = `major-mvp:room-replay:${roomId}:${tournamentId}:${match.id}:${userUid}`;
-  const backHref = `/room/${roomId}/simulation`;
+  const backHref = singleMatch ? `/room/${roomId}` : `/room/${roomId}/simulation`;
   const isPvp = match.playerUids?.length === 2;
   const playerTeam = match.teamA.uid === userUid ? 'A' : 'B';
   const shared = useRoomVeto({ enabled: isPvp && !match.completed, roomId, tournamentId,
@@ -111,7 +113,7 @@ function RoomReplay({ match, matchIndex, roomId, tournamentId, userUid, complete
     {shared.error ? <><p role="alert">{shared.error}</p>
       <button type="button" className="btn btn-secondary mt-4" onClick={shared.retry}>Try again</button></>
       : <p role="status">Loading map veto…</p>}
-    <Link href={backHref} className="link mt-2 block">Back to the Major</Link>
+    <Link href={backHref} className="link mt-2 block">{singleMatch ? "Back to lobby" : "Back to the Major"}</Link>
   </main>;
   if (!isPvp && resume?.invalid && !match.completed) return <main className="p-6"><p role="alert">The saved progress for this match could not be read.</p>
     <button type="button" className="btn btn-secondary mt-4" onClick={() => { sessionStorage.removeItem(key); window.location.reload(); }}>Restart playback</button></main>;
@@ -144,9 +146,54 @@ function MatchContent({ roomId }) {
     tournamentId={tournamentId} userUid={userUid} completeMatch={completeMatch} playbackMode={playbackMode} playbackSpeed={playbackSpeed} simulation={simulation} />;
 }
 
+function FinishSingleMatchForfeit({ roomId, userUid, tournamentId }) {
+  const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    let active = true;
+    completeRoomSingleMatch(roomId, userUid, tournamentId).catch(err => {
+      if (active) setError(err.message);
+    });
+    return () => { active = false; };
+  }, [roomId, userUid, tournamentId, retry]);
+  return <main className="p-6">
+    {error ? <><p role="alert">{error}</p>
+      <button type="button" className="btn btn-secondary mt-4" onClick={() => { setError(""); setRetry(n => n + 1); }}>Try again</button></>
+      : <p role="status">Saving the forfeit…</p>}
+  </main>;
+}
+
+function SingleMatchContent({ room, roomId, userUid }) {
+  const matchId = useSearchParams().get("id");
+  const tournament = room.tournament;
+  const match = tournament?.matches?.[0];
+  if (match?.id !== matchId || !room.players.some(player => player.uid === userUid && !player.left) ||
+      !match?.playerUids?.includes(userUid) || !tournament.participantUids?.includes(userUid) ||
+      (!match.completed && (room.status !== "playing" || !tournament.matchesStarted))) {
+    return <main className="p-6">
+      <p>You have no match to play.</p>
+      <Link href={`/room/${roomId}`} className="link mt-2 inline-block underline">Back to lobby</Link>
+    </main>;
+  }
+  const { tournamentId, simulation } = tournament;
+  if (!match.completed && tournament.abandonedUids?.length) {
+    return <FinishSingleMatchForfeit key={tournamentId} roomId={roomId} userUid={userUid} tournamentId={tournamentId} />;
+  }
+  return <RoomReplay key={`${tournamentId}:${match.id}:${userUid}`} singleMatch match={match} matchIndex={0} roomId={roomId}
+    tournamentId={tournamentId} userUid={userUid} playbackMode={room.playbackMode ?? "full"} playbackSpeed={room.playbackSpeed} simulation={simulation}
+    completeMatch={(_matchId, result) => completeRoomSingleMatch(roomId, userUid, tournamentId, result)} />;
+}
+
+function RoomMatchContent({ roomId }) {
+  const session = useRoomSession();
+  if (!session?.room || session.entry?.roomId !== roomId) return <p className="p-6 text-ink-2">Loading match…</p>;
+  if (session.room.roomFormat === "singleMatch") return <SingleMatchContent room={session.room} roomId={roomId} userUid={session.userUid} />;
+  return <MultiplayerProvider roomId={roomId}><MatchContent roomId={roomId} /></MultiplayerProvider>;
+}
+
 export default function MatchPage({ params }) {
   const roomId = use(params).id;
-  return <MultiplayerProvider roomId={roomId}><Suspense fallback={<p className="p-6 text-ink-2">Loading match…</p>}>
-    <MatchContent roomId={roomId} />
-  </Suspense></MultiplayerProvider>;
+  return <Suspense fallback={<p className="p-6 text-ink-2">Loading match…</p>}>
+    <RoomMatchContent roomId={roomId} />
+  </Suspense>;
 }

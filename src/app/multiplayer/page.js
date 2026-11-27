@@ -8,6 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useTournament } from "@/context/TournamentContext";
 import { createRoom, joinRoom, listPublicRooms } from "@/lib/roomService";
 import { validOrganization } from "@/lib/localCareer.mjs";
+import { PLAYBACK_SPEEDS, roomCapacity, SINGLE_MATCH_BEST_OF } from "@/lib/roomStorage.mjs";
 
 export default function MultiplayerPage() {
   const router = useRouter();
@@ -18,6 +19,9 @@ export default function MultiplayerPage() {
   const [roomName, setRoomName] = useState(null);
   const [isPublic, setIsPublic] = useState(true);
   const [playbackMode, setPlaybackMode] = useState("highlights");
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [roomFormat, setRoomFormat] = useState("major");
+  const [bestOf, setBestOf] = useState(3);
   const [rooms, setRooms] = useState([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
@@ -42,7 +46,7 @@ export default function MultiplayerPage() {
     try {
       const displayName = name.trim() || user.displayName || organization.name;
       const joinedCode = code === null
-        ? await createRoom(user.uid, displayName, organization, isPublic ? "public" : "private", playbackMode, roomName)
+        ? await createRoom(user.uid, displayName, organization, isPublic ? "public" : "private", playbackMode, roomName, playbackSpeed, { roomFormat, bestOf })
         : await joinRoom(code.trim().toUpperCase(), user.uid, displayName, organization);
       router.push(`/room/${joinedCode}`);
     } catch (err) {
@@ -82,6 +86,21 @@ export default function MultiplayerPage() {
             <input id="room-name" value={roomName ?? `${organization.name}'s Room`.slice(0, 35)} onChange={e => setRoomName(e.target.value)} maxLength={35} disabled={!!busy} className="field" />
             <label className="mt-4 block" htmlFor="nickname"><span className="label">Display name (optional)</span></label>
             <input id="nickname" value={name} onChange={e => setName(e.target.value)} placeholder={user.displayName || organization.name} maxLength={15} className="field" />
+            <div className="mt-4 flex flex-wrap gap-4">
+              <label className="flex-1">
+                <span className="label">Room type</span>
+                <select className="field" value={roomFormat} onChange={e => setRoomFormat(e.target.value)} disabled={!!busy}>
+                  <option value="major">Major</option>
+                  <option value="singleMatch">Single match</option>
+                </select>
+              </label>
+              {roomFormat === "singleMatch" && <label className="flex-1">
+                <span className="label">Series format</span>
+                <select className="field" value={bestOf} onChange={e => setBestOf(Number(e.target.value))} disabled={!!busy}>
+                  {SINGLE_MATCH_BEST_OF.map(format => <option key={format} value={format}>BO{format}</option>)}
+                </select>
+              </label>}
+            </div>
             <fieldset className="mt-4">
               <legend className="label">Match playback</legend>
               <div className="mt-2 flex gap-2">{[["highlights", "Highlights"], ["full", "Full match"]].map(([mode, label]) =>
@@ -89,6 +108,12 @@ export default function MultiplayerPage() {
                   className={`btn btn-secondary flex-1 border ${playbackMode === mode ? "border-white" : "border-transparent"}`}>{label}</button>
               )}</div>
             </fieldset>
+            <label className="mt-4 block">
+              <span className="label">Simulation speed</span>
+              <select className="field" value={playbackSpeed} onChange={e => setPlaybackSpeed(Number(e.target.value))} disabled={!!busy}>
+                {PLAYBACK_SPEEDS.map(speed => <option key={speed} value={speed}>{speed}x</option>)}
+              </select>
+            </label>
             <label className="mt-4 flex items-center gap-2 text-ink-2">
               <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} className="accent-[var(--ink)]" />
               List it in public rooms
@@ -116,7 +141,7 @@ export default function MultiplayerPage() {
               <li key={room.id} className="flex min-h-16 items-center gap-4 border-t border-rule py-2 first:border-t-0">
                 <div className="min-w-0 flex-1">
                   <p className="break-words font-medium">{room.name || room.id}</p>
-                  <p className="meta">{room.id} · {room.players?.length || 0} of 8 players · {room.playbackMode === "highlights" ? "Highlights" : "Full match"}</p>
+                  <p className="meta">{room.id} · {room.roomFormat === "singleMatch" ? `BO${room.bestOf} single match` : "Major"} · {room.players?.length || 0} of {roomCapacity(room)} players · {room.playbackMode === "highlights" ? "Highlights" : "Full match"}</p>
                 </div>
                 <button type="button" onClick={() => enter(room.id)} disabled={!!busy} className="btn btn-secondary">Join</button>
               </li>

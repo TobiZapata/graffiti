@@ -55,7 +55,7 @@ function DraftPool({ logos }) {
   );
 }
 
-function GameHub({ organization, ready, status, careerHref, logos }) {
+function GameHub({ organization, hasActiveMajor, ready, status, careerHref, logos }) {
   const router = useRouter();
   const [showPlaybackModes, setShowPlaybackModes] = useState(false);
   const careerToggle = useRef(null);
@@ -75,7 +75,7 @@ function GameHub({ organization, ready, status, careerHref, logos }) {
   return (
     <div className={`${styles.frame} ${styles.hub}`}>
       <section className={styles.modeGrid} aria-label="Game modes">
-        {organization ? <div className={careerCardClass} onKeyDown={event => {
+        {organization && !hasActiveMajor ? <div className={careerCardClass} onKeyDown={event => {
           if (event.key === "Escape" && showPlaybackModes) {
             setShowPlaybackModes(false);
             careerToggle.current?.focus();
@@ -94,11 +94,11 @@ function GameHub({ organization, ready, status, careerHref, logos }) {
             </div>
           </div>
           {!showPlaybackModes && <Arrow />}
-        </div> : <Link prefetch={false} href="/play" aria-busy={!ready} className={careerCardClass}>
+        </div> : <Link prefetch={false} href={careerHref} aria-busy={!ready} className={careerCardClass}>
           {careerLabel}
           <div className={styles.modeDetails}>
             <h2>Major Career</h2>
-            <p>Draft a roster and play the Major.</p>
+            <p>{status ?? "Draft a roster and play the Major."}</p>
           </div>
           <Arrow />
         </Link>}
@@ -144,7 +144,7 @@ export default function Home({ logos }) {
         )}
       </header>
       <main className={styles.main}>
-        <GameHub organization={activeOrganization} ready={ready}
+        <GameHub organization={activeOrganization} hasActiveMajor={hasActiveMajor} ready={ready}
           status={activeOrganization ? majorStatus(tournament) : null}
           careerHref={careerHref} logos={logos} />
       </main>

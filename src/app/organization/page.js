@@ -70,8 +70,6 @@ export default function OrganizationPage() {
   const hasTournament = standings.length > 0;
   const finished = ["won", "eliminated"].includes(stage) || (stage === "results_pending" && ["won", "eliminated"].includes(pendingResult));
   const continuing = hasTournament && !finished;
-  const playerMatch = matches.find(match => match.isPlayerMatch && !match.completed);
-  const playHref = playerMatch ? `/simulation/match?id=${encodeURIComponent(playerMatch.id)}` : "/simulation";
   const profile = organizationProfile(organization, { tournamentId, stage, pendingResult, matches, standings });
   const onlineMajor = rosterMajorFromRoom(roomSession?.room, roomSession?.userUid, organization, { includeActive: true });
   const recordProfile = organizationProfile(organization, recordMode === "online" ? onlineMajor || {} : { tournamentId, stage, pendingResult, matches, standings }, recordMode);
@@ -81,7 +79,7 @@ export default function OrganizationPage() {
   const locked = rosterLocked || !!storageError || starting;
   const benchUnlocked = (organization.majorHistory?.length ?? 0) > 0;
   const needsReplacement = organization.squad.length < 5;
-  const singleplayerDisabled = starting || (!continuing && (needsReplacement || rosterLocked || !!storageError));
+  const singleplayerDisabled = starting || needsReplacement || rosterLocked || !!storageError;
 
   async function rosterAction(action, ...args) {
     try { await action(...args); setError(""); }
@@ -91,11 +89,6 @@ export default function OrganizationPage() {
   async function start(mode) {
     try { localStorage.setItem("major-mvp:sp-playback-mode", mode); }
     catch { /* The career is still available when storage is blocked. */ }
-    if (continuing) {
-      setShowPlaybackModes(false);
-      router.push(playHref);
-      return;
-    }
     setStarting(true); setError("");
     try {
       await startOrganizationMajor();
@@ -129,6 +122,7 @@ export default function OrganizationPage() {
           <p className="meta tabular">Founded {Number.isFinite(founded) ? founded : "—"} · {profile.majorsPlayed} {profile.majorsPlayed === 1 ? "Major" : "Majors"} played</p>
         </div>
         <nav aria-label="Play modes" className="flex flex-wrap items-center gap-3 sm:ml-auto">
+          {continuing ? <Link href="/simulation" className="btn btn-primary btn-lg">Continue singleplayer</Link> :
           <div className="flex flex-wrap items-center gap-3" onKeyDown={event => {
             if (event.key === "Escape" && showPlaybackModes) {
               setShowPlaybackModes(false);
@@ -138,13 +132,13 @@ export default function OrganizationPage() {
             <button type="button" ref={singleplayerToggle} className="btn btn-primary btn-lg"
               aria-expanded={showPlaybackModes} aria-controls={playbackModesId} disabled={singleplayerDisabled}
               onClick={() => setShowPlaybackModes(open => !open)}>
-              {starting ? "Starting…" : continuing ? "Continue singleplayer" : "Singleplayer"}
+              {starting ? "Starting…" : "Singleplayer"}
             </button>
-            <div id={playbackModesId} hidden={!showPlaybackModes} className="flex-wrap gap-2 not-hidden:flex">
+            <div id={playbackModesId} hidden={!showPlaybackModes} className="flex-wrap gap-x-8 gap-y-6 not-hidden:flex">
               <button type="button" className="btn btn-secondary btn-lg" disabled={singleplayerDisabled} onClick={() => start("highlights")}>Highlights</button>
               <button type="button" className="btn btn-secondary btn-lg" disabled={singleplayerDisabled} onClick={() => start("full")}>Full match</button>
             </div>
-          </div>
+          </div>}
           <Link href="/multiplayer" className="btn btn-secondary btn-lg">Multiplayer</Link>
         </nav>
       </header>

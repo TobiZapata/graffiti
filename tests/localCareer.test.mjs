@@ -1,6 +1,6 @@
 ﻿import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CAREER_KEY, loadCareer, saveCareer, validCareer, validOrganization } from '../src/lib/localCareer.mjs';
+import { CAREER_KEY, loadCareer, saveCareer, saveCareerWithoutMajor, validCareer, validOrganization } from '../src/lib/localCareer.mjs';
 import { upgradeOrganization } from '../src/lib/upgradeOrganization.mjs';
 import { createMapVeto, applyMapVeto, vetoStatus } from '../src/lib/mapVeto.mjs';
 const organization = { id:'id', name:'Team', icon:'/icon', colors:['#123456','#abcdef'], squad:Array.from({length:5},(_,i)=>({player:{name:`P${i}`}})), mainAwperUid:'0', iglUid:'1', starUid:'2', createdAt:'2026-01-01' };
@@ -9,6 +9,16 @@ const match = { id:'m', round:1, teamA:standings[0], teamB:standings[1], complet
 const data = {version:1, organization, tournament:{tournamentId:'major',mySquad:organization.squad,teamName:'Team',stage:'swiss',pendingResult:null,swissRound:1,standings,matches:[match]},matchProgress:{m:{history:[],watchedMap:-1,playback:{selection:0,time:0,speed:1}}}};
 function storage(initial = null) { let value=initial; return {getItem:()=>value,setItem:(key,v)=>{assert.equal(key,CAREER_KEY);value=v}, value:()=>value}; }
 test('round trips career and progress',()=>{ const store=storage(); assert.equal(saveCareer(store,data),null); assert.deepEqual(loadCareer(store).data,data); });
+
+test('abandoning a Major clears match progress and preserves the organization, roster and history', () => {
+  const org = { ...organization, rosterVersion: 1, bench: { player: { name: 'Reserve' }, gamesPlayed: 3 },
+    benchTokens: 1, squad: organization.squad.map(slot => ({ ...slot, gamesPlayed: 5, ratingTotal: 5.5, ratingMatches: 5 })),
+    majorHistory: [{ id: 'previous-major', outcome: 'swiss', final: false, matches: [{ name: 'Opponent', major: 'Major', won: true }] }] };
+  const store = storage();
+  assert.equal(saveCareer(store, { ...data, organization: org }), null);
+  assert.equal(saveCareerWithoutMajor(store, org), null);
+  assert.deepEqual(loadCareer(store).data, { version: 1, organization: org, tournament: null, matchProgress: {} });
+});
 test('career resumes pending and completed veto without starting playback early', () => {
   let veto = createMapVeto(1, 'career-veto');
   const store = storage();

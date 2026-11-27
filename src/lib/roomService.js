@@ -2,8 +2,10 @@ import catalog from '../data/teams.json';
 import { upgradeOrganization } from './upgradeOrganization.mjs';
 import { auth, db } from './firebase';
 import { collection, doc, FieldPath, getDoc, getDocFromServer, getDocs, limit, query, runTransaction, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
-import { completedFinal, lobby, member, readyPlayers } from './roomLifecycle.mjs';
-import { decodeRoom, encodePlayers, PLAYBACK_SPEEDS } from './roomStorage.mjs';
+import { completedFinal, initializeSingleMatch, lobby, member, readyPlayers } from './roomLifecycle.mjs';
+import { decodeRoom, encodePlayers, PLAYBACK_SPEEDS, roomCapacity, SINGLE_MATCH_BEST_OF } from './roomStorage.mjs';
+import { compactMatchResult, validMatchResult } from './multiplayerResults.mjs';
+import { applyForfeits } from './roomForfeit.mjs';
 import { clearRoomSession, getPageSession, readRoomSession, rememberRoomSession, roomDeparture, roomSessionExpired } from './roomSession.mjs';
 import { initializeMultiplayerTournament } from './tournamentService';
 
@@ -34,13 +36,14 @@ async function availableSession(tx, uid) {
   if ((await tx.get(sessionRef(uid))).exists()) throw new Error('You already have an active room. Leave it in the original tab before joining another.');
 }
 
-export async function createRoom(uid, name, organization, visibility = 'public', playbackMode = 'highlights', roomName = '', playbackSpeed = 1) {
+export async function createRoom(uid, name, organization, visibility = 'public', playbackMode = 'highlights', roomName = '', playbackSpeed = 1, { roomFormat = 'major', bestOf = 1 } = {}) {
   authenticate(uid);
   const title = roomName?.trim() || `${organization.name}'s Room`.slice(0, 35);
   if (title.length > 35) throw new Error('Room names must be at most 35 characters.');
   if (!['public', 'private'].includes(visibility)) throw new Error('Invalid room visibility.');
   if (!['full', 'highlights'].includes(playbackMode)) throw new Error('Invalid playback mode.');
   if (!PLAYBACK_SPEEDS.includes(playbackSpeed)) throw new Error('Invalid playback speed.');
+  if (!['major', 'singleMatch'].includes(roomFormat) || (roomFormat === 'singleMatch' && !SINGLE_MATCH_BEST_OF.includes(bestOf))) throw new Error('Invalid room format.');
   const identity = getPageSession(), player = newMember(uid, name, organization, true);
   await cachePageToken(uid);
   for (let attempt = 0; attempt < 10; attempt++) {
@@ -49,7 +52,9 @@ export async function createRoom(uid, name, organization, visibility = 'public',
     const created = await runTransaction(db, async tx => {
       await availableSession(tx, uid);
       if ((await tx.get(ref)).exists()) return false;
-      tx.set(ref, { id: code, name: title, hostId: uid, status: 'lobby', visibility, playbackMode, playbackSpeed, players: encodePlayers([player]), schemaVersion: 3, generation: 0, createdAt: new Date().toISOString() });
+      tx.set(ref, { id: code, name: title, hostId: uid, status: 'lobby', visibility, playbackMode, playbackSpeed,
+        ...(roomFormat === 'singleMatch' ? { roomFormat, bestOf } : {}),
+        players: encodePlayers([player]), schemaVersion: 3, generation: 0, createdAt: new Date().toISOString() });
       tx.set(sessionRef(uid), sessionData(uid, code, identity));
       return true;
     });
@@ -66,7 +71,7 @@ export async function joinRoom(code, uid, name, organization) {
     await availableSession(tx, uid);
     const room = await readRoom(tx, ref);
     lobby(room);
-    if (room.players.length >= 8) throw new Error('This room is full.');
+    if (room.players.length >= roomCapacity(room)) throw new Error('This room is full.');
     const player = newMember(uid, name, organization, false);
     tx.update(ref, { players: encodePlayers([...room.players, player]) });
     tx.set(sessionRef(uid), sessionData(uid, room.id, identity));
@@ -83,6 +88,18 @@ export async function setRoomPlaybackSpeed(code, uid, playbackSpeed) {
     const room = await readRoom(tx, ref);
     lobby(room); host(room, uid); ownPage(room, uid);
     tx.update(ref, { playbackSpeed });
+  });
+}
+
+export async function setRoomBestOf(code, uid, bestOf) {
+  authenticate(uid);
+  if (!SINGLE_MATCH_BEST_OF.includes(bestOf)) throw new Error('Invalid best-of format.');
+  const ref = roomRef(code);
+  await runTransaction(db, async tx => {
+    const room = await readRoom(tx, ref);
+    lobby(room); host(room, uid); ownPage(room, uid);
+    if (room.roomFormat !== 'singleMatch') throw new Error('This is a Major lobby.');
+    tx.update(ref, { bestOf });
   });
 }
 
@@ -124,18 +141,41 @@ export async function startRoomMajor(code, uid) {
     const players = readyPlayers(room);
     const locks = await Promise.all(players.map(p => tx.get(lockRef(p.organization.id))));
     if (locks.some(s => s.exists())) throw new Error('One of these organizations is already playing another Major.');
-    const tournament = await initializeMultiplayerTournament(players);
+    const single = room.roomFormat === 'singleMatch';
+    const tournament = single ? initializeSingleMatch(players, room.bestOf) : await initializeMultiplayerTournament(players);
     players.forEach(p => tx.set(lockRef(p.organization.id), { ownerUid: p.uid, roomId: room.id, tournamentId }));
-    tx.update(ref, { status: 'playing', generation: (room.generation || 0) + 1, tournament: { ...tournament, tournamentId, participantUids: players.map(p => p.uid), abandonedUids: [], matchesStarted: false } });
+    tx.update(ref, { status: 'playing', generation: (room.generation || 0) + 1, tournament: { ...tournament, tournamentId, participantUids: players.map(p => p.uid), abandonedUids: [], matchesStarted: single } });
   });
 }
 
-export async function returnRoomToLobby(code, uid) {
+export async function completeRoomSingleMatch(code, uid, tournamentId, result) {
+  authenticate(uid);
+  const ref = roomRef(code);
+  return runTransaction(db, async tx => {
+    const room = await readRoom(tx, ref), tournament = room.tournament;
+    ownPage(room, uid);
+    if (room.roomFormat !== 'singleMatch' || tournament?.tournamentId !== tournamentId || !tournament.participantUids.includes(uid)) throw new Error('This match is no longer active.');
+    const [match] = tournament.matches;
+    if (match.completed) return match.result;
+    if (room.status !== 'playing' || tournament.stage !== 'single_match') throw new Error('This match is no longer active.');
+    const forfeited = tournament.abandonedUids.length > 0;
+    if (!forfeited && !validMatchResult(match, result)) throw new Error('Invalid match result.');
+    const completed = forfeited ? applyForfeits(tournament).matches[0] : { ...match, completed: true, result: compactMatchResult(match, result) };
+    tx.update(ref, { 'tournament.stage': 'won', 'tournament.matches': [completed] });
+    return forfeited ? completed.result : result;
+  });
+}
+
+export async function returnRoomToLobby(code, uid, finishedId) {
   authenticate(uid);
   const ref = roomRef(code), results = await getDocs(collection(ref, 'results'));
   await runTransaction(db, async tx => {
     const room = await readRoom(tx, ref);
-    host(room, uid); ownPage(room, uid);
+    ownPage(room, uid);
+    if (room.roomFormat === 'singleMatch') {
+      if (room.status === 'lobby' || (finishedId && room.tournament?.tournamentId !== finishedId)) return;
+      if (!room.tournament.participantUids.includes(uid)) throw new Error('You are not in this match.');
+    } else host(room, uid);
     const final = completedFinal(room);
     const participants = room.players.filter(p => room.tournament.participantUids.includes(p.uid));
     const locks = await Promise.all(participants.map(p => tx.get(lockRef(p.organization.id))));
@@ -163,7 +203,7 @@ async function departRoom(code, uid, reason, expectedPageId) {
     const lock = room.status === 'playing' && departure.target.participating ? await tx.get(lockRef(departure.target.organization.id)) : null;
     const closeSessions = departure.closed ? await Promise.all(room.players.filter(p => p.uid !== uid).map(p => tx.get(sessionRef(p.uid)))) : [];
     if (departure.closed && !preview?.closed) throw new Error('The room changed while closing. Try leaving again.');
-    if (departure.forfeit) tx.set(doc(db, 'users', uid, 'abandonments', room.tournament.tournamentId), {
+    if (departure.forfeit && room.roomFormat !== 'singleMatch') tx.set(doc(db, 'users', uid, 'abandonments', room.tournament.tournamentId), {
       ownerUid: uid, organizationId: departure.target.organization.id, roomId: room.id,
       tournamentId: room.tournament.tournamentId, reason, at: serverTimestamp(),
     });

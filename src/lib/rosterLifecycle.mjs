@@ -89,6 +89,13 @@ export function departureProbabilities(org, tournament) {
 }
 export function finishRosterMajor(org, tournament) {
   checkOrg(org);
+  if (tournament?.singleMatch) {
+    const history = org.singleMatchHistory || [];
+    const id = tournament.tournamentId;
+    if (!validId(id)) throw new Error('Invalid match');
+    return history.some(record => record.id === id) ? org :
+      { ...org, singleMatchHistory: [...history, { ...tournament.singleMatch, id }] };
+  }
   if (!validId(tournament?.tournamentId) || !Array.isArray(tournament.matches)) throw new Error('Invalid Major');
   const history = org.majorHistory || [];
   if (history.some(record => record.id === tournament.tournamentId)) return org;

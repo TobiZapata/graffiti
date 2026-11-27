@@ -4,6 +4,18 @@ import { expectedMajorOutcome } from './rosterLifecycle.mjs';
 export function rosterMajorFromRoom(room, uid, organization, { includeActive = false } = {}) {
   const t = room?.tournament;
   const participant = room?.players?.find(p => p.uid === uid && p.organization?.id === organization?.id);
+  if (room?.roomFormat === 'singleMatch') {
+    const match = t?.matches?.[0];
+    if (!t?.tournamentId || !participant || t.stage !== 'won' || !match?.completed || !match.result ||
+        !match.playerUids?.includes(uid) || organization.singleMatchHistory?.some(record => record.id === t.tournamentId)) return null;
+    const me = match.teamA.uid === uid ? match.teamA : match.teamB;
+    const rival = me === match.teamA ? match.teamB : match.teamA;
+    return { tournamentId: t.tournamentId, singleMatch: {
+      name: rival.name, major: rival.major || '', icon: rival.icon || '',
+      organizationId: rival.organizationId,
+      won: match.result.winner === me.id,
+    } };
+  }
   if (!t?.tournamentId || !participant || !t.participantUids?.includes(uid) || t.abandonedUids?.includes(uid) || organization.majorHistory?.some(r => r.id === t.tournamentId)) return null;
   const me = t.standings?.find(team => team.uid === uid);
   if (!me) return null;

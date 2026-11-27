@@ -56,6 +56,10 @@ test('compact online ratings roundtrip through submission and roster closure in 
   assert.ok(compact.playerRatings[5] > compact.playerRatings[0]);
   assert.equal(Object.hasOwn(compact.maps[0], 'playerStats'), false);
   assert.equal(validMatchResult(game, compact), true);
+  const single = { ...game, round: 'Single match', bestOf: 1 };
+  const singleResult = compactMatchResult(single, full);
+  assert.equal(Object.hasOwn(singleResult, 'playerRatings'), false);
+  assert.equal(validMatchResult(single, singleResult), true);
   const event = applySubmittedResults({ ...tournament, matches: [game], standings: [game.teamA, game.teamB] }, [{ ...submission, result: compact }]);
   const org = { id: 'rated-club', squad: game.teamB.players.map(player => ({ player })), starUid: '0', mainAwperUid: '0', iglUid: '1' };
   assert.equal(careerPlayerRating(org.squad[0], event.matches), compact.playerRatings[5]);

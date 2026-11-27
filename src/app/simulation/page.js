@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppBar from "@/components/AppBar";
@@ -17,9 +17,11 @@ const isMine = m => Boolean(m.isPlayerMatch);
 const isMineTeam = t => Boolean(t?.isPlayer);
 
 export default function SimulationPage() {
-  const { ready, stage, pendingResult, swissRound, standings, matches, matchProgress, advanceRound, continueToPlayoffs } = useTournament();
+  const { ready, stage, pendingResult, swissRound, standings, matches, matchProgress, tournamentId, canAbandonMajor, abandonMajor, advanceRound, continueToPlayoffs } = useTournament();
   const router = useRouter();
   const [rosterTeam, setRosterTeam] = useState(null);
+  const [abandonId, setAbandonId] = useState(null);
+  const abandonToggle = useRef(null);
 
   const currentRoundMatches = matches.filter(m => stage === "swiss" ? m.round === swissRound : PLAYOFF_ROUNDS.includes(m.round));
   const playerMatch = currentRoundMatches.find(m => m.isPlayerMatch && !m.completed);
@@ -42,6 +44,12 @@ export default function SimulationPage() {
   const hasPlayoffs = matches.some(m => typeof m.round === "string");
   const [title, subtitle] = majorHeading(stage, swissRound, matches);
   const resuming = playerMatch && matchProgress?.[playerMatch.id];
+  const confirmingAbandon = canAbandonMajor && abandonId === tournamentId;
+
+  function cancelAbandon() {
+    setAbandonId(null);
+    abandonToggle.current?.focus();
+  }
 
   let lead = null;
   if (["swiss", "playoffs"].includes(stage) && playerMatch) {
@@ -65,9 +73,22 @@ export default function SimulationPage() {
   return <>
     <AppBar />
     <main className="mx-auto grid w-full max-w-[1440px] grid-cols-1 gap-6 px-4 py-8 sm:px-6">
-      <header className="flex items-baseline gap-3">
+      <header className="flex flex-wrap items-baseline gap-3">
         <h1 className="text-[20px] font-medium">{title}</h1>
         {subtitle && <span className="meta">{subtitle}</span>}
+        {canAbandonMajor && <div role="group" aria-label="Major abandonment" className="ml-auto inline-flex items-center gap-2"
+          onKeyDown={event => {
+            if (event.key === "Escape" && confirmingAbandon) cancelAbandon();
+          }}>
+          <button type="button" ref={abandonToggle} className="btn btn-secondary"
+            aria-expanded={confirmingAbandon} aria-label={confirmingAbandon ? "Cancel abandoning Major" : undefined}
+            onClick={confirmingAbandon ? cancelAbandon : () => setAbandonId(tournamentId)}>
+            {confirmingAbandon ? "Cancel" : "Abandon Major"}
+          </button>
+          {confirmingAbandon && <button type="button" className="btn btn-secondary" aria-label="Confirm abandoning Major" onClick={() => {
+            if (abandonMajor()) router.replace("/organization");
+          }}>Confirm</button>}
+        </div>}
       </header>
       {lead}
       {hasPlayoffs

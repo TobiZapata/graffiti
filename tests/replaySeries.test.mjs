@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { replayBestOf, replaySeriesResult, validSeriesProgress } from '../src/lib/replaySeries.mjs';
 import { createMapVeto, applyMapVeto, vetoStatus } from '../src/lib/mapVeto.mjs';
+import { advanceMultiplayerVeto, createMultiplayerVeto, validMultiplayerVeto } from '../src/lib/multiplayerVeto.mjs';
 
 const match = (round = 1, wins = 0, losses = 0) => ({round, teamA:{id:'a',wins,losses},teamB:{id:'b',wins,losses}});
 const map = winnerId => ({map:'de_mirage',scoreA:winnerId==='a'?13:8,scoreB:winnerId==='b'?13:8,winnerId});
@@ -17,6 +18,35 @@ test('Swiss qualification and elimination matches use BO3; playoffs retain BO3 a
   for(const m of [match(3,2,0),match(3,0,2),match(5,2,2),match('Quarterfinals'),match('Semifinals')]) assert.equal(replayBestOf(m),3);
   assert.equal(replayBestOf(match('Final')),5);
 });
+
+for (const bestOf of [1, 3, 5]) {
+  test(`a direct PvP match uses BO${bestOf} for veto, saved playback and final score`, () => {
+    const direct = { ...match('Single match'), bestOf };
+    const seed = 'room:series:single:veto';
+    assert.equal(replayBestOf(direct), bestOf);
+    let shared = createMultiplayerVeto('series', 'single', 0, replayBestOf(direct), seed, 1_000);
+    while (!vetoStatus(shared.veto).done) {
+      const { turn, remaining } = vetoStatus(shared.veto);
+      shared = advanceMultiplayerVeto(shared, {
+        actionIndex: shared.veto.actions.length, playerTeam: turn, map: remaining[0],
+        now: shared.turnDeadlineMs - 1, vetoSeed: seed,
+      });
+    }
+    assert.ok(validMultiplayerVeto(shared, 'series', 'single', 0, bestOf));
+    const { maps } = vetoStatus(shared.veto);
+    assert.equal(maps.length, bestOf);
+    const played = maps.map((id, index) => ({ ...map(index % 2 ? 'b' : 'a'), map: id }));
+    const history = played.slice(0, -1);
+    assert.ok(validSeriesProgress(direct, {
+      veto: shared.veto, vetoStarted: true, history, map: maps.at(-1), watchedMap: -1, playback: null,
+    }));
+    assert.equal(replaySeriesResult(direct, history).done, false);
+    const { done, result } = replaySeriesResult(direct, played);
+    assert.equal(done, true);
+    assert.equal(result.winner, 'a');
+    assert.deepEqual([result.scoreA, result.scoreB], bestOf === 1 ? [13, 8] : [(bestOf + 1) / 2, (bestOf - 1) / 2]);
+  });
+}
 test('series counts map wins, stops at majority and reports BO1 rounds', () => {
   assert.equal(replaySeriesResult(match(),[]).done,false);
   assert.deepEqual([replaySeriesResult(match(),[map('b')]).result.scoreA,replaySeriesResult(match(),[map('b')]).result.scoreB],[8,13]);

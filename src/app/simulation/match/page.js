@@ -1,7 +1,7 @@
 "use client";
-import { Suspense, useCallback, useState, useSyncExternalStore } from "react";
+import { Suspense, useCallback, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTournament } from "@/context/TournamentContext";
 import HybridMatchPlayer from "@/components/HybridMatchPlayer";
 
@@ -19,22 +19,27 @@ function subscribePlaybackMode(onChange) {
 }
 
 function MatchContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const { matches, completeMatch, tournamentId, simulation, matchProgress, saveMatchProgress } = useTournament();
+  const { matches, completeMatch, tournamentId, simulation, matchProgress, saveMatchProgress, canAbandonMajor, abandonMajor } = useTournament();
   const matchId = searchParams.get("id");
   const match = matches.find(candidate => candidate.id === matchId);
   const storedMode = useSyncExternalStore(subscribePlaybackMode, readPlaybackMode, defaultPlaybackMode);
-  const [chosenMode, setChosenMode] = useState(null);
-  const changePlaybackMode = (mode) => {
-    setChosenMode(mode);
-    try { localStorage.setItem(PLAYBACK_MODE_KEY, mode); }
-    catch { /* The current selection still works when storage is unavailable. */ }
-  };
-  const persistProgress = useCallback(progress => saveMatchProgress(matchId, progress), [matchId, saveMatchProgress]);
+  const persistProgress = useCallback(progress => {
+    // The career checkpoint accepts legacy speeds. The viewer restores 6x from its own preference.
+    const checkpoint = progress.playback?.speed === 6
+      ? { ...progress, playback: { ...progress.playback, speed: 1 } }
+      : progress;
+    return saveMatchProgress(matchId, checkpoint);
+  }, [matchId, saveMatchProgress]);
   if (!match || !match.isPlayerMatch) return <main className="p-6"><p>There is no match waiting to be played.</p>
     <Link href="/simulation" className="link mt-2 inline-block underline">Back to the Major</Link></main>;
   return <HybridMatchPlayer key={`${tournamentId}:${match.id}`} match={match} tournamentId={tournamentId} simulation={simulation}
-    playbackMode={chosenMode ?? storedMode} onPlaybackModeChange={changePlaybackMode}
+    playbackMode={storedMode} onAbandon={canAbandonMajor ? () => {
+      if (!abandonMajor()) return false;
+      router.replace("/organization");
+      return true;
+    } : undefined}
     vetoPlayer={match.teamA.isPlayer ? 'A' : 'B'}
     initialProgress={matchProgress?.[match.id]} onSaveProgress={persistProgress} onFinish={result => {
     return completeMatch(match.id, result);

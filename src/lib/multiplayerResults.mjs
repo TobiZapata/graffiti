@@ -22,7 +22,8 @@ export function validMatchResult(match, result) {
 export function compactMatchResult(match, result) {
   const compact = { teamA: match.teamA, teamB: match.teamB, scoreA: result.scoreA, scoreB: result.scoreB, winner: result.winner,
     maps: result.maps.map(({ map, scoreA, scoreB, winnerId }) => ({ map, scoreA, scoreB, winnerId })) };
-  if (result.maps.every(hasMapMetrics)) {
+  // Keep single-match BO5 writes within Firestore's rules evaluation limit.
+  if (match.round !== 'Single match' && result.maps.every(hasMapMetrics)) {
     const summary = summarizeMatchPlayers(match, result.maps);
     if (summary.metricsComplete) {
       // Ratings follow team A's five roster slots, then team B's five slots.

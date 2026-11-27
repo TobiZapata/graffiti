@@ -19,7 +19,7 @@ export function buildMajorRecord({ tournamentId, stage, pendingResult, matches =
 
 export function organizationProfile(organization, tournament = {}, mode) {
   let records = [...(organization?.majorHistory || [])];
-  if (tournament.tournamentId) {
+  if (tournament.tournamentId && !tournament.singleMatch) {
     const current = buildMajorRecord(tournament);
     const index = records.findIndex(record => record.id === current.id);
     if (index !== -1) records.splice(index, 1);
@@ -28,6 +28,10 @@ export function organizationProfile(organization, tournament = {}, mode) {
   // shortcut: records saved before mode tracking count as offline; their original mode cannot be recovered.
   if (mode) records = records.filter(record => (record.mode || 'offline') === mode);
   const allMatches = records.flatMap(record => record.matches);
+  if (!mode || mode === 'online') {
+    allMatches.push(...(organization?.singleMatchHistory || []));
+    if (tournament.singleMatch && !organization?.singleMatchHistory?.some(m => m.id === tournament.tournamentId)) allMatches.push(tournament.singleMatch);
+  }
   const wins = allMatches.filter(match => match.won).length;
   const rivals = new Map();
   for (const match of allMatches) {
@@ -42,7 +46,7 @@ export function organizationProfile(organization, tournament = {}, mode) {
     matchesPlayed: allMatches.length, wins, winrate: allMatches.length ? wins / allMatches.length * 100 : null,
     majorsPlayed: records.length, championships: records.filter(r => r.outcome === 'champion').length,
     finals: records.filter(r => r.final).length,
-    recentMajors: records.slice(tournament.tournamentId ? -4 : -3).reverse().map(({ id, outcome }) => ({ id, outcome })),
+    recentMajors: records.slice(tournament.tournamentId && !tournament.singleMatch ? -4 : -3).reverse().map(({ id, outcome }) => ({ id, outcome })),
     rivals: [...rivals.values()].map(r => ({ ...r, winrate: r.wins / r.matches * 100 })).sort((a, b) => b.matches - a.matches || a.name.localeCompare(b.name)).slice(0, 5)
   };
 }

@@ -69,7 +69,7 @@ function MapLoading({ map, teamA, teamB }) {
   );
 }
 
-export default function HybridMatchPlayer({ match, onFinish, backHref = "/simulation", tournamentId = "", initialProgress = null, onSaveProgress, playbackMode = "full", onPlaybackModeChange, playbackSpeed = 1, isMultiplayer = false, simulation = null, vetoPlayer = null, pvpVeto = null, allowShortcuts = true }) {
+export default function HybridMatchPlayer({ match, onFinish, onAbandon, backHref = "/simulation", tournamentId = "", initialProgress = null, onSaveProgress, playbackMode = "full", playbackSpeed = 1, isMultiplayer = false, simulation = null, vetoPlayer = null, pvpVeto = null, allowShortcuts = true }) {
   const showControls = !isMultiplayer && process.env.NODE_ENV === "development";
   const vetoSeed = `${tournamentId}:${match.id}:veto`;
   const [localVeto, setVeto] = useState(() => initialProgress?.veto ?? (!pvpVeto && !initialProgress && !match.completed && vetoPlayer
@@ -97,6 +97,9 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
   const [recovered, setRecovered] = useState(null);
   const [confirmed, setConfirmed] = useState(null);
   const [confirmSkip, setConfirmSkip] = useState(false);
+  const [confirmAbandon, setConfirmAbandon] = useState(false);
+  const [abandonFailed, setAbandonFailed] = useState(false);
+  const abandonToggle = useRef(null);
   const bank = useRef({}), metrics = useRef({}), submitting = useRef(false);
   const loadMetrics = useCallback(async map => {
     metrics.current[map] ??= await readReplayJSON(REPLAY_MAPS[map].metrics);
@@ -214,6 +217,13 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
 
   // Only read once the map has been watched, so the label never spoils the result.
   const lastMap = data && replaySeriesResult(match, [...history, { winnerId: data.winner === "A" ? match.teamA.id : match.teamB.id }]).done;
+  const showAbandon = started && !isMultiplayer && onAbandon;
+
+  function cancelAbandon() {
+    setConfirmAbandon(false);
+    setAbandonFailed(false);
+    abandonToggle.current?.focus();
+  }
 
   if (result) return <MatchSummary match={match} result={result} backHref={backHref}
     loadingStats={needsStats && recovered?.source !== finalized}
@@ -231,18 +241,25 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
   return <div className="min-h-screen bg-bg text-ink">
     <header className="border-b border-rule">
       <div className="mx-auto flex min-h-14 max-w-[1480px] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2 sm:px-6">
-        <Link href={backHref} className="link">Back to the Major</Link>
+        {!isMultiplayer && <Link href={backHref} className="link">Back to the Major</Link>}
         <p className="meta tabular">
           {REPLAY_MAPS[map].label} · BO{series.bestOf} · map {index + 1}{playbackMode === "highlights" && " · Highlights"}
           {series.bestOf > 1 && <> · series {series.winsA}–{series.winsB}</>}
           {history.map((map, i) => <span key={i}> · map {i + 1} {map.scoreA}–{map.scoreB}</span>)}
         </p>
-        <div className="ml-auto flex items-center gap-3">
-          {!isMultiplayer && onPlaybackModeChange && (!showControls || !watched) && <select aria-label="Playback mode"
-            className="btn btn-secondary" value={playbackMode} onChange={event => onPlaybackModeChange(event.target.value)}>
-            <option value="full">Full</option>
-            <option value="highlights">Highlights</option>
-          </select>}
+        <div className="ml-auto flex flex-wrap items-center gap-3">
+          {showAbandon && <div role="group" aria-label="Major abandonment" className="inline-flex items-center gap-2" onKeyDown={event => {
+            if (event.key === "Escape" && confirmAbandon) cancelAbandon();
+          }}>
+            <button type="button" ref={abandonToggle} className={confirmAbandon ? "btn btn-secondary" : "link min-h-11"}
+              aria-expanded={confirmAbandon} aria-label={confirmAbandon ? "Cancel abandoning Major" : undefined}
+              onClick={confirmAbandon ? cancelAbandon : () => setConfirmAbandon(true)}>
+              {confirmAbandon ? "Cancel" : "Abandon Major"}
+            </button>
+            {confirmAbandon && <button type="button" className="btn btn-secondary" aria-label="Confirm abandoning Major" onClick={() => {
+              if (onAbandon() === false) setAbandonFailed(true);
+            }}>Confirm</button>}
+          </div>}
           {showControls && data && (watched ? (
             <button type="button" className="btn btn-primary" disabled={saving} onClick={finishMap}>
               {saving ? "Saving result…" : lastMap ? "Finish match" : "Next map"}
@@ -257,6 +274,7 @@ export default function HybridMatchPlayer({ match, onFinish, backHref = "/simula
         </div>
       </div>
     </header>
+    {abandonFailed && <p role="alert" className="mx-auto max-w-[1480px] px-4 py-4 text-negative sm:px-6">The Major could not be abandoned. Try again.</p>}
     {currentError && <div role="alert" className="mx-auto max-w-[1480px] px-4 py-4 text-negative sm:px-6"><p>{currentError}</p>
       {!data && <button type="button" className="btn btn-secondary mt-3" onClick={() => setRetry(value => value + 1)}>Try again</button>}</div>}
     {!started && <form className="mx-auto flex max-w-[1480px] items-center gap-4 px-4 py-6 sm:px-6" onSubmit={event => {

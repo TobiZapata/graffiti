@@ -11,9 +11,9 @@ import RoomRolesDialog from "@/components/RoomRolesDialog";
 import { useAuth } from "@/context/AuthContext";
 import { useTournament } from "@/context/TournamentContext";
 import { validOrganization } from "@/lib/localCareer.mjs";
-import { kickRoomMember, leaveRoom, setRoomPlaybackSpeed, setRoomReady, startRoomMajor } from "@/lib/roomService";
+import { kickRoomMember, leaveRoom, returnRoomToLobby, setRoomBestOf, setRoomPlaybackSpeed, setRoomReady, startRoomMajor } from "@/lib/roomService";
 import { ROLE_FIELDS } from "@/lib/majorDisplay.mjs";
-import { decodeRoom, PLAYBACK_SPEEDS } from "@/lib/roomStorage.mjs";
+import { decodeRoom, PLAYBACK_SPEEDS, roomCapacity, SINGLE_MATCH_BEST_OF } from "@/lib/roomStorage.mjs";
 
 export default function RoomPage({ params }) {
   const roomId = use(params).id;
@@ -23,16 +23,38 @@ export default function RoomPage({ params }) {
   const [room, setRoom] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
+  const [lobbyRetry, setLobbyRetry] = useState(0);
+  const [lobbyError, setLobbyError] = useState("");
 
   useEffect(() => {
     if (loading || !user) return;
-    return onSnapshot(doc(db, "rooms", roomId), snapshot => {
+    return onSnapshot(doc(db, "rooms", roomId), { includeMetadataChanges: true }, snapshot => {
+      if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return;
       if (!snapshot.exists()) { setError("This room doesn't exist or was closed."); setRoom(null); return; }
       const data = decodeRoom(snapshot.data());
       setRoom(data);
-      if (data.status === "playing" && data.tournament?.participantUids?.includes(user.uid)) router.push(`/room/${roomId}/simulation`);
+      if (data.status === "playing" && data.tournament?.participantUids?.includes(user.uid)) {
+        if (data.roomFormat === "singleMatch") {
+          if (data.tournament.stage === "single_match") router.replace(`/room/${roomId}/match?id=single-match`);
+        } else {
+          router.push(`/room/${roomId}/simulation`);
+        }
+      }
     }, err => setError(err.message || "Could not connect to the room."));
   }, [roomId, user, loading, router]);
+
+  const uid = user?.uid;
+  const finishedSingleMatch = room?.roomFormat === "singleMatch" && room.status === "playing" &&
+    room.tournament?.stage === "won" && room.tournament.participantUids.includes(uid) && room.players.some(p => p.uid === uid && !p.left);
+  const finishedId = finishedSingleMatch ? room.tournament.tournamentId : null;
+  useEffect(() => {
+    if (!finishedId) return;
+    let active = true;
+    returnRoomToLobby(roomId, uid, finishedId).catch(err => {
+      if (active) setLobbyError(err.message || "Could not return to the lobby.");
+    });
+    return () => { active = false; };
+  }, [finishedId, lobbyRetry, roomId, uid]);
 
   async function run(action, operation) {
     setBusy(action);
@@ -53,9 +75,12 @@ export default function RoomPage({ params }) {
   const me = players.find(p => p.uid === user.uid && !p.left);
   const isHost = room.hostId === user.uid;
   const included = players.filter(p => !p.left);
-  const canStart = included.length > 0 && included.every(p => p.isReady);
+  const isSingleMatch = room.roomFormat === "singleMatch";
+  const canStart = (isSingleMatch ? included.length === roomCapacity(room) && included.every(p => p.participating) : included.length > 0) &&
+    included.every(p => p.isReady && validOrganization(p.organization) && p.organization.squad.length === 5);
   const inLobby = room.status === "lobby";
   const canReady = validOrganization(organization) && organization.squad.length === 5;
+  const canEditSettings = isHost && me && inLobby && room.schemaVersion === 3;
 
   return <>
     <AppBar />
@@ -64,8 +89,21 @@ export default function RoomPage({ params }) {
         <div>
           <h1 className="text-[20px] font-medium break-words">{room.name || `Room ${roomId}`}</h1>
           <p className="meta mt-2">Room code: <span className="tabular tracking-[0.1em]">{roomId}</span></p>
+          <p className="meta mt-2">{isSingleMatch ? "Single match · 1v1" : "Major"}</p>
+          {isSingleMatch && (canEditSettings ? (
+            <label className="meta mt-2 flex items-center gap-2">
+              Series format
+              <select className="rounded-lg bg-control p-2 text-ink" value={room.bestOf} disabled={!!busy}
+                onChange={event => {
+                  const format = Number(event.target.value);
+                  run("format", () => setRoomBestOf(roomId, user.uid, format));
+                }}>
+                {SINGLE_MATCH_BEST_OF.map(format => <option key={format} value={format}>BO{format}</option>)}
+              </select>
+            </label>
+          ) : <p className="meta mt-2">Series format: BO{room.bestOf}</p>)}
           <p className="meta mt-2">{room.playbackMode === "highlights" ? "Highlights · one third of rounds, rounded up. All rounds count." : "Full match · every round."}</p>
-          {isHost && me && inLobby && room.schemaVersion === 3 ? (
+          {canEditSettings ? (
             <label className="meta mt-2 flex items-center gap-2">
               Simulation speed
               <select className="rounded-lg bg-control p-2 text-ink" value={room.playbackSpeed} disabled={!!busy}
@@ -77,7 +115,9 @@ export default function RoomPage({ params }) {
               </select>
             </label>
           ) : <p className="meta mt-2">Simulation speed: {room.playbackSpeed}x</p>}
-          <p className="mt-1 text-ink-2">{inLobby ? "Share the code. The host starts the Major once everyone in the room is ready." : "A Major is being played in this room."}</p>
+          <p className="mt-1 text-ink-2">{inLobby
+            ? (isSingleMatch ? "Share the code. Both players must be ready before the host can start." : "Share the code. The host starts the Major once everyone in the room is ready.")
+            : (finishedSingleMatch ? "Returning to the lobby…" : isSingleMatch ? "A match is being played in this room." : "A Major is being played in this room.")}</p>
         </div>
         {me && inLobby && <button type="button" disabled={!!busy} className="link disabled:opacity-40"
           onClick={() => run("leave", async () => { await leaveRoom(roomId, user.uid); router.push("/multiplayer"); })}>
@@ -85,18 +125,23 @@ export default function RoomPage({ params }) {
         </button>}
       </header>
       {error && <p role="alert" className="mt-4 text-negative">{error}</p>}
+      {finishedSingleMatch && lobbyError && <p role="alert" className="mt-4 text-negative">{lobbyError} <button type="button" className="link underline" onClick={() => {
+        setLobbyError("");
+        setLobbyRetry(retry => retry + 1);
+      }}>Try again</button></p>}
       {!me && <p role="alert" className="mt-4">You are no longer in this room. {back}</p>}
 
       <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <section className="card p-6" aria-labelledby="orgs-title">
           <div className="flex items-baseline justify-between">
             <h2 id="orgs-title" className="text-[16px] font-medium">Organizations</h2>
-            <span className="meta tabular">{players.filter(p => !p.left).length} of 8</span>
+            <span className="meta tabular">{included.length} of {roomCapacity(room)}</span>
           </div>
           <ul className="mt-4 grid gap-4 sm:grid-cols-2">{players.map(p => {
             const org = p.organization;
             const playing = room.status === "playing" && room.tournament?.participantUids?.includes(p.uid);
-            const state = p.left ? "Left the Major" : playing ? "In the Major" : p.isReady ? "Ready" : "Getting ready";
+            const state = p.left ? (isSingleMatch ? "Left the match" : "Left the Major")
+              : playing ? (isSingleMatch ? "In the match" : "In the Major") : p.isReady ? "Ready" : "Getting ready";
             return <li key={p.uid} className="rounded-xl bg-raised p-4">
               <div className="flex items-center gap-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -141,13 +186,14 @@ export default function RoomPage({ params }) {
 
           {isHost && inLobby && <section className="card p-6" aria-labelledby="host-title">
             <h2 id="host-title" className="text-[16px] font-medium">Host</h2>
-            <p className="mt-1 text-ink-2">{canStart ? "Everyone in the room is ready." : "Everyone in the room has to be ready first."}</p>
+            <p className="mt-1 text-ink-2">{canStart ? "Everyone in the room is ready."
+              : isSingleMatch ? "Two players with complete rosters must be ready." : "Everyone in the room has to be ready first."}</p>
             <button type="button" disabled={!!busy || !canStart} className="btn btn-primary btn-lg mt-6"
-              onClick={() => run("start", () => startRoomMajor(roomId, user.uid))}>{busy === "start" ? "Starting…" : "Start Major"}</button>
+              onClick={() => run("start", () => startRoomMajor(roomId, user.uid))}>{busy === "start" ? "Starting…" : isSingleMatch ? "Start match" : "Start Major"}</button>
           </section>}
 
-          {room.status === "playing" && <Link href={`/room/${roomId}/simulation`} className="btn btn-primary self-start">Watch the Major</Link>}
-          {inLobby && room.lastMajor && room.tournament && <Link href={`/room/${roomId}/simulation?results=1`} prefetch={false} className="link underline">See the last Major&apos;s results</Link>}
+          {!isSingleMatch && room.status === "playing" && <Link href={`/room/${roomId}/simulation`} className="btn btn-primary self-start">Watch the Major</Link>}
+          {!isSingleMatch && inLobby && room.lastMajor && room.tournament && <Link href={`/room/${roomId}/simulation?results=1`} prefetch={false} className="link underline">See the last Major&apos;s results</Link>}
         </div>
       </div>
     </main>

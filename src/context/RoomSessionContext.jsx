@@ -29,7 +29,11 @@ export function RoomSessionProvider({ children }) {
   useEffect(() => { pathRef.current = pathname; }, [pathname]);
   const activeMajor = room?.status === "playing" && room.tournament?.stage !== "won" && room.tournament?.participantUids?.includes(uid) && room.players?.some(p => p.uid === uid && !p.left);
   const majorRef = useRef(false);
-  useEffect(() => { majorRef.current = !!activeMajor; }, [activeMajor]);
+  const singleMatchRef = useRef(false);
+  useEffect(() => {
+    majorRef.current = !!activeMajor;
+    singleMatchRef.current = room?.roomFormat === "singleMatch";
+  }, [activeMajor, room?.roomFormat]);
 
   useEffect(() => {
     function sync() {
@@ -102,7 +106,7 @@ export function RoomSessionProvider({ children }) {
           const previous = prior.exists() ? decodeRoom(prior.data()) : null;
           const forfeited = previous?.status === "playing" && previous.tournament?.stage !== "won" && previous.players?.some(p => p.uid === uid && p.participating && !p.left);
           await leaveRoom(claim.roomId, uid, "reload", claim.pageId);
-          if (!cancelled) { setNotice(forfeited ? "You left the room when the page was reloaded and forfeited the Major." : "You left the room when the page was reloaded."); router.replace("/multiplayer"); }
+          if (!cancelled) { setNotice(forfeited ? `You left the room when the page was reloaded and forfeited the ${previous.roomFormat === "singleMatch" ? "match" : "Major"}.` : "You left the room when the page was reloaded."); router.replace("/multiplayer"); }
         } else if (expired) {
           await reconcileRoomSessions(claim.roomId);
           if (stored?.pageId === claim.pageId && readRoomSession()?.pageId === stored.pageId) clearRoomSession();
@@ -150,7 +154,7 @@ export function RoomSessionProvider({ children }) {
       const data = snapshot.exists() ? decodeRoom(snapshot.data()) : null;
       setRoom(data);
       if (!data || data.status === "closed") endSession("This room was closed. You have returned to multiplayer.");
-      else if (!data.players?.some(p => p.uid === uid && !p.left)) endSession(data.lastDeparture?.uid === uid && data.lastDeparture.reason === "kicked" ? "The host removed you from the lobby." : "You have left this room. An active Major may have been forfeited.");
+      else if (!data.players?.some(p => p.uid === uid && !p.left)) endSession(data.lastDeparture?.uid === uid && data.lastDeparture.reason === "kicked" ? "The host removed you from the lobby." : `You have left this room. An active ${data.roomFormat === "singleMatch" ? "match" : "Major"} may have been forfeited.`);
     }, report);
     const unsubscribeOwn = onSnapshot(doc(db, "roomSessions", uid), snapshot => {
       if (snapshot.metadata.fromCache || stopped || ended) return;
@@ -187,7 +191,7 @@ export function RoomSessionProvider({ children }) {
       if (url.origin === window.location.origin && insideRoom(url.pathname, entry.roomId)) return;
       event.preventDefault();
       event.stopPropagation();
-      if (majorRef.current && !window.confirm("Leaving will forfeit this Major. Continue?")) return;
+      if (majorRef.current && !window.confirm(`Leaving will forfeit this ${singleMatchRef.current ? "match" : "Major"}. Continue?`)) return;
       leaving.current = true;
       leaveRoom(entry.roomId, uid, "navigation", entry.pageId).then(() => {
         if (url.origin === window.location.origin) router.push(url.pathname + url.search + url.hash);

@@ -25,14 +25,18 @@ export default function ReplayMatchLayout({ catalog, selection, round, sample, p
     {!right && data?.icon && <img className={styles.logo} src={data.icon} alt="" />}
     {right && badge(side)}
   </div>;
-  const players = (teamId, side, right) => <section className={styles.players} aria-label={`${teamId === "A" ? nameA : nameB} players`}>
+  const players = (teamId, side, right) => <section className={styles.players} aria-label={`${teamId === "A" ? nameA : nameB} players`}
+    style={{ "--health-direction": right ? "to right" : "to left", "--health-color": side === "T" ? "#3a3020" : "#1f2c3d" }}>
     {round.meta.assignments.filter((a) => a.team === teamId).map((assignment) => {
       const player = sample.players.find((p) => p.id === assignment.actorId);
       const stats = progress.players.find((p) => p.team === teamId && p.name === assignment.name);
       if (!player) return null;
-      return <PlayerCard key={assignment.playerUid} name={assignment.name} side={side} alive={player.alive} health={player.health}
-        weapon={mostExpensiveWeapon(player.inventory)} activeWeapon={player.weapon} isRight={right}
-        kda={stats && { k: stats.kills, d: stats.deaths, a: stats.assists }} />;
+      const health = player.alive ? Math.min(100, Math.max(0, player.health)) : 0;
+      return <div key={assignment.playerUid} style={{ "--surface-2": `linear-gradient(var(--health-direction), var(--health-color) ${health}%, var(--surface-0) ${health}%)` }}>
+        <PlayerCard name={assignment.name} side={side} alive={player.alive} health={player.health}
+          weapon={mostExpensiveWeapon(player.inventory)} activeWeapon={player.weapon} isRight={right}
+          kda={stats && { k: stats.kills, d: stats.deaths, a: stats.assists }} />
+      </div>;
     })}
   </section>;
   return <div className={styles.layout}>

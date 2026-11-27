@@ -9,6 +9,11 @@ service cloud.firestore {
     function claimed(r, uid) { let c = getAfter(sessionPath(uid)).data; return c.uid == uid && c.roomId == r.id && c.pageId == r.players[uid].sessionId && !c.leaving && c.heartbeat == request.time; }
     function expired(uid) { let c = get(sessionPath(uid)).data; return c.leaving || c.heartbeat <= request.time - duration.value(180, 's'); }
     function lockPath(id) { return /databases/$(database)/documents/organizationSessions/$(id); }
+    function singleMatch(r) { return r.get('roomFormat','major') == 'singleMatch'; }
+    function validBestOf(n) { return n is int && n in [1,3,5]; }
+    function validRoomFormat(r) {
+      return singleMatch(r) ? validBestOf(r.bestOf) : r.get('roomFormat','major') == 'major' && !('bestOf' in r);
+    }
     function playerScores(p) {
       return !p.keys().hasAny(['awp','rifler','igl','firepower']) ||
         validScores(p);
@@ -29,7 +34,7 @@ service cloud.firestore {
     }
     function validNewRoom(code, r) {
       let uid = request.auth.uid;
-      return code.matches('^[A-Z0-9]{4}$') && r.keys().hasOnly(['id','name','hostId','status','visibility','playbackMode','playbackSpeed','players','schemaVersion','generation','createdAt']) &&
+      return code.matches('^[A-Z0-9]{4}$') && r.keys().hasOnly(['id','name','hostId','status','visibility','playbackMode','playbackSpeed','players','schemaVersion','generation','createdAt','roomFormat','bestOf']) && validRoomFormat(r) &&
         r.get('name','Room').matches('(?s)^.{1,35}$') &&
         r.get('playbackMode','full') in ['full','highlights'] && r.get('playbackSpeed', 1) in [1, 2, 4] &&
         r.id == code && r.hostId == uid && r.schemaVersion == 3 &&
@@ -79,33 +84,70 @@ service cloud.firestore {
       return s == null || (s.keys().hasOnly(['engineVersion','playerDataVersion','bankVersion']) &&
         s.engineVersion in [2,3] && s.playerDataVersion == 'players-v2.0.0' && s.bankVersion in ['mirage-economy-v1','mirage-economy-v2']);
     }
+    function singleMatchTeam(r, team) {
+      let player = r.players[team.uid];
+      let org = player.organization;
+      return team.id == 'player_' + team.uid && team.organizationId == org.id && team.isPlayer == true && team.name == org.name && team.icon == org.icon &&
+        team.mainAwperUid == org.mainAwperUid && team.iglUid == org.iglUid && team.starUid == org.starUid &&
+        team.players.size() == 5 && team.players[0].name == org.squad[0].player.name && team.players[1].name == org.squad[1].player.name &&
+        team.players[2].name == org.squad[2].player.name && team.players[3].name == org.squad[3].player.name && team.players[4].name == org.squad[4].player.name;
+    }
+    function startSingleMatch(old, next) {
+      let t = next.tournament;
+      let game = t.matches[0];
+      return old.players.size() == 2 && t.participantUids.size() == 2 && t.stage == 'single_match' && t.matchesStarted == true &&
+        t.matches.size() == 1 && game.id == 'single-match' && game.round == 'Single match' && game.bestOf == old.bestOf &&
+        game.completed == false && game.result == null && game.isPlayerMatch == true &&
+        game.teamA.uid != game.teamB.uid && game.teamA.uid in t.participantUids && game.teamB.uid in t.participantUids &&
+        game.playerUids == [game.teamA.uid,game.teamB.uid] && singleMatchTeam(old,game.teamA) && singleMatchTeam(old,game.teamB) &&
+        startPlayer(old,next,0) && startPlayer(old,next,1);
+    }
     function start(old, next) {
       return old.hostId == request.auth.uid && old.status == 'lobby' && next.status == 'playing' &&
         next.diff(old).affectedKeys().hasOnly(['status','generation','tournament']) && next.generation == old.generation + 1 &&
         validSimulation(next.tournament) && next.tournament.tournamentId is string && next.tournament.tournamentId.size() > 0 && next.tournament.tournamentId.size() <= 100 &&
         next.tournament.participantUids is list && next.tournament.participantUids.size() > 0 && next.tournament.participantUids.size() <= 8 &&
         next.tournament.participantUids.toSet().size() == next.tournament.participantUids.size() &&
-        next.tournament.participantUids.toSet().difference(old.players.keys().toSet()).size() == 0 && next.tournament.get('abandonedUids',[]) == [] && next.tournament.matchesStarted == false &&
-        startPlayer(old,next,0) && startPlayer(old,next,1) && startPlayer(old,next,2) && startPlayer(old,next,3) && startPlayer(old,next,4) && startPlayer(old,next,5) && startPlayer(old,next,6) && startPlayer(old,next,7);
+        next.tournament.participantUids.toSet().difference(old.players.keys().toSet()).size() == 0 && next.tournament.get('abandonedUids',[]) == [] &&
+        (singleMatch(old) ? startSingleMatch(old,next) :
+          (next.tournament.matchesStarted == false && startPlayer(old,next,0) && startPlayer(old,next,1) && startPlayer(old,next,2) &&
+           startPlayer(old,next,3) && startPlayer(old,next,4) && startPlayer(old,next,5) && startPlayer(old,next,6) && startPlayer(old,next,7)));
     }
     function returning(old, next) {
       let players = old.players;
       let updated = next.players;
       let keys = players.keys();
       let ids = old.tournament.participantUids;
-      return old.hostId == request.auth.uid && old.status == 'playing' && old.tournament.stage == 'won' && next.status == 'lobby' &&
-        next.diff(old).affectedKeys().hasOnly(['status','players','lastMajor']) && next.players.keys().toSet().difference(old.players.keys().toSet()).size() == 0 &&
-        next.lastMajor.keys().hasOnly(['tournamentId','winner']) && next.lastMajor.tournamentId == old.tournament.tournamentId &&
+      let last = next.lastMajor;
+      return old.hostId == request.auth.uid && old.status == 'playing' && old.tournament.stage == 'won' &&
+        next.diff(old).affectedKeys().hasOnly(['status','players','lastMajor']) && updated.keys().hasOnly(keys) &&
+        last.keys().hasOnly(['tournamentId','winner']) && last.tournamentId == old.tournament.tournamentId &&
         releasePlayer(players,ids,0) && releasePlayer(players,ids,1) && releasePlayer(players,ids,2) && releasePlayer(players,ids,3) && releasePlayer(players,ids,4) && releasePlayer(players,ids,5) && releasePlayer(players,ids,6) && releasePlayer(players,ids,7) &&
         resetPlayer(players,updated,keys,0) && resetPlayer(players,updated,keys,1) && resetPlayer(players,updated,keys,2) && resetPlayer(players,updated,keys,3) && resetPlayer(players,updated,keys,4) && resetPlayer(players,updated,keys,5) && resetPlayer(players,updated,keys,6) && resetPlayer(players,updated,keys,7);
+    }
+    function returningSingleMatch(old, next) {
+      let players = old.players;
+      let updated = next.players;
+      let keys = players.keys();
+      let t = old.tournament;
+      let ids = t.participantUids;
+      return request.auth.uid in ids && old.status == 'playing' && t.stage == 'won' &&
+        next.diff(old).affectedKeys().hasOnly(['status','players','lastMajor']) && updated.keys().hasOnly(keys) &&
+        next.lastMajor == { 'tournamentId': t.tournamentId, 'winner': t.matches[0].result.winner } &&
+        releasePlayer(players,ids,0) && releasePlayer(players,ids,1) &&
+        resetPlayer(players,updated,keys,0) && resetPlayer(players,updated,keys,1);
+    }
+    function returnActor(r) {
+      return r.hostId == request.auth.uid || (singleMatch(r) && request.auth.uid in r.tournament.participantUids && live(r,request.auth.uid));
     }
     function lobbyUpdate(old, next) {
       let uid = request.auth.uid;
       let changed = next.players.diff(old.players).affectedKeys();
       return old.status == 'lobby' && next.status == 'lobby' && (
         (uid == old.hostId && next.diff(old).affectedKeys().hasOnly(['playbackSpeed']) && next.get('playbackSpeed', 1) in [1, 2, 4]) ||
+        (uid == old.hostId && singleMatch(old) && next.diff(old).affectedKeys().hasOnly(['bestOf']) && validBestOf(next.bestOf)) ||
         // A new member adds only their own entry.
-        (!(uid in old.players) && next.diff(old).affectedKeys().hasOnly(['players']) && changed.hasOnly([uid]) && next.players.size() == old.players.size() + 1 && next.players.size() <= 8 && member(next.players[uid],uid,false) && next.players[uid].participating && !next.players[uid].isReady) ||
+        (!(uid in old.players) && next.diff(old).affectedKeys().hasOnly(['players']) && changed.hasOnly([uid]) && next.players.size() == old.players.size() + 1 && next.players.size() <= (singleMatch(old) ? 2 : 8) && member(next.players[uid],uid,false) && next.players[uid].participating && !next.players[uid].isReady) ||
         // Members may change their own readiness or validated organization.
         (uid in old.players && uid in next.players && next.diff(old).affectedKeys().hasOnly(['players']) && changed.hasOnly([uid]) &&
           (next.players[uid].diff(old.players[uid]).affectedKeys().hasOnly(['participating','isReady']) ?
@@ -140,8 +182,109 @@ service cloud.firestore {
            (next.status == 'closed' ? next.closedReason == 'empty' && (old.tournament.stage == 'won' ? next.tournament.stage == 'won' : next.tournament.stage == 'cancelled') && leftAt(next,0) && leftAt(next,1) && leftAt(next,2) && leftAt(next,3) && leftAt(next,4) && leftAt(next,5) && leftAt(next,6) && leftAt(next,7) : next.status == 'playing' && next.hostId in next.players && !next.players[next.hostId].left) &&
            (uid == old.hostId || next.hostId == old.hostId) && next.tournament.diff(old.tournament).affectedKeys().hasOnly(['abandonedUids','stage']) && (next.status == 'closed' || next.tournament.stage == old.tournament.stage) && next.tournament.tournamentId == old.tournament.tournamentId && next.tournament.participantUids == old.tournament.participantUids &&
            (forfeiting ? ((!existsAfter(lockPath(old.players[uid].organization.id)) || getAfter(lockPath(old.players[uid].organization.id)).data.roomId != old.id || getAfter(lockPath(old.players[uid].organization.id)).data.tournamentId != old.tournament.tournamentId) && next.tournament.get('abandonedUids',[]).toSet() == old.tournament.get('abandonedUids',[]).toSet().union([uid].toSet()) &&
-             getAfter(eventPath(uid,old.tournament.tournamentId)).data == { 'ownerUid': uid, 'organizationId': old.players[uid].organization.id, 'roomId': old.id, 'tournamentId': old.tournament.tournamentId, 'reason': d.reason, 'at': request.time }) :
+             (singleMatch(old) || getAfter(eventPath(uid,old.tournament.tournamentId)).data == { 'ownerUid': uid, 'organizationId': old.players[uid].organization.id, 'roomId': old.id, 'tournamentId': old.tournament.tournamentId, 'reason': d.reason, 'at': request.time })) :
              next.tournament.get('abandonedUids',[]) == old.tournament.get('abandonedUids',[]))));
+    }
+    function validMap(m, game) {
+      let a = m.scoreA;
+      let b = m.scoreB;
+      return m.keys().hasOnly(['map','scoreA','scoreB','winnerId']) &&
+        m.map.matches('^de_(mirage|dust2|nuke|anubis|cache|inferno|ancient)$') && a is int && b is int && a >= 0 && b >= 0 &&
+        (a > b ? m.winnerId == game.teamA.id : b > a && m.winnerId == game.teamB.id);
+    }
+    function wins(maps, id) {
+      let count = maps.size();
+      let winners = [maps[0].winnerId, count > 1 ? maps[1].winnerId : '', count > 2 ? maps[2].winnerId : '',
+        count > 3 ? maps[3].winnerId : '', count > 4 ? maps[4].winnerId : ''];
+      return (id == '' ? count : 5) - winners.removeAll([id]).size();
+    }
+    function bestOf(game) {
+      return game.round == 'Final' ? 5 : (game.round in ['Quarterfinals','Semifinals'] || game.teamA.get('wins',0) == 2 || game.teamA.get('losses',0) == 2 || game.teamB.get('wins',0) == 2 || game.teamB.get('losses',0) == 2 ? 3 : 1);
+    }
+    function validSeries(result, game, n) {
+      let needed = n == 5 ? 3 : (n == 3 ? 2 : 1);
+      let a = wins(result.maps, game.teamA.id);
+      let b = result.maps.size() - a;
+      let last = result.maps[result.maps.size() - 1].winnerId;
+      return result.maps.size() <= n &&
+        (last == game.teamA.id ? a == needed && b < needed : b == needed && a < needed) &&
+        (n == 1 ? (result.scoreA == result.maps[0].scoreA && result.scoreB == result.maps[0].scoreB) : (result.scoreA == a && result.scoreB == b));
+    }
+    // Numeric comparisons also reject other types, keeping BO5 writes within the evaluation budget.
+    function validRatings(result) {
+      let values = result.get('playerRatings', []);
+      return !('playerRatings' in result) || (values is list && values.size() == 10 &&
+        values[0] >= 0 && values[0] <= 10 && values[1] >= 0 && values[1] <= 10 && values[2] >= 0 && values[2] <= 10 && values[3] >= 0 && values[3] <= 10 && values[4] >= 0 && values[4] <= 10 &&
+        values[5] >= 0 && values[5] <= 10 && values[6] >= 0 && values[6] <= 10 && values[7] >= 0 && values[7] <= 10 && values[8] >= 0 && values[8] <= 10 && values[9] >= 0 && values[9] <= 10);
+    }
+    function validResult(result, game, n) {
+      let maps = result.maps;
+      return result.keys().hasOnly(['teamA','teamB','scoreA','scoreB','winner','maps','playerRatings']) && validRatings(result) &&
+        result.teamA == game.teamA && result.teamB == game.teamB &&
+        maps is list && maps.size() >= 1 && maps.size() <= 5 && validMap(maps[0],game) &&
+        (maps.size() < 2 || validMap(maps[1],game)) && (maps.size() < 3 || validMap(maps[2],game)) &&
+        (maps.size() < 4 || validMap(maps[3],game)) && (maps.size() < 5 || validMap(maps[4],game)) &&
+        validSeries(result,game,n) && result.scoreA is int && result.scoreB is int && result.scoreA >= 0 && result.scoreB >= 0 &&
+        ((result.scoreA > result.scoreB && result.winner == game.teamA.id) ||
+         (result.scoreB > result.scoreA && result.winner == game.teamB.id));
+    }
+    function decider(actions, m) {
+      let map = m.map;
+      return map in ['de_mirage','de_dust2','de_nuke','de_anubis','de_cache','de_inferno','de_ancient'] &&
+        !(map in [actions[0].map,actions[1].map,actions[2].map,actions[3].map,actions[4].map,actions[5].map]);
+    }
+    function validSingleMap(m, teamA, teamB) {
+      let a = m.scoreA;
+      let b = m.scoreB;
+      return a is int && b is int && a >= 0 && b >= 0 && a != b &&
+        m == { 'map': m.map, 'scoreA': a, 'scoreB': b, 'winnerId': a > b ? teamA : teamB };
+    }
+    function validSingleResult(r, game, result) {
+      let id = r.tournament.tournamentId + '~' + game.id;
+      let code = r.id;
+      let veto = get(/databases/$(database)/documents/rooms/$(code)/vetos/$(id)).data.veto;
+      let actions = veto.actions;
+      let maps = result.maps;
+      let n = game.bestOf;
+      let a = game.teamA.id;
+      let b = game.teamB.id;
+      let count = maps.size();
+      return actions.size() == 6 && veto.bestOf == n && maps is list && count >= 1 && count <= n &&
+        result.keys().hasOnly(['teamA','teamB','scoreA','scoreB','winner','maps']) &&
+        result.teamA == game.teamA && result.teamB == game.teamB &&
+        validSingleMap(maps[0],a,b) &&
+        (n == 1 ? decider(actions,maps[0]) :
+          maps[0].map == actions[2].map && maps[1].map == actions[3].map && validSingleMap(maps[1],a,b) &&
+          (n == 3 ? (count < 3 || (decider(actions,maps[2]) && validSingleMap(maps[2],a,b))) :
+            maps[2].map == actions[4].map && validSingleMap(maps[2],a,b) &&
+            (count < 4 || (maps[3].map == actions[5].map && validSingleMap(maps[3],a,b))) &&
+            (count < 5 || (decider(actions,maps[4]) && validSingleMap(maps[4],a,b))))) &&
+        validSeries(result,game,n) && result.scoreA is int && result.scoreB is int && result.winner == maps[count - 1].winnerId;
+    }
+    function singleForfeit(game, result, abandoned) {
+      let aWon = abandoned[0] == game.teamB.uid;
+      let score = game.bestOf == 1 ? 13 : (game.bestOf == 3 ? 2 : 3);
+      return result == { 'teamA': game.teamA, 'teamB': game.teamB, 'winner': aWon ? game.teamA.id : game.teamB.id,
+        'scoreA': aWon ? score : 0, 'scoreB': aWon ? 0 : score, 'forfeit': true, 'forfeitUids': abandoned, 'maps': [] };
+    }
+    function finishSingleMatch(old, next) {
+      let t = old.tournament;
+      let updated = next.tournament;
+      let game = t.matches[0];
+      let completed = updated.matches[0];
+      let abandoned = t.get('abandonedUids',[]);
+      return next.diff(old).affectedKeys().hasOnly(['tournament']) && t.stage == 'single_match' && updated.stage == 'won' &&
+        updated.diff(t).affectedKeys().hasOnly(['stage','matches']) && updated.matches.size() == 1 && !game.completed &&
+        completed.diff(game).affectedKeys().hasOnly(['completed','result']) && completed.completed == true &&
+        request.auth.uid in game.playerUids && !(request.auth.uid in abandoned) &&
+        (abandoned.size() == 0 ? validSingleResult(old,game,completed.result) :
+          abandoned.size() == 1 && abandoned[0] in game.playerUids && singleForfeit(game,completed.result,abandoned));
+    }
+    function advanceMajor(old, next) {
+      return old.hostId == request.auth.uid && next.diff(old).affectedKeys().hasOnly(['tournament']) &&
+        next.tournament.tournamentId == old.tournament.tournamentId && next.tournament.participantUids == old.tournament.participantUids &&
+        next.tournament.get('simulation',null) == old.tournament.get('simulation',null) &&
+        next.tournament.get('abandonedUids',[]) == old.tournament.get('abandonedUids',[]);
     }
     match /rooms/{code} {
       allow get: if signed();
@@ -151,13 +294,10 @@ service cloud.firestore {
       allow update: if signed() && resource.data.schemaVersion == 3 && request.resource.data.schemaVersion == 3 &&
         (((live(resource.data,request.auth.uid) || (resource.data.status == 'lobby' && !(request.auth.uid in resource.data.players) && claimed(request.resource.data,request.auth.uid))) && (resource.data.status == 'lobby' ?
           (request.resource.data.status == 'lobby' ? lobbyUpdate(resource.data,request.resource.data) : start(resource.data,request.resource.data)) :
-          (request.resource.data.status == 'lobby' ? returning(resource.data,request.resource.data) :
-           (resource.data.status == 'playing' && request.resource.data.status == 'playing' && resource.data.hostId == request.auth.uid &&
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tournament']) &&
-            request.resource.data.tournament.tournamentId == resource.data.tournament.tournamentId &&
-            request.resource.data.tournament.participantUids == resource.data.tournament.participantUids &&
-            request.resource.data.tournament.get('simulation',null) == resource.data.tournament.get('simulation',null) &&
-            request.resource.data.tournament.get('abandonedUids',[]) == resource.data.tournament.get('abandonedUids',[]))))) || departure(resource.data,request.resource.data));
+          (request.resource.data.status == 'lobby' ? (singleMatch(resource.data) ? returningSingleMatch(resource.data,request.resource.data) : returning(resource.data,request.resource.data)) :
+           (resource.data.status == 'playing' && request.resource.data.status == 'playing' &&
+            (singleMatch(resource.data) ? finishSingleMatch(resource.data,request.resource.data) :
+              advanceMajor(resource.data,request.resource.data)))))) || departure(resource.data,request.resource.data));
       match /chatSignals/{guestUid} {
         function room() { return get(roomPath(code)).data; }
         function active(r) { return r.status in ['lobby','playing'] && live(r,request.auth.uid); }
@@ -189,7 +329,7 @@ service cloud.firestore {
         function canWrite(r, d) {
           let t = r.tournament;
           let m = t.matches[d.matchIndex];
-          return r.schemaVersion == 3 && live(r,request.auth.uid) && r.status == 'playing' && t.stage in ['swiss','playoffs'] && t.matchesStarted == true &&
+          return r.schemaVersion == 3 && live(r,request.auth.uid) && r.status == 'playing' && t.stage in (singleMatch(r) ? ['single_match'] : ['swiss','playoffs']) && t.matchesStarted == true &&
             d.keys().hasOnly(['tournamentId','matchId','matchIndex','veto','turnDeadlineMs']) && d.tournamentId == t.tournamentId &&
             d.matchId is string && d.matchId.size() <= 200 && vetoId == d.tournamentId + '~' + d.matchId &&
             d.matchIndex is int && d.matchIndex >= 0 && d.matchIndex < t.matches.size() && m.id == d.matchId && !m.completed &&
@@ -198,7 +338,7 @@ service cloud.firestore {
             !m.playerUids.toSet().hasAny(t.get('abandonedUids',[])) && request.auth.uid in m.playerUids &&
             !exists(/databases/$(database)/documents/rooms/$(code)/results/$(vetoId)) &&
             d.veto is map && d.veto.keys().hasOnly(['version','bestOf','firstTeam','actions']) && d.veto.version == 1 &&
-            d.veto.bestOf == (m.round == 'Final' ? 5 : m.round in ['Quarterfinals','Semifinals'] || m.teamA.get('wins',0) == 2 || m.teamA.get('losses',0) == 2 || m.teamB.get('wins',0) == 2 || m.teamB.get('losses',0) == 2 ? 3 : 1) &&
+            d.veto.bestOf == (singleMatch(r) ? m.bestOf : bestOf(m)) &&
             d.veto.firstTeam in ['A','B'] && d.veto.actions is list && d.veto.actions.size() <= 6 &&
             (d.veto.actions.size() == 6 ? d.turnDeadlineMs == null :
               d.turnDeadlineMs is int && d.turnDeadlineMs >= request.time.toMillis() + 15000 && d.turnDeadlineMs <= request.time.toMillis() + 35000);
@@ -225,60 +365,18 @@ service cloud.firestore {
         allow update: if signed() && canWrite(room(),request.resource.data) && nextAction(room(),request.resource.data);
       }
       match /results/{resultId} {
-        function validMap(m, game) {
-          let a = m.scoreA;
-          let b = m.scoreB;
-          return m.keys().hasOnly(['map','scoreA','scoreB','winnerId']) &&
-            m.map.matches('^de_(mirage|dust2|nuke|anubis|cache|inferno|ancient)$') && a is int && b is int && a >= 0 && b >= 0 &&
-            (a > b ? m.winnerId == game.teamA.id : b > a && m.winnerId == game.teamB.id);
-        }
-        function wins(maps, id) {
-          let count = maps.size();
-          let winners = [maps[0].winnerId, count > 1 ? maps[1].winnerId : '', count > 2 ? maps[2].winnerId : '',
-            count > 3 ? maps[3].winnerId : '', count > 4 ? maps[4].winnerId : ''];
-          return (id == '' ? count : 5) - winners.removeAll([id]).size();
-        }
-        function bestOf(game) {
-          return game.round == 'Final' ? 5 : (game.round in ['Quarterfinals','Semifinals'] || game.teamA.get('wins',0) == 2 || game.teamA.get('losses',0) == 2 || game.teamB.get('wins',0) == 2 || game.teamB.get('losses',0) == 2 ? 3 : 1);
-        }
-        function validSeries(result, game) {
-          let n = bestOf(game);
-          let needed = n == 5 ? 3 : (n == 3 ? 2 : 1);
-          let a = wins(result.maps, game.teamA.id);
-          let b = result.maps.size() - a;
-          let last = result.maps[result.maps.size() - 1].winnerId;
-          return result.maps.size() <= n &&
-            (last == game.teamA.id ? a == needed && b < needed : b == needed && a < needed) &&
-            (n == 1 ? (result.scoreA == result.maps[0].scoreA && result.scoreB == result.maps[0].scoreB) : (result.scoreA == a && result.scoreB == b));
-        }
         function room() { return get(roomPath(code)).data; }
         allow read: if signed() && (request.auth.uid in room().players || room().status == 'closed' || expired(room().hostId));
-        // Numeric comparisons also reject other types, keeping BO5 writes within the evaluation budget.
-        function validRatings(result) {
-          let values = result.get('playerRatings', []);
-          return !('playerRatings' in result) || (values is list && values.size() == 10 &&
-            values[0] >= 0 && values[0] <= 10 && values[1] >= 0 && values[1] <= 10 && values[2] >= 0 && values[2] <= 10 && values[3] >= 0 && values[3] <= 10 && values[4] >= 0 && values[4] <= 10 &&
-            values[5] >= 0 && values[5] <= 10 && values[6] >= 0 && values[6] <= 10 && values[7] >= 0 && values[7] <= 10 && values[8] >= 0 && values[8] <= 10 && values[9] >= 0 && values[9] <= 10);
-        }
         function canSubmit(r, d) {
           let t = r.tournament;
           let m = t.matches[d.matchIndex];
-          let result = d.result;
-          let maps = result.maps;
-          return r.schemaVersion == 3 && live(r,request.auth.uid) && r.status == 'playing' && t.stage in ['swiss','playoffs'] && t.matchesStarted == true &&
+          return r.schemaVersion == 3 && !singleMatch(r) && live(r,request.auth.uid) && r.status == 'playing' && t.stage in ['swiss','playoffs'] && t.matchesStarted == true &&
           d.keys().hasOnly(['tournamentId','matchId','matchIndex','submittedBy','result']) &&
           d.tournamentId == t.tournamentId && d.matchId is string && d.matchId.size() <= 200 &&
           resultId == d.tournamentId + '~' + d.matchId && d.submittedBy == request.auth.uid &&
           d.matchIndex is int && d.matchIndex >= 0 && d.matchIndex < t.matches.size() &&
           m.id == d.matchId && m.completed == false && !m.playerUids.toSet().hasAny(t.get('abandonedUids',[])) && request.auth.uid in m.playerUids && request.auth.uid in r.players &&
-          result.keys().hasOnly(['teamA','teamB','scoreA','scoreB','winner','maps','playerRatings']) && validRatings(result) &&
-          result.teamA == m.teamA && result.teamB == m.teamB &&
-          maps is list && maps.size() >= 1 && maps.size() <= 5 && validMap(maps[0],m) &&
-          (maps.size() < 2 || validMap(maps[1],m)) && (maps.size() < 3 || validMap(maps[2],m)) &&
-          (maps.size() < 4 || validMap(maps[3],m)) && (maps.size() < 5 || validMap(maps[4],m)) &&
-          validSeries(result,m) && result.scoreA is int && result.scoreB is int && result.scoreA >= 0 && result.scoreB >= 0 &&
-          ((result.scoreA > result.scoreB && result.winner == m.teamA.id) ||
-           (result.scoreB > result.scoreA && result.winner == m.teamB.id));
+          validResult(d.result,m,bestOf(m));
         }
         allow create: if signed() && canSubmit(room(), request.resource.data);
         allow delete: if signed() && (getAfter(roomPath(code)).data.status == 'closed' || (request.auth.uid in room().players && room().status == 'playing' && getAfter(roomPath(code)).data.status == 'lobby'));
@@ -297,7 +395,7 @@ service cloud.firestore {
       allow read: if signed() && request.auth.uid == uid;
       allow create: if signed() && request.resource.data.keys().hasOnly(['ownerUid','organizationId','roomId','tournamentId','reason','at']) && request.resource.data.keys().hasAll(['ownerUid','organizationId','roomId','tournamentId','reason','at']) &&
         request.resource.data.ownerUid == uid && request.resource.data.tournamentId == majorId && request.resource.data.at == request.time && request.resource.data.reason in ['navigation','reload','closed','timeout'] &&
-        get(roomPath(request.resource.data.roomId)).data.status == 'playing' && get(roomPath(request.resource.data.roomId)).data.tournament.stage != 'won' && get(roomPath(request.resource.data.roomId)).data.tournament.tournamentId == majorId &&
+        get(roomPath(request.resource.data.roomId)).data.status == 'playing' && !singleMatch(get(roomPath(request.resource.data.roomId)).data) && get(roomPath(request.resource.data.roomId)).data.tournament.stage != 'won' && get(roomPath(request.resource.data.roomId)).data.tournament.tournamentId == majorId &&
         uid in get(roomPath(request.resource.data.roomId)).data.tournament.participantUids && !get(roomPath(request.resource.data.roomId)).data.players[uid].left && request.resource.data.organizationId == get(roomPath(request.resource.data.roomId)).data.players[uid].organization.id &&
         (request.auth.uid == uid || expired(uid)) && getAfter(roomPath(request.resource.data.roomId)).data.lastDeparture == { 'uid': uid, 'reason': request.resource.data.reason } && (getAfter(roomPath(request.resource.data.roomId)).data.status == 'closed' || getAfter(roomPath(request.resource.data.roomId)).data.players[uid].left);
     }
@@ -313,7 +411,7 @@ service cloud.firestore {
         get(roomPath(request.resource.data.roomId)).data.status == 'lobby';
       allow delete: if signed() && get(roomPath(resource.data.roomId)).data.status == 'playing' && get(roomPath(resource.data.roomId)).data.tournament.tournamentId == resource.data.tournamentId &&
         get(roomPath(resource.data.roomId)).data.players[resource.data.ownerUid].organization.id == orgId &&
-        ((getAfter(roomPath(resource.data.roomId)).data.status == 'lobby' && get(roomPath(resource.data.roomId)).data.hostId == request.auth.uid) ||
+        ((getAfter(roomPath(resource.data.roomId)).data.status == 'lobby' && returnActor(get(roomPath(resource.data.roomId)).data)) ||
          (getAfter(roomPath(resource.data.roomId)).data.lastDeparture.uid == resource.data.ownerUid && getAfter(roomPath(resource.data.roomId)).data.players[resource.data.ownerUid].left &&
           (request.auth.uid == resource.data.ownerUid || expired(resource.data.ownerUid))));
     }

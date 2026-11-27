@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { rosterMajorFromRoom } from '../src/lib/rosterRoom.mjs';
 import { finishRosterMajor } from '../src/lib/rosterLifecycle.mjs';
 import { organizationProfile } from '../src/lib/organizationProfile.mjs';
+import { loadCareer, saveCareer } from '../src/lib/localCareer.mjs';
 
 const squad = Array.from({ length: 5 }, (_, i) => ({ player: { name: `Player ${i}`, rating: 75 } }));
 const organization = { id: 'club', squad, mainAwperUid: '0', iglUid: '1', starUid: '2' };
@@ -42,6 +43,37 @@ test('room winners, spectators, abandoned players and unfinished Majors', () => 
   assert.equal(t.stage, 'won');
   assert.equal(t.matches[0].result.winner, 'player_team');
   assert.equal(finishRosterMajor(organization, t).majorHistory[0].outcome, 'champion');
+});
+
+test('a finished single match records the online rival once and preserves all Major and roster state', () => {
+  const org = { ...organization, name: 'My club', icon: '/icon', createdAt: '2026-01-01', colors: ['#123456', '#abcdef'],
+    rosterVersion: 1, benchTokens: 0, bench: { player: { name: 'Reserve' }, benchMajors: 1 },
+    majorHistory: [{ id: 'past', mode: 'online', outcome: 'champion', final: true, matches: [] }] };
+  const r = { ...room(), roomFormat: 'singleMatch', status: 'playing' };
+  const single = { ...match, id: 'single-match', round: 'Single match', bestOf: 3, playerUids: ['v', 'u'],
+    teamA: { ...opponent, organizationId: 'rival' }, result: { winner: me.id } };
+  r.tournament = { ...r.tournament, stage: 'single_match', matches: [{ ...single, completed: false, result: null }] };
+  assert.equal(rosterMajorFromRoom(r, 'u', org, { includeActive: true }), null);
+  r.tournament = { ...r.tournament, stage: 'won', matches: [single] };
+  const settlement = rosterMajorFromRoom(r, 'u', org);
+  assert.equal(organizationProfile(org, settlement, 'online').matchesPlayed, 1);
+  const saved = finishRosterMajor(org, settlement);
+  const { singleMatchHistory, ...preserved } = saved;
+  assert.deepEqual(preserved, org);
+  assert.equal(singleMatchHistory.length, 1);
+  assert.equal(finishRosterMajor(saved, settlement), saved);
+  assert.equal(rosterMajorFromRoom(r, 'u', saved), null);
+  let raw;
+  const storage = { getItem: () => raw, setItem: (_key, value) => { raw = value; } };
+  assert.equal(saveCareer(storage, { version: 1, organization: saved, tournament: null, matchProgress: {} }), null);
+  const persisted = loadCareer(storage).data.organization;
+  assert.deepEqual(persisted, saved);
+  const profile = organizationProfile(persisted, {}, 'online');
+  assert.equal(profile.majorsPlayed, 1);
+  assert.equal(profile.championships, 1);
+  assert.equal(profile.matchesPlayed, 1);
+  assert.deepEqual(profile.rivals.map(({ key, matches, wins }) => ({ key, matches, wins })), [{ key: 'rival', matches: 1, wins: 1 }]);
+  assert.equal(organizationProfile(saved, {}, 'offline').matchesPlayed, 0);
 });
 
 test('live room profiles expose only our current matches without triggering early settlement or duplicates', () => {

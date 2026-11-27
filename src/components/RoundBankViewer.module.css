@@ -15,21 +15,19 @@
 .controls button:first-child:hover:not(:disabled, .soundButton) { background: #fff; }
 .controls button:disabled { opacity: .4; cursor: wait; }
 .controls .soundButton { display: inline-grid; place-items: center; width: 32px; padding: 0; }
-.soundButton:only-child { margin-left: auto; }
+.playbackSettings { display: flex; align-items: center; gap: 8px; }
+.playbackSettings:only-child { margin-left: auto; }
 .soundButton[aria-pressed="true"] { color: var(--ink-2); }
 .controls output { margin-left: auto; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .status { color: var(--ink); }
 .seek { width: 100%; accent-color: var(--ink); }
 .controls :focus-visible, .seek:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
-.lab table { width: 100%; text-align: left; font-size: 13px; font-variant-numeric: tabular-nums; }
-.lab th, .lab td { height: 36px; padding: 0 8px; border-top: 1px solid var(--rule); }
-.lab th { color: var(--ink-3); font-weight: 400; }
 .match { display: grid; grid-template-columns: minmax(175px, 1fr) minmax(320px, 700px) minmax(175px, 1fr); gap: 16px; align-items: start; }
 .radar { display: block; width: 100%; background: var(--surface); border-radius: 12px; }
 .team { background: var(--surface); border-radius: 12px; padding: 16px; }
 .team h2 { font-size: 14px; font-weight: 500; margin-bottom: 8px; }
-.player { padding: 12px 0; border-top: 1px solid var(--rule); font-size: 12px; }
+.player { padding: 12px 8px; border-top: 1px solid var(--rule); font-size: 12px; background: linear-gradient(var(--health-direction), var(--health-color) var(--player-health), var(--bg) var(--player-health)); }
 .player > div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
 .player strong { font-size: 14px; font-weight: 500; }
 .player > span { color: var(--ink-2); }
@@ -46,10 +44,6 @@
 .defuse progress { width: 100%; height: 6px; accent-color: var(--positive); }
 .note { margin-top: 16px; }
 .error { padding: 12px; color: var(--negative); background: var(--surface); border-radius: 8px; margin: 16px 0; }
-.stats { margin-top: 16px; padding: 16px; overflow-x: auto; background: var(--surface); border-radius: 12px; font-size: 13px; }
-.stats summary { cursor: pointer; color: var(--ink-2); }
-.stats summary:hover { color: #fff; }
-.stats[open] summary { margin-bottom: 8px; }
 .matchMode { padding-top: 20px; width: 100%; min-width: 0; }
 .compactFeed { grid-area: feed; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 3px; height: 68px; min-width: 0; overflow: hidden; }
 .compactFeed p { display: inline-flex; flex-shrink: 0; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.08); border-right: 2px solid rgba(229, 99, 77, 0.65); background: rgba(15, 15, 17, 0.92); font-size: 11px; line-height: 1.1; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
@@ -64,6 +58,10 @@
 :is(.match, .matchMode) .radar { grid-area: radar; min-width: 0; }
 :is(.match, .matchMode div:has(> div > .matchRadar)) > section:first-child { grid-area: t; }
 :is(.match, .matchMode div:has(> div > .matchRadar)) > section:last-child { grid-area: ct; }
+
+@media (min-width: 901px) {
+  .matchMode div:has(> div > .matchRadar) > section { align-self: center; }
+}
 
 @media (max-width: 900px) {
   .match { grid-template-columns: repeat(2, minmax(0, 1fr)); }

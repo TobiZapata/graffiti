@@ -47,6 +47,7 @@ function PlayerTable({ team, players }) {
 }
 
 export default function MatchSummary({ match, result, saving = false, loadingStats = false, error = "", onRetry, backHref = "/simulation" }) {
+  const backLabel = match?.round === "Single match" ? "Back to lobby" : "Back to Major";
   const [selected, setSelected] = useState(-1);
   const maps = result?.maps || [];
   const selection = selected < maps.length ? selected : -1;
@@ -58,7 +59,7 @@ export default function MatchSummary({ match, result, saving = false, loadingSta
   return <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div><p className="meta">{match.round} · BO{bestOf}</p><h1 className="mt-1 text-2xl font-medium">Match summary</h1></div>
-      {locked ? <button type="button" disabled className="btn btn-primary btn-lg">Back to Major</button> : <Link href={backHref} className="btn btn-primary btn-lg">Back to Major</Link>}
+      {locked ? <button type="button" disabled className="btn btn-primary btn-lg">{backLabel}</button> : <Link href={backHref} className="btn btn-primary btn-lg">{backLabel}</Link>}
     </div>
     <div className="mt-4 min-h-6 text-sm text-ink-2">
       {saving ? <p role="status">Saving result…</p> : error ? <p role="alert">{error} {onRetry && <button type="button" onClick={onRetry} className="underline underline-offset-4">Retry save</button>}</p> : <p role="status">Result saved</p>}

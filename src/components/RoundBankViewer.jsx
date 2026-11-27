@@ -22,9 +22,26 @@ import { isMuted, playBombDefused, playBombPlanted, prepareSoundEffects, subscri
 import styles from "./RoundBankViewer.module.css";
 import ReplayMatchLayout from "./ReplayMatchLayout";
 import ReplayRoundTimer from "./ReplayRoundTimer";
-import PlayerIdentity from "./PlayerIdentity";
 
 const BASE = "/round-bank-lab";
+const SPEED_KEY = "major-mvp:sp-playback-speed";
+const PLAYBACK_SPEEDS = [1, 2, 4, 6];
+const noStoredSpeed = () => null;
+
+function readStoredSpeed() {
+  try {
+    const value = Number(localStorage.getItem(SPEED_KEY));
+    return PLAYBACK_SPEEDS.includes(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function subscribeStoredSpeed(callback) {
+  window.addEventListener("storage", callback);
+  return () => window.removeEventListener("storage", callback);
+}
+
 const COLORS = { T: "#e0b45a", CT: "#79a6dc" };
 const GRENADE_EFFECT_COLORS = { smoke: "#b2bcb988", fire: "#ee9d4588", he: "#4ade80aa" };
 const WIN_LABELS = { ELIMINATION: "elimination", DEFUSE: "bomb defused", BOMB_EXPLOSION: "bomb exploded", TIME: "time ran out" };
@@ -41,13 +58,16 @@ function WeaponIcon({ weapon }) {
 }
 
 function TeamList({ side, sample, round }) {
-  return <section className={styles.team} aria-label={`${side} players`}>
+  return <section className={styles.team} aria-label={`${side} players`}
+    style={{ "--health-direction": side === "T" ? "to left" : "to right", "--health-color": side === "T" ? "#3a3020" : "#1f2c3d" }}>
     <h2 style={{ color: COLORS[side] }}>{side}{round.meta.macro && ` · ${round.meta.macro[side === "T" ? "teamT" : "teamCT"]}`}</h2>
     {round.players.filter((p) => p.side === side).map((actor) => {
       const player = sample.players.find((p) => p.id === actor.id);
       const kills = sample.events.filter((e) => e.type === "player_death" && e.attacker === actor.id &&
         round.sides[e.victim] && round.sides[e.victim] !== actor.side && !["c4", "planted_c4"].includes(e.weapon)).length;
-      return <div key={actor.id} className={`${styles.player} ${!player.alive ? styles.dead : ""}`}>
+      const health = player.alive ? Math.min(100, Math.max(0, player.health)) : 0;
+      return <div key={actor.id} className={`${styles.player} ${!player.alive ? styles.dead : ""}`}
+        style={{ "--player-health": `${health}%` }}>
         <div><strong>{actor.name}</strong><span>{kills} K · {player.alive ? `${player.health} HP` : "Dead"}</span></div>
         <span className={styles.playerWeapons}>
           <span className={styles.inventoryWeapon} role="group" aria-label="Most valuable weapon" title="Most valuable weapon">
@@ -158,7 +178,10 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
   const [error, setError] = useState("");
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [speed, setSpeed] = useState(canControl ? initialPlayback?.speed ?? initialSpeed : initialSpeed);
+  const storedSpeed = useSyncExternalStore(subscribeStoredSpeed, readStoredSpeed, noStoredSpeed);
+  const [chosenSpeed, setChosenSpeed] = useState(null);
+  const previousSpeed = initialPlayback?.speed ?? initialSpeed;
+  const speed = isMultiplayer ? initialSpeed : chosenSpeed ?? storedSpeed ?? (PLAYBACK_SPEEDS.includes(previousSpeed) ? previousSpeed : 1);
   const speedRef = useRef(speed);
   const restoredPlayback = useRef(initialPlayback);
   const clock = useRef(null);
@@ -167,10 +190,20 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
   const previousBomb = useRef(null);
   const muted = useSyncExternalStore(subscribeMuted, isMuted, () => false);
   const [retry, setRetry] = useState(0);
-  const round = loaded?.selection === selection ? loaded.round : null;
+  const round = loaded?.round;
+  const roundPending = loaded?.selection !== selection;
   const nextSelection = selectedRounds ? selectedRounds.find(index => index > selection) : selection + 1;
   const previousSelection = selectedRounds?.filter(index => index < selection).at(-1) ?? -1;
   const omittedRounds = selectedRounds ? selection - previousSelection - 1 : 0;
+
+  useEffect(() => {
+    if (speedRef.current === speed) return;
+    const now = performance.now();
+    speedRef.current = speed;
+    if (clock.current) {
+      clock.current = anchorReplay(playing ? replayTime(clock.current, now) : clock.current.time, speed, now);
+    }
+  }, [playing, speed]);
 
   useEffect(() => {
     if (suppliedCatalog) return;
@@ -186,6 +219,7 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
     const controller = new AbortController();
     const info = catalog.rounds[selection];
     readReplayJSON(info.replay_data_ref, controller.signal).then((raw) => {
+      if (controller.signal.aborted) return;
       const decoded = decodeReplay(raw, { ...info,
         endsMatch: info.endsMatch || !!(info.macro && selection === catalog.rounds.length - 1),
       }, info.names ?? catalog.names);
@@ -209,11 +243,11 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
 
   const elapsedSecond = Math.floor(time);
   useEffect(() => {
-    if (round) notifyPlaybackChange({ selection, time: elapsedSecond, speed });
-  }, [round, selection, elapsedSecond, speed]);
+    if (!roundPending) notifyPlaybackChange({ selection, time: elapsedSecond, speed });
+  }, [round, roundPending, selection, elapsedSecond, speed]);
 
   useEffect(() => {
-    if (!playing || !round) return;
+    if (!playing || !round || roundPending) return;
     let request, ended = false;
     const advance = (now) => {
       if (ended) return;
@@ -240,7 +274,7 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
     const timer = setInterval(tick, 1000), initial = setTimeout(tick, 0);
     document.addEventListener('visibilitychange', tick);
     return () => { clearTimeout(initial); clearInterval(timer); cancelAnimationFrame(request); document.removeEventListener('visibilitychange', tick); };
-  }, [playing, round, speed, matchMode, selection, nextSelection, catalog]);
+  }, [playing, round, roundPending, speed, matchMode, nextSelection, catalog]);
 
   const seek = (value) => { clock.current = anchorReplay(value, speed, performance.now()); setTime(value); };
   const sample = round ? sampleReplay(round, time) : null;
@@ -265,17 +299,16 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
   }, [round, bombStatus]);
 
   const togglePlayback = () => {
-    if (!round) return;
+    if (!round || roundPending) return;
     if (playing) seek(Math.min(round.duration, replayTime(clock.current, performance.now())));
     else seek(time >= round.duration ? 0 : time);
     setPlaying(!playing);
   };
 
   const changeSpeed = (value) => {
-    const now = performance.now();
-    speedRef.current = value;
-    clock.current = anchorReplay(playing ? replayTime(clock.current, now) : time, value, now);
-    setSpeed(value);
+    setChosenSpeed(value);
+    try { localStorage.setItem(SPEED_KEY, String(value)); }
+    catch { /* The current viewer still uses the selected speed. */ }
   };
 
   const changeRound = (index) => {
@@ -296,7 +329,7 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
         void prepareSoundEffects();
         togglePlayback();
       }
-    } else if (["1", "2", "4"].includes(event.key)) {
+    } else if (PLAYBACK_SPEEDS.includes(Number(event.key))) {
       event.preventDefault();
       if (!event.repeat) changeSpeed(Number(event.key));
     } else if (event.key === "ArrowRight" && nextSelection !== undefined && nextSelection < (catalog?.rounds.length ?? 0)) {
@@ -315,34 +348,37 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
   const name = (id) => round?.players.find(p => p.id === id)?.name || "World";
   const deaths = sample?.events.filter((e) => e.type === "player_death") || [];
   const finished = Boolean(sample?.result);
-  const progress = matchMode && round ? replayProgress(catalog.rounds, selection, round, sample) : null;
+  const progress = matchMode && round ? replayProgress(catalog.rounds, loaded.selection, round, sample) : null;
 
   const controls = <div className={styles.toolbar}>
     <div className={styles.controls}>
       {canControl && <>
         {!matchMode && round && <ReplayRoundTimer round={round} sample={sample} />}
-        <button type="button" disabled={!round} onClick={togglePlayback}>{playing ? "Pause" : "Play"}</button>
+        <button type="button" disabled={roundPending} onClick={togglePlayback}>{playing ? "Pause" : "Play"}</button>
         <label>Round <select value={selection} disabled={!catalog} onChange={(e) => changeRound(Number(e.target.value))}>
           {catalog?.rounds.map((r, i) => (!selectedRounds || i === selection || (selectedRounds.includes(i) && i <= furthestSelection)) && <option key={`${r.round_id}:${i}`} value={i}>Round {r.round}{!matchMode && ` · ${r.win_condition}`}</option>)}</select></label>
         {selectedRounds && <span role="status">Highlights{omittedRounds > 0 && ` · ${omittedRounds} round${omittedRounds === 1 ? "" : "s"} omitted`}</span>}
-        <button type="button" disabled={!round} onClick={() => { setPlaying(false); seek(0); }}>Restart round</button>
-        <label>Speed <select value={speed} onChange={(e) => changeSpeed(Number(e.target.value))}>
-          {[.5, 1, 2, 4, 8].map((s) => <option key={s} value={s}>{s}×</option>)}</select></label>
+        <button type="button" disabled={roundPending} onClick={() => { setPlaying(false); seek(0); }}>Restart round</button>
       </>}
-      <button type="button" className={styles.soundButton} aria-label="Mute sound" aria-pressed={muted}
-        title={muted ? "Unmute sound" : "Mute sound"} onClick={toggleMuted}>
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M3 9v6h4l5 4V5L7 9H3Z" />
-          {muted ? <path d="m16 10 5 5m0-5-5 5" /> : <path d="M16 9a4 4 0 0 1 0 6m3-9a8 8 0 0 1 0 12" />}
-        </svg>
-      </button>
+      <div className={styles.playbackSettings}>
+        {!isMultiplayer && <select aria-label="Playback speed" value={speed} onChange={event => changeSpeed(Number(event.target.value))}>
+          {PLAYBACK_SPEEDS.map(value => <option key={value} value={value}>{value}x</option>)}
+        </select>}
+        <button type="button" className={styles.soundButton} aria-label="Mute sound" aria-pressed={muted}
+          title={muted ? "Unmute sound" : "Mute sound"} onClick={toggleMuted}>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 9v6h4l5 4V5L7 9H3Z" />
+            {muted ? <path d="m16 10 5 5m0-5-5 5" /> : <path d="M16 9a4 4 0 0 1 0 6m3-9a8 8 0 0 1 0 12" />}
+          </svg>
+        </button>
+      </div>
       {canControl && <>
         {round && <span className={styles.status} aria-live="polite">{finished ? `${round.meta.winner_side} win · ${WIN_LABELS[round.meta.win_condition] || round.meta.win_condition}` : "Round in progress"}
           {sample.bomb && ` · bomb ${sample.bomb.status}`}</span>}
         <output>{timeLabel(time)} / {timeLabel(round?.duration || 0)}</output>
       </>}
     </div>
-    {canControl && round && <input className={styles.seek} aria-label="Playback position" type="range" min="0" max={round.duration} step=".015625" value={time}
+    {canControl && round && <input className={styles.seek} aria-label="Playback position" type="range" min="0" max={round.duration} step=".015625" value={time} disabled={roundPending}
       onChange={(e) => seek(Number(e.target.value))} />}
   </div>;
 
@@ -358,7 +394,7 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
         {round.meta.macro.teamASide === "T" ? round.meta.macro.teamT : round.meta.macro.teamCT} {round.meta.macro.scoreTeam1} – {round.meta.macro.scoreTeam2} {round.meta.macro.teamASide === "T" ? round.meta.macro.teamCT : round.meta.macro.teamT}
         {` · ${round.meta.macro.overtime ? `OT ${round.meta.macro.overtime}` : `Half ${round.meta.macro.half}`}`}{` · Source: ${round.meta.demo_id.slice(0, 8)}, round ${round.meta.source_round}`}
       </p>}
-      {matchMode ? <ReplayMatchLayout catalog={catalog} selection={selection} round={round} sample={sample}
+      {matchMode ? <ReplayMatchLayout catalog={catalog} selection={loaded.selection} round={round} sample={sample}
         progress={progress} teamA={teamA} teamB={teamB} seriesState={seriesState} controls={controls}
         radar={<><Radar sample={sample} round={round} matchMode />
           <ReplayKillFeed deaths={deaths} name={name} sides={round.sides} /></>} /> : <div className={styles.match}>
@@ -366,14 +402,6 @@ export default function RoundBankViewer({ catalog: suppliedCatalog = null, match
         <ReplayKillFeed deaths={deaths} name={name} sides={round.sides} />
         <TeamList side="CT" sample={sample} round={round} />
       </div>}
-      {progress && <details className={styles.stats}><summary>Match stats</summary>
-        <table><thead><tr><th>Player</th><th>Team</th><th>K</th><th>D</th><th>A</th><th>Flash assists</th></tr></thead>
-          <tbody>{progress.players.map((player, i) => {
-            const roster = player.team === "A" ? teamA : teamB;
-            const identity = roster?.players?.find(p => p.name === player.name) ?? player;
-            return <tr key={i}><td><PlayerIdentity player={identity} /></td><td>{player.team === "A" ? (round.meta.macro.teamASide === "T" ? round.meta.macro.teamT : round.meta.macro.teamCT) : (round.meta.macro.teamASide === "T" ? round.meta.macro.teamCT : round.meta.macro.teamT)}</td><td>{player.kills}</td><td>{player.deaths}</td><td>{player.assists}</td><td>{player.flashAssists}</td></tr>;
-          })}</tbody></table>
-      </details>}
       {!matchMode && <p className={styles.note}>Recorded round. The defuse bar uses sampled states and may differ slightly from the exact start. Utility areas are approximate.</p>}
     </>}
   </main>;

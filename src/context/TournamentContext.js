@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
-import { CAREER_KEY, loadCareer, saveCareer, validOrganization } from "@/lib/localCareer.mjs";
+import { CAREER_KEY, loadCareer, saveCareer, saveCareerWithoutMajor, validOrganization } from "@/lib/localCareer.mjs";
 import { moveOrganizationRole } from "@/lib/organizationRoles.mjs";
 import { useRoomSession } from "@/context/RoomSessionContext";
 import { assertFullRoster, benchRosterPlayer, swapBenchPlayer as swapRosterBench, promoteBenchPlayer, releaseBenchPlayer, recruitRosterPlayer, expectedMajorOutcome, finishRosterMajor } from "@/lib/rosterLifecycle.mjs";
@@ -40,6 +40,7 @@ export function TournamentProvider({ children }) {
   const organizationRef = useRef(null);
   const startingMajor = useRef(false);
   const finished = ["results_pending", "won", "eliminated"].includes(stage);
+  const canAbandonMajor = !!(organization && tournamentId && !finished);
   const roomSettlementPending = !!(organization && rosterMajorFromRoom(roomSession?.room, roomSession?.userUid, organization));
   const rosterLocked = !!roomSession?.activeMajor || roomSettlementPending || !!(tournamentId && (!finished || !organization?.majorHistory?.some(r => r.id === tournamentId)));
 
@@ -163,6 +164,30 @@ export function TournamentProvider({ children }) {
   const saveMatchProgress = useCallback((matchId, progress) => {
     setMatchProgress(prev => ({ ...prev, [matchId]: progress }));
   }, []);
+
+  const abandonMajor = () => {
+    if (!canAbandonMajor || writesBlocked.current) return false;
+    let error;
+    try { error = saveCareerWithoutMajor(window.localStorage, organizationRef.current); }
+    catch { error = "Local storage is not available in this browser."; }
+    setStorageError(error);
+    if (error) return false;
+
+    setTournamentId(null);
+    setSimulation(null);
+    setRosterTarget(null);
+    setMySquad([]);
+    setTeamName("My Team");
+    setStage("swiss");
+    setPendingResult(null);
+    setSwissRound(1);
+    setStandings([]);
+    setMatches([]);
+    setMatchProgress({});
+    completedIds.current.clear();
+    completedResults.current.clear();
+    return true;
+  };
 
   // Initialize tournament
   const initTournament = async (squad, name = "My Team", icon = "/logos/faze.png", roles = {}, nextOrganization = null) => {
@@ -477,7 +502,7 @@ export function TournamentProvider({ children }) {
       mySquad, teamName, stage, swissRound, standings, matches, pendingResult,
       organization, createOrganization, assignOrganizationRole, startOrganizationMajor, tournamentId, simulation, matchProgress, saveMatchProgress, storageError, ready,
       rosterLocked, rosterTarget, benchPlayer, swapBenchPlayer, promoteBench, releaseBench, recruitPlayer, acknowledgeRosterNotice,
-      initTournament, completeMatch, advanceRound: advanceStage,
+      initTournament, canAbandonMajor, abandonMajor, completeMatch, advanceRound: advanceStage,
       continueToPlayoffs, showFinalResult
     }}>
       {storageError && <div role="alert">{storageError}</div>}

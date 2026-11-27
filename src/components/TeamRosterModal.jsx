@@ -2,7 +2,38 @@
 import PlayerIdentity from "@/components/PlayerIdentity";
 
 import { useEffect, useRef } from "react";
-import { playerAttributes } from "@/lib/majorDisplay.mjs";
+import { roleLabel } from "@/lib/majorDisplay.mjs";
+
+const roleStats = {
+  AWPER: ["awp", "aim"],
+  IGL: ["igl", "gamesense"],
+  RIFLER: ["rifler", "aim"],
+  ENTRY: ["entry"],
+  SUPPORT: ["support", "utility"],
+  LURKER: ["lurker", "positioning"],
+};
+
+function rosterAttributes(player, team, index) {
+  const uid = String(player.uid ?? player.id ?? index);
+  const roles = [];
+  if (team.mainAwperUid != null && String(team.mainAwperUid) === uid) roles.push("AWPER");
+  if (team.iglUid != null && String(team.iglUid) === uid) roles.push("IGL");
+
+  if (!roles.length) {
+    const listed = [player.role, player.rol1, player.rol2]
+      .map(role => String(role ?? "").trim().toUpperCase())
+      .map(role => role === "AWP" ? "AWPER" : role);
+    roles.push(...new Set(listed.filter(role => Object.hasOwn(roleStats, role)
+      && (role !== "AWPER" || team.mainAwperUid == null)
+      && (role !== "IGL" || team.iglUid == null))));
+  }
+  if (!roles.length) roles.push("RIFLER");
+
+  return roles.map(role => {
+    const score = roleStats[role].map(stat => player[stat]).find(Number.isFinite);
+    return `${role === "AWPER" ? "AWP" : roleLabel(role)} ${score ?? "—"}`;
+  }).join(" · ");
+}
 
 export default function TeamRosterModal({ team, onClose }) {
   const dialog = useRef(null);
@@ -33,12 +64,12 @@ export default function TeamRosterModal({ team, onClose }) {
           <button type="button" onClick={onClose} className="link self-start">Close</button>
         </header>
         <table className="mt-4 w-full text-left">
-          <thead><tr className="meta h-9"><th scope="col" className="font-normal">Player</th><th scope="col" className="font-normal">Attributes</th></tr></thead>
+          <thead><tr className="meta h-9"><th scope="col" className="font-normal">Player</th><th scope="col" className="font-normal">Role attributes</th></tr></thead>
           <tbody>
             {team.players?.map((p, i) => (
               <tr key={p.uid || i} className="h-11 border-t border-rule">
                 <td className="font-medium"><PlayerIdentity player={p} /></td>
-                <td className="tabular text-[12px] text-ink-2">{playerAttributes(p)}</td>
+                <td className="tabular text-[12px] text-ink-2">{rosterAttributes(p, team, i)}</td>
               </tr>
             ))}
           </tbody>

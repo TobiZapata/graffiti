@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { member, organizationSnapshot, readyPlayers, completedFinal } from '../src/lib/roomLifecycle.mjs';
+import { member, organizationSnapshot, readyPlayers, completedFinal, initializeSingleMatch } from '../src/lib/roomLifecycle.mjs';
+import { roomCapacity, SINGLE_MATCH_BEST_OF } from '../src/lib/roomStorage.mjs';
 
 const org = { id: 'org', name: 'Team', icon: '/icon', colors: ['#123456', '#abcdef'], squad: Array.from({ length: 5 }, (_, i) => ({ player: { name: `P${i}` } })), mainAwperUid: '0', iglUid: '1', starUid: '2', createdAt: '2026-01-01', majorHistory: [] };
 test('snapshots validate and do not share history or roster references', () => {
@@ -47,4 +48,32 @@ test('only a finished final can return to lobby', () => {
 test('departed members do not block the next Major', () => {
   const player = { ...member('one', 'One', org, true), isReady: true };
   assert.deepEqual(readyPlayers({ status: 'lobby', players: [player, { ...player, uid: 'gone', left: true, isReady: false }] }), [player]);
+});
+
+test('Single match requires two ready participants and starts directly with the selected series', () => {
+  const a = { ...member('one', 'One', org, true), isReady: true };
+  const b = { ...member('two', 'Two', { ...org, id: 'second-org' }), isReady: true };
+  const room = { status: 'lobby', roomFormat: 'singleMatch', players: [a, b] };
+  assert.equal(roomCapacity(room), 2);
+  assert.equal(roomCapacity({}), 8);
+  for (const players of [[a], [a, b, b], [a, { ...b, participating: false }], [a, { ...b, isReady: false }], [a, { ...b, organization: null }]]) {
+    assert.throws(() => readyPlayers({ ...room, players }));
+  }
+  for (const bestOf of SINGLE_MATCH_BEST_OF) {
+    const tournament = initializeSingleMatch(readyPlayers(room), bestOf);
+    assert.equal(tournament.stage, 'single_match');
+    assert.equal(tournament.standings.length, 2);
+    assert.equal(tournament.matches.length, 1);
+    const [match] = tournament.matches;
+    assert.equal(match.bestOf, bestOf);
+    assert.equal(match.id, 'single-match');
+    assert.deepEqual(match.playerUids, ['one', 'two']);
+    assert.deepEqual(match.teamA.players.map(player => player.name), org.squad.map(slot => slot.player.name));
+    assert.equal(match.teamB.organizationId, 'second-org');
+    const playing = { ...room, status: 'playing', tournament };
+    assert.throws(() => completedFinal(playing));
+    const finished = { ...match, completed: true, result: { winner: match.teamA.id } };
+    assert.equal(completedFinal({ ...playing, tournament: { ...tournament, stage: 'won', matches: [finished] } }), finished);
+  }
+  assert.throws(() => initializeSingleMatch([a, b], 2));
 });

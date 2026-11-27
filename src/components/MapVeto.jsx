@@ -111,7 +111,7 @@ export default function MapVeto({
       <header className={styles.hero}>
         <div className={styles.heroTop}>
           <Link href={backHref} className={styles.back}>
-            <span aria-hidden="true">←</span> Back to the Major
+            <span aria-hidden="true">←</span> {match?.round === "Single match" ? "Back to lobby" : "Back to the Major"}
           </Link>
           <div className={styles.format}>
             <strong>BO{veto.bestOf}</strong>
