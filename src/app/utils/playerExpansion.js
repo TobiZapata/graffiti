@@ -1,6 +1,6 @@
 import { isV2Player, validateV2Player } from '../../lib/playerModel.mjs';
 
-export function expandPlayerStats(playerData, assignedRole = null) {
+export function expandPlayerStats(playerData, assignedRole = null, random = Math.random) {
   if (isV2Player(playerData)) {
     validateV2Player(playerData);
     return { ...playerData };
@@ -18,7 +18,7 @@ export function expandPlayerStats(playerData, assignedRole = null) {
   const role = assignedRole ? assignedRole.toUpperCase() : (playerData.rol1 ? playerData.rol1.toUpperCase() : "RIFLER");
 
   // Add a slight randomization around the base rating for variety
-  const randomize = (val, variance = 5) => Math.max(1, Math.min(99, val + Math.floor(Math.random() * variance * 2) - variance));
+  const randomize = (val, variance = 5) => Math.max(1, Math.min(99, val + Math.floor(random() * variance * 2) - variance));
 
   return {
     ...playerData,
@@ -35,7 +35,7 @@ export function expandPlayerStats(playerData, assignedRole = null) {
   };
 }
 
-export function formatTeamForSimulation(team, squad = null) {
+export function formatTeamForSimulation(team, squad = null, random = Math.random) {
   if (team.isPlayer && squad) {
     // For the player's team, use the drafted squad
     return {
@@ -43,7 +43,7 @@ export function formatTeamForSimulation(team, squad = null) {
       icon: team.icon,
       mainAwperUid: team.mainAwperUid,
       iglUid: team.iglUid,
-      players: squad.map((s, index) => ({ ...expandPlayerStats(s.player, s.assignedRole), uid: String(index) }))
+      players: squad.map((s, index) => ({ ...expandPlayerStats(s.player, s.assignedRole, random), uid: String(index) }))
     };
   }
   
@@ -54,6 +54,6 @@ export function formatTeamForSimulation(team, squad = null) {
     major: team.major,
     ...(team.mainAwperUid !== undefined ? { mainAwperUid: team.mainAwperUid } : {}),
     ...(team.iglUid !== undefined ? { iglUid: team.iglUid } : {}),
-    players: team.players.map(p => expandPlayerStats(p))
+    players: team.players.map(p => expandPlayerStats(p, null, random))
   };
 }

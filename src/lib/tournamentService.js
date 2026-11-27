@@ -28,6 +28,7 @@ export async function initializeMultiplayerTournament(roomPlayers) {
 
   const npcTeams = otherTeams.map((t, i) => ({
     id: `npc_${t.id}_${i}`,
+    catalogId: t.id,
     isPlayer: false,
     wins: 0,
     losses: 0,

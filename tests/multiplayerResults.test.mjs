@@ -52,6 +52,8 @@ test('compact online ratings roundtrip through submission and roster closure in 
     playerStats: ['A', 'B'].flatMap(side => Array.from({ length: 5 }, (_, i) => ({ uid: `${side}:${i}`, kills: i + (side === 'A' ? 5 : 15), deaths: 14, assists: 4, flashAssists: 1, damage: 1500, kastRounds: 16, swingTotal: 0 }))) }] };
   assert.equal(validMatchResult(game, full), true);
   const compact = compactMatchResult(game, full);
+  assert.equal(Object.hasOwn(compact, 'teamA'), false);
+  assert.equal(Object.hasOwn(compact, 'teamB'), false);
   assert.equal(compact.playerRatings.length, 10);
   assert.ok(compact.playerRatings[5] > compact.playerRatings[0]);
   assert.equal(Object.hasOwn(compact.maps[0], 'playerStats'), false);

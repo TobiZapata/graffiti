@@ -55,15 +55,15 @@ async function check(name, allowed, action) {
 const member = (uid, isHost = false) => {
   const squad = Array.from({ length: 5 }, (_, i) => ({ player: { name: `${uid}-${i}` } }));
   const organization = { id: `org-${uid}`, name: uid, icon: 'icon', colors: ['#000000', '#ffffff'], squad, mainAwperUid: '0', iglUid: '1', starUid: '2', createdAt: '2026-01-01' };
-  return { uid, name: uid, isHost, organization, squad, teamName: uid, icon: 'icon', participating: true, isReady: false, sessionId: `page-${uid}`, left: false };
+  return { uid, name: uid, isHost, organization, participating: true, isReady: false, sessionId: `page-${uid}`, left: false };
 };
 const hostMember = member('host', true), guestMember = member('guest');
 const lobby = (id, visibility = 'private') => ({ id, hostId: 'host', status: 'lobby', visibility, schemaVersion: 3, generation: 0, createdAt: '2026-01-01', players: { host: hostMember, guest: guestMember } });
 const teamA = { id: 'a', name: 'A' }, teamB = { id: 'b', name: 'B' };
-const match = { id: 'match1', teamA, teamB, playerUids: ['host', 'guest'], completed: false, round: 1, isPlayerMatch: true };
+const match = { id: 'match1', teamAId: teamA.id, teamBId: teamB.id, playerUids: ['host', 'guest'], completed: false, round: 1, bestOf: 1 };
 const tournament = { tournamentId: 'major1', participantUids: ['host', 'guest'], matchesStarted: true, stage: 'swiss', swissRound: 1, matches: [match], standings: [] };
 const playing = id => ({ ...lobby(id), status: 'playing', generation: 1, tournament });
-const result = { teamA, teamB, winner: 'a', scoreA: 13, scoreB: 7, maps: [{ map: 'de_mirage', scoreA: 13, scoreB: 7, winnerId: 'a' }] };
+const result = { winner: 'a', scoreA: 13, scoreB: 7, maps: [{ map: 'de_mirage', scoreA: 13, scoreB: 7, winnerId: 'a' }] };
 const submission = { tournamentId: 'major1', matchId: 'match1', matchIndex: 0, submittedBy: 'host', result };
 function depart(db, roomId, uid, changes, reason = 'navigation', record = true, releaseLock = false, major = 'major1') {
   const batch = writeBatch(db);
@@ -94,7 +94,7 @@ try {
   }
   for (const [id, length, allowed] of [['ON28', 28, true], ['ON29', 29, true], ['ON00', 100, true], ['ON01', 101, false]]) {
     const uid = `org-${id}`, db = client(uid), player = member(uid, true);
-    player.organization.name = player.teamName = 'A'.repeat(length);
+    player.organization.name = 'A'.repeat(length);
     await check(`organization name ${length} characters`, allowed, async () => {
       const batch = writeBatch(db);
       batch.set(doc(db, `rooms/${id}`), { ...lobby(id), hostId: uid, players: { [uid]: player } });
@@ -123,6 +123,8 @@ try {
     batch.set(doc(host, 'roomSessions/host'), session('host', 'NEW1'));
     await batch.commit();
   });
+  await check('room members are stored with only compact fields', true, async () => assert.deepEqual((await getDoc(doc(host, 'rooms/NEW1'))).data().players.host, hostMember));
+  await check('duplicated member fields denied', false, () => updateDoc(doc(host, 'rooms/NEW1'), { 'players.host.icon': hostMember.organization.icon }));
   await check('second room cannot replace claim', false, async () => {
     const batch = writeBatch(host);
     batch.set(doc(host, 'rooms/NEW3'), { ...lobby('NEW3'), players: { host: hostMember } });
@@ -149,9 +151,9 @@ try {
   await check('invalid organization cannot create room', false, () => setDoc(doc(host, 'rooms/BAD1'), { ...lobby('BAD1'), players: { host: { ...hostMember, organization: { ...hostMember.organization, mainAwperUid: '5' } } } }));
   for (const [index, score, allowed] of [[0,80,true],[1,101,false],[2,null,false],[3,'80',false],[4,1.5,false],[5,undefined,false]]) {
     const id=`V2${index}A`, uid=`v2-${index}`, db=client(uid), p=member(uid,true);
-    const squad=p.squad.map(s=>({player:{...s.player,awp:70,rifler:80,igl:60,firepower:score,clutch:90}}));
+    const squad=p.organization.squad.map(s=>({player:{...s.player,awp:70,rifler:80,igl:60,firepower:score,clutch:90}}));
     if (score === undefined) squad.forEach(s=>delete s.player.firepower);
-    const candidate={...p,squad,organization:{...p.organization,squad,iglUid:'0'}};
+    const candidate={...p,organization:{...p.organization,squad,iglUid:'0'}};
     await check(`v2 score validation and dual roles ${index}`,allowed,async()=>{
       const batch=writeBatch(db);
       batch.set(doc(db,`rooms/${id}`),{...lobby(id),hostId:uid,players:{[uid]:candidate}});
@@ -160,7 +162,7 @@ try {
     });
     if (allowed) {
       await check('v2 ready update retains dual roles',true,()=>updateDoc(doc(db,`rooms/${id}`),{[`players.${uid}.isReady`]:true}));
-      await check('v2 cannot update score outside range',false,()=>updateDoc(doc(db,`rooms/${id}`),{[`players.${uid}.organization.squad`]:squad.map((s,i)=>i ? s : {player:{...s.player,clutch:101}}),[`players.${uid}.squad`]:squad.map((s,i)=>i ? s : {player:{...s.player,clutch:101}})}));
+      await check('v2 cannot update score outside range',false,()=>updateDoc(doc(db,`rooms/${id}`),{[`players.${uid}.organization.squad`]:squad.map((s,i)=>i ? s : {player:{...s.player,clutch:101}})}));
     }
   }
   await seed('rooms/PRIVATE', lobby('PRIVATE'));
@@ -187,7 +189,7 @@ try {
   const realMember = (uid, index, isHost) => {
     const p = member(uid, isHost);
     const squad = teams[index].players.map(player => ({ player, team: { name: teams[index].name, major: teams[index].major } }));
-    return { ...p, squad, organization: { ...p.organization, squad } };
+    return { ...p, organization: { ...p.organization, squad } };
   };
   await seed('rooms/REAL', { ...lobby('REAL'), players: { host: realMember('host', 0, true), guest: realMember('guest', 1, false) } });
   await check('real roster guest ready', true, () => updateDoc(doc(guest, 'rooms/REAL'), { 'players.guest.isReady': true }));
@@ -196,8 +198,8 @@ try {
   await check('real roster host ready with full players map', true, () => updateDoc(doc(host, 'rooms/REALMAP'), { players: { host: { ...realMember('host', 0, true), isReady: true }, guest: { ...realMember('guest', 1, false), isReady: true } } }));
   const maxUids=['host','guest',...Array.from({length:6},(_,i)=>`max-${i}`)];
   const maxMembers=Object.fromEntries(maxUids.map((uid,i)=>{
-    const p=realMember(uid,i,i===0), squad=p.squad.map(s=>({...s,player:{...s.player,awp:100,rifler:0,igl:80,firepower:85,clutch:70}}));
-    return [uid,{...p,isReady:i!==7,squad,organization:{...p.organization,squad,iglUid:'0'}}];
+    const p=realMember(uid,i,i===0), squad=p.organization.squad.map(s=>({...s,player:{...s.player,awp:100,rifler:0,igl:80,firepower:85,clutch:70}}));
+    return [uid,{...p,isReady:i!==7,organization:{...p.organization,squad,iglUid:'0'}}];
   }));
   const maxRoom={...lobby('MAX8'),players:Object.fromEntries(Object.entries(maxMembers).slice(0,7))};
   await seed('rooms/MAX8',maxRoom);
@@ -243,7 +245,7 @@ try {
   await seed('rooms/STALE', lobby('STALE'));
   await seed('rooms/STALE/results/major1~match1', submission);
   await check('outsider cannot read live host results', false, () => getDoc(doc(outsider, 'rooms/STALE/results/major1~match1')));
-  await seed('roomSessions/host', session('host', 'STALE', new Date(Date.now() - 181000)));
+  await seed('roomSessions/host', session('host', 'STALE', new Date(Date.now() - 200000)));
   await check('expired heartbeat cannot be revived', false, () => updateDoc(doc(host, 'roomSessions/host'), { heartbeat: serverTimestamp() }));
   await check('outsider reads stale host results for cleanup', true, () => getDoc(doc(outsider, 'rooms/STALE/results/major1~match1')));
   await check('outsider closes stale host lobby and deletes results', true, async () => {
@@ -255,7 +257,7 @@ try {
   });
   await seed('rooms/STALE2', lobby('STALE2'));
   await seed('rooms/STALE2/results/major1~match1', submission);
-  await seed('roomSessions/host', session('host', 'STALE2', new Date(Date.now() - 181000)));
+  await seed('roomSessions/host', session('host', 'STALE2', new Date(Date.now() - 200000)));
   await check('stale host can close before results cleanup', true, () => depart(outsider, 'STALE2', 'host', { status: 'closed', closedReason: 'host-left', 'players.host.left': true }, 'timeout', false));
   await check('outsider reads closed room results after claim deletion', true, () => getDoc(doc(outsider, 'rooms/STALE2/results/major1~match1')));
   await check('outsider deletes closed room results', true, () => deleteDoc(doc(outsider, 'rooms/STALE2/results/major1~match1')));
@@ -265,10 +267,9 @@ try {
   await check('host participation change', false, () => updateDoc(doc(host, 'rooms/PRIVATE'), { 'players.guest.participating': false }));
   await seed('rooms/LEGACY', { ...lobby('LEGACY'), players: { host: hostMember, guest: { ...guestMember, participating: false } } });
   await check('legacy guest restores participation while readying', true, () => updateDoc(doc(guest, 'rooms/LEGACY'), { 'players.guest.participating': true, 'players.guest.isReady': true }));
-  await seed('rooms/LEGACYORG', { ...lobby('LEGACYORG'), players: { host: hostMember, guest: { ...guestMember, participating: false } } });
+  await seed('rooms/LEGACYORG', { ...lobby('LEGACYORG'), players: { host: hostMember, guest: { ...guestMember, participating: false, squad: guestMember.organization.squad, teamName: 'guest', icon: 'icon' } } });
   const updatedGuest = member('guest');
   updatedGuest.organization.name = 'Updated organization';
-  updatedGuest.teamName = updatedGuest.organization.name;
   await check('legacy guest updates organization and restores participation', true, () => updateDoc(doc(guest, 'rooms/LEGACYORG'), { 'players.guest': { ...updatedGuest, isReady: true } }));
   await seed('rooms/KICK', lobby('KICK'));
   const kick = (db, uid = 'guest', changes = {}) => depart(db, 'KICK', uid, { [`players.${uid}`]: deleteField(), ...changes }, 'kicked', false);
@@ -309,23 +310,27 @@ try {
   await seed('rooms/DEPART', playing('DEPART'));
   await seed('organizationSessions/org-host', { ownerUid: 'host', roomId: 'DEPART', tournamentId: 'major1' });
   const hostLeaves = { hostId: 'guest', 'players.host.left': true, 'players.host.isReady': false, 'players.host.isHost': false, 'players.guest.isHost': true, 'tournament.abandonedUids': ['host'] };
-  await check('outsider cannot evict live member', false, () => depart(outsider, 'DEPART', 'host', hostLeaves, 'timeout', true, true));
-  await check('host cannot cancel while another player remains', false, () => depart(host, 'DEPART', 'host', { ...hostLeaves, status: 'closed', closedReason: 'empty', 'tournament.stage': 'cancelled' }, 'navigation', true, true));
-  await check('host Major departure transfers host and releases lock', true, () => depart(host, 'DEPART', 'host', hostLeaves, 'navigation', true, true));
+  await check('outsider cannot evict live member', false, () => depart(outsider, 'DEPART', 'host', hostLeaves, 'timeout', false, true));
+  await check('host cannot cancel while another player remains', false, () => depart(host, 'DEPART', 'host', { ...hostLeaves, status: 'closed', closedReason: 'empty', 'tournament.stage': 'cancelled' }, 'navigation', false, true));
+  await check('host Major departure transfers host and releases lock without an event', true, () => depart(host, 'DEPART', 'host', hostLeaves, 'navigation', false, true));
   await check('departure claim released', true, async () => assert.equal((await getDoc(doc(host, 'roomSessions/host'))).exists(), false));
   await check('departure organization lock released', true, async () => assert.equal((await getDoc(doc(host, 'organizationSessions/org-host'))).exists(), false));
+  await check('departure leaves no Firestore abandonment', true, async () => assert.equal((await getDoc(doc(host, 'users/host/abandonments/major1'))).exists(), false));
+  await seed('users/host/abandonments/major1', { ownerUid: 'host' });
+  await check('owner can read historical abandonment', true, () => getDoc(doc(host, 'users/host/abandonments/major1')));
+  await check('guest cannot read historical abandonment', false, () => getDoc(doc(guest, 'users/host/abandonments/major1')));
   await check('abandonment is immutable', false, () => updateDoc(doc(host, 'users/host/abandonments/major1'), { reason: 'reload' }));
   await seed('rooms/DUPL', playing('DUPL'));
-  await check('one abandonment per Major', false, () => depart(host, 'DUPL', 'host', hostLeaves));
+  await check('cannot create a Firestore abandonment in a departure batch', false, () => depart(host, 'DUPL', 'host', hostLeaves));
   await seed('rooms/EXPIRE', playing('EXPIRE'));
-  await seed('roomSessions/guest', session('guest', 'EXPIRE', new Date(Date.now() - 181000)));
+  await seed('roomSessions/guest', session('guest', 'EXPIRE', new Date(Date.now() - 200000)));
   const guestLeaves = { 'players.guest.left': true, 'players.guest.isReady': false, 'players.guest.isHost': false, 'tournament.abandonedUids': ['guest'] };
-  await check('expired member can be reconciled', true, () => depart(host, 'EXPIRE', 'guest', guestLeaves, 'timeout'));
+  await check('expired member can be reconciled', true, () => depart(host, 'EXPIRE', 'guest', guestLeaves, 'timeout', false));
   await seed('rooms/LEAVE', { ...playing('LEAVE'), tournament: { ...tournament, tournamentId: 'leavemajor' } });
   await check('member marks session leaving', true, () => updateDoc(doc(guest, 'roomSessions/guest'), { heartbeat: serverTimestamp(), leaving: true }));
-  await check('leaving member can be reconciled', true, () => depart(host, 'LEAVE', 'guest', guestLeaves, 'closed', true, false, 'leavemajor'));
+  await check('leaving member can be reconciled', true, () => depart(host, 'LEAVE', 'guest', guestLeaves, 'closed', false, false, 'leavemajor'));
   await seed('rooms/EMPTY', { ...playing('EMPTY'), players: { guest: { ...guestMember, isHost: true } }, hostId: 'guest', tournament: { ...tournament, tournamentId: 'lastmajor', participantUids: ['guest'], abandonedUids: [] } });
-  await check('last participant closes without a champion', true, () => depart(guest, 'EMPTY', 'guest', { status: 'closed', closedReason: 'empty', 'players.guest.left': true, 'players.guest.isReady': false, 'players.guest.isHost': false, 'tournament.stage': 'cancelled', 'tournament.abandonedUids': ['guest'] }, 'closed', true, false, 'lastmajor'));
+  await check('last participant closes without a champion', true, () => depart(guest, 'EMPTY', 'guest', { status: 'closed', closedReason: 'empty', 'players.guest.left': true, 'players.guest.isReady': false, 'players.guest.isHost': false, 'tournament.stage': 'cancelled', 'tournament.abandonedUids': ['guest'] }, 'closed', false, false, 'lastmajor'));
   await check('closed room has no champion', true, async () => { const t = (await getDoc(doc(guest, 'rooms/EMPTY'))).data().tournament; assert.equal(t.stage, 'cancelled'); assert.equal(t.winner, undefined); });
   await seed('rooms/WON', { ...playing('WON'), tournament: { ...tournament, tournamentId: 'wonmajor', stage: 'won' } });
   await check('no abandonment after won', false, () => depart(host, 'WON', 'host', { hostId: 'guest', 'players.host.left': true, 'players.host.isHost': false, 'players.guest.isHost': true }, 'navigation', true, false, 'wonmajor'));
@@ -336,6 +341,59 @@ try {
   await seed('rooms/WATCH', { ...playing('WATCH'), players: { host: hostMember, guest: guestMember, outsider: { ...member('outsider'), participating: false } } });
   await check('spectator cannot record abandonment', false, () => depart(outsider, 'WATCH', 'outsider', { 'players.outsider.left': true }, 'navigation'));
   await check('spectator leaves without abandonment', true, () => depart(outsider, 'WATCH', 'outsider', { 'players.outsider.left': true }, 'navigation', false));
+  const singleGame = { id: 'single-match', round: 'Single match', bestOf: 1, teamAId: 'player_host', teamBId: 'player_guest',
+    playerUids: ['host', 'guest'], completed: false, result: null };
+  const singleStandings = [{ id: singleGame.teamAId, uid: 'host', name: 'host' }, { id: singleGame.teamBId, uid: 'guest', name: 'guest' }];
+  const single = { ...tournament, stage: 'single_match', matches: [singleGame], standings: singleStandings, abandonedUids: [] };
+  const singleRoom = { ...lobby('SGL1'), roomFormat: 'singleMatch', bestOf: 1,
+    players: Object.fromEntries([hostMember, guestMember].map(p => [p.uid, { ...p, isReady: true, organization: { ...p.organization, id: 'single-' + p.uid } }])) };
+  await seed('rooms/SGL1', singleRoom);
+  function startSingle(t) {
+    const batch = writeBatch(host);
+    for (const uid of t.participantUids) batch.set(doc(host, `organizationSessions/single-${uid}`), { ownerUid: uid, roomId: 'SGL1', tournamentId: t.tournamentId });
+    batch.update(doc(host, 'rooms/SGL1'), { status: 'playing', generation: 1, tournament: t });
+    return batch.commit();
+  }
+  await check('single match rejects a mismatched side', false, () => startSingle({ ...single, matches: [{ ...singleGame, teamBId: singleGame.teamAId }] }));
+  await check('single match starts with compact descriptors and match', true, () => startSingle(single));
+  await check('single match reads only compact game and standings fields', true, async () => {
+    const stored = (await getDoc(doc(guest, 'rooms/SGL1'))).data().tournament;
+    assert.deepEqual(stored.matches, [singleGame]);
+    assert.deepEqual(stored.standings, singleStandings);
+  });
+  const vetoPath = 'rooms/SGL1/vetos/major1~single-match';
+  const veto = { version: 1, bestOf: 1, firstTeam: 'A', actions: [] };
+  await check('single match creates a veto by compact team IDs', true, () => setDoc(doc(host, vetoPath), {
+    tournamentId: 'major1', matchIndex: 0, matchId: 'single-match', veto, turnDeadlineMs: Date.now() + 25000,
+  }));
+  const firstAction = { 'veto.actions': [{ team: 'A', action: 'ban', map: 'de_dust2' }], turnDeadlineMs: Date.now() + 25000 };
+  await check('veto rejects the nonacting side', false, () => updateDoc(doc(guest, vetoPath), firstAction));
+  await check('veto accepts the acting side', true, () => updateDoc(doc(host, vetoPath), firstAction));
+  const bans = ['de_dust2', 'de_nuke', 'de_anubis', 'de_cache', 'de_inferno', 'de_ancient'];
+  await seed(vetoPath, { tournamentId: 'major1', matchIndex: 0, matchId: 'single-match', turnDeadlineMs: null,
+    veto: { ...veto, actions: bans.map((map, i) => ({ team: [0, 1, 5].includes(i) ? 'A' : 'B', action: 'ban', map })) } });
+  const singleResult = { ...result, winner: 'player_host', maps: [{ ...result.maps[0], winnerId: 'player_host' }] };
+  const finishSingle = (roomId, value) => updateDoc(doc(host, `rooms/${roomId}`), {
+    'tournament.stage': 'won', 'tournament.matches': [{ ...singleGame, completed: true, result: value }],
+  });
+  await check('single match rejects duplicated result team', false, () => finishSingle('SGL1', { ...singleResult, teamA }));
+  await check('single match saves a compact veto-validated result', true, () => finishSingle('SGL1', singleResult));
+  await seed('rooms/SGL2', { ...singleRoom, id: 'SGL2', status: 'playing', tournament: { ...single, abandonedUids: ['guest'] } });
+  const forfeit = { scoreA: 13, scoreB: 0, winner: 'player_host', maps: [], forfeit: true, forfeitUids: ['guest'] };
+  await check('single match saves a compact forfeit', true, () => finishSingle('SGL2', forfeit));
+  const longGame = { ...singleGame, bestOf: 5 };
+  const longRoom = { ...singleRoom, id: 'SGL5', status: 'playing', bestOf: 5,
+    tournament: { ...single, matches: [longGame] } };
+  await seed('rooms/SGL5', longRoom);
+  await seed('rooms/SGL5/vetos/major1~single-match', { turnDeadlineMs: null,
+    veto: { ...veto, bestOf: 5, actions: bans.map((map, i) => ({ map, team: [0, 2, 5].includes(i) ? 'A' : 'B', action: i < 2 ? 'ban' : 'pick' })) } });
+  const longResult = { scoreA: 3, scoreB: 2, winner: 'player_host', playerRatings: Array(10).fill(1.2),
+    maps: [...bans.slice(2), 'de_mirage'].map((map, i) => i % 2
+      ? { map, scoreA: 7, scoreB: 13, winnerId: 'player_guest' }
+      : { map, scoreA: 13, scoreB: 7, winnerId: 'player_host' }) };
+  await check('single match saves a full compact BO5 result with ratings', true, () => updateDoc(doc(host, 'rooms/SGL5'), {
+    'tournament.stage': 'won', 'tournament.matches': [{ ...longGame, completed: true, result: longResult }],
+  }));
   await seed('rooms/STARTMATCH', { ...playing('STARTMATCH'), tournament: { ...tournament, matchesStarted: false } });
   await check('guest cannot start matches', false, () => updateDoc(doc(guest, 'rooms/STARTMATCH'), { 'tournament.matchesStarted': true }));
   await check('host starts matches', true, () => updateDoc(doc(host, 'rooms/STARTMATCH'), { 'tournament.matchesStarted': true }));
@@ -395,8 +453,9 @@ try {
   }
   const resetResult = await fetch(`${documents}/rooms/PLAYING/results/major1~match1`, { method: 'DELETE', headers: { Authorization: 'Bearer owner' } });
   assert.ok(resetResult.ok);
+  await check('duplicated team result denied', false, () => setDoc(doc(host, 'rooms/PLAYING/results/major1~match1'), { ...submission, result: { ...result, teamA, teamB } }));
   await check('valid result', true, () => setDoc(doc(host, 'rooms/PLAYING/results/major1~match1'), submission));
-  await check('member reads result', true, () => getDoc(doc(guest, 'rooms/PLAYING/results/major1~match1')));
+  await check('member reads the compact result', true, async () => assert.deepEqual((await getDoc(doc(guest, 'rooms/PLAYING/results/major1~match1'))).data().result, result));
   await check('outsider cannot read result', false, () => getDoc(doc(outsider, 'rooms/PLAYING/results/major1~match1')));
   await check('immutable result', false, () => setDoc(doc(host, 'rooms/PLAYING/results/major1~match1'), submission));
   for (const [name, ratings, allowed] of [
@@ -437,31 +496,32 @@ try {
   await check('participant in another match', false, () => setDoc(doc(host, 'rooms/OTHER/results/major1~match1'), submission));
   for (const [round, scores] of [['Quarterfinals', [2, 0]], ['Final', [3, 0]]]) {
     const id = round === 'Final' ? 'BO5' : 'BO3';
-    await seed(`rooms/${id}`, { ...playing(id), tournament: { ...tournament, matches: [{ ...match, round }] } });
+    await seed(`rooms/${id}`, { ...playing(id), tournament: { ...tournament, matches: [{ ...match, round, bestOf: round === 'Final' ? 5 : 3 }] } });
     const series = { ...submission, result: { ...result, playerRatings: Array(10).fill(1.2), scoreA: scores[0], scoreB: scores[1], maps: Array(scores[0]).fill(result.maps[0]) } };
     await check(`${id} valid series`, true, () => setDoc(doc(host, `rooms/${id}/results/major1~match1`), series));
-    await seed(`rooms/${id}BAD`, { ...playing(`${id}BAD`), tournament: { ...tournament, matches: [{ ...match, round }] } });
+    await seed(`rooms/${id}BAD`, { ...playing(`${id}BAD`), tournament: { ...tournament, matches: [{ ...match, round, bestOf: round === 'Final' ? 5 : 3 }] } });
     await check(`${id} inconsistent series`, false, () => setDoc(doc(host, `rooms/${id}BAD/results/major1~match1`), { ...series, result: { ...series.result, scoreA: 1 } }));
   }
-  await seed('rooms/NUKEBO3', { ...playing('NUKEBO3'), tournament: { ...tournament, matches: [{ ...match, round: 'Quarterfinals' }] } });
+  await seed('rooms/NUKEBO3', { ...playing('NUKEBO3'), tournament: { ...tournament, matches: [{ ...match, round: 'Quarterfinals', bestOf: 3 }] } });
   const nukeSeries = { ...submission, result: { ...result, scoreA: 2, scoreB: 0, maps: [result.maps[0], { ...result.maps[0], map: 'de_nuke' }] } };
   await check('series rejects unknown map in history', false, () => setDoc(doc(host, 'rooms/NUKEBO3/results/major1~match1'), { ...nukeSeries, result: { ...nukeSeries.result, maps: [result.maps[0], { ...result.maps[0], map: 'de_other' }] } }));
   await check('series accepts Nuke in history', true, () => setDoc(doc(host, 'rooms/NUKEBO3/results/major1~match1'), nukeSeries));
   for (const [round, winners] of [['Quarterfinals', ['a', 'b', 'a']], ['Quarterfinals', ['b', 'a', 'b']], ['Final', ['a', 'b', 'a', 'b', 'a']], ['Final', ['b', 'a', 'b', 'a', 'b']], ['Final', ['a', 'a', 'b', 'a']], ['Final', ['b', 'b', 'a', 'b']]]) {
     const id = `LONG${round}${winners.length}${winners.at(-1)}`;
-    await seed(`rooms/${id}`, { ...playing(id), tournament: { ...tournament, matches: [{ ...match, round }] } });
+    await seed(`rooms/${id}`, { ...playing(id), tournament: { ...tournament, matches: [{ ...match, round, bestOf: round === 'Final' ? 5 : 3 }] } });
     const maps = winners.map(winnerId => ({ map: 'de_mirage', scoreA: winnerId === 'a' ? 13 : 7, scoreB: winnerId === 'b' ? 13 : 7, winnerId }));
     const scoreA = winners.filter(winner => winner === 'a').length;
     const series = { ...submission, result: { ...result, playerRatings: Array(10).fill(1.2), scoreA, scoreB: winners.length - scoreA, winner: winners.at(-1), maps } };
     await check(`${id} full-length series with ratings`, true, () => setDoc(doc(host, `rooms/${id}/results/major1~match1`), series));
-    const realMatch = { ...match, round, teamA: { ...teams[0], id: 'a' }, teamB: { ...teams[1], id: 'b' } };
+    const { teamAId, teamBId, bestOf, ...legacyMatch } = match;
+    const realMatch = { ...legacyMatch, round, teamA: { ...teams[0], id: teamAId }, teamB: { ...teams[1], id: teamBId } };
     await seed(`rooms/${id}REAL`, { ...playing(`${id}REAL`), tournament: { ...tournament, matches: [realMatch] } });
-    await check(`${id} real teams with ratings`, true, () => setDoc(doc(host, `rooms/${id}REAL/results/major1~match1`), { ...series, result: { ...series.result, teamA: realMatch.teamA, teamB: realMatch.teamB } }));
+    await check(`${id} compact results work with legacy team snapshots`, true, () => setDoc(doc(host, `rooms/${id}REAL/results/major1~match1`), series));
     const lastMap = maps.at(-1);
     for (const field of ['map', 'scoreA', 'scoreB', 'winnerId', 'extra']) {
       const invalid = { ...lastMap, extra: true };
       if (field !== 'extra') { delete invalid.extra; delete invalid[field]; }
-      await seed(`rooms/${id}BADMAP`, { ...playing(`${id}BADMAP`), tournament: { ...tournament, matches: [{ ...match, round }] } });
+      await seed(`rooms/${id}BADMAP`, { ...playing(`${id}BADMAP`), tournament: { ...tournament, matches: [{ ...match, round, bestOf: round === 'Final' ? 5 : 3 }] } });
       await check(`${id} rejects map ${field}`, false, () => setDoc(doc(host, `rooms/${id}BADMAP/results/major1~match1`), { ...series, result: { ...series.result, maps: [...maps.slice(0, -1), invalid] } }));
     }
   }

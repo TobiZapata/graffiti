@@ -1,3 +1,4 @@
+import { encodeResult } from './roomStorage.mjs';
 import { replayBestOf, replaySeriesResult } from './replaySeries.mjs';
 import { hasMapMetrics, summarizeMatchPlayers, validMapPlayerStats } from './matchSummary.mjs';
 
@@ -6,7 +7,8 @@ export const validPlayerRatings = ratings => Array.isArray(ratings) && ratings.l
 
 export function validMatchResult(match, result) {
   if (result && Object.hasOwn(result, 'playerRatings') && !validPlayerRatings(result.playerRatings)) return false;
-  if (!(!!result && result.teamA?.id === match.teamA.id && result.teamB?.id === match.teamB.id &&
+  if (!(!!result && (!Object.hasOwn(result, 'teamA') || result.teamA?.id === match.teamA.id) &&
+    (!Object.hasOwn(result, 'teamB') || result.teamB?.id === match.teamB.id) &&
     Number.isInteger(result.scoreA) && Number.isInteger(result.scoreB) &&
     result.scoreA >= 0 && result.scoreB >= 0 && result.scoreA !== result.scoreB &&
     result.winner === (result.scoreA > result.scoreB ? match.teamA.id : match.teamB.id))) return false;
@@ -20,8 +22,7 @@ export function validMatchResult(match, result) {
 }
 
 export function compactMatchResult(match, result) {
-  const compact = { teamA: match.teamA, teamB: match.teamB, scoreA: result.scoreA, scoreB: result.scoreB, winner: result.winner,
-    maps: result.maps.map(({ map, scoreA, scoreB, winnerId }) => ({ map, scoreA, scoreB, winnerId })) };
+  const compact = encodeResult(result);
   // Keep single-match BO5 writes within Firestore's rules evaluation limit.
   if (match.round !== 'Single match' && result.maps.every(hasMapMetrics)) {
     const summary = summarizeMatchPlayers(match, result.maps);

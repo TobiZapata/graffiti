@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { returnRoomToLobby } from "@/lib/roomService";
 import { useAuth } from "@/context/AuthContext";
 import { generateSwissPairings } from "@/lib/tournamentService";
-import { decodeRoom } from "@/lib/roomStorage.mjs";
+import { decodeRoom, encodeTournament } from "@/lib/roomStorage.mjs";
 import { applyForfeits } from "@/lib/roomForfeit.mjs";
 import { applySubmittedResults, compactMatchResult, matchResultId, validMatchResult } from "@/lib/multiplayerResults.mjs";
 
@@ -87,7 +87,7 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
     if (!Object.values(data.players || {}).some(p => p.uid === user.uid && !p.left)) throw new Error("You are not in this room.");
     if (hostOnly && data.hostId !== user.uid) throw new Error("Only the host can advance the Major.");
     assertCompatibleSimulation(data.tournament.simulation);
-    return data.tournament;
+    return decodeRoom(data).tournament;
   };
 
   const completeMatch = async (matchId, result) => {
@@ -102,7 +102,7 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
       const ref = doc(roomRef, 'results', matchResultId(tournamentId, matchId));
       const submitted = await tx.get(ref);
       if (match.completed) return match.result;
-      if (submitted.exists()) return submitted.data().result;
+      if (submitted.exists()) return { ...submitted.data().result, teamA: match.teamA, teamB: match.teamB };
       if (t.abandonedUids?.some(uid => match.playerUids?.includes(uid))) throw new Error("This match was decided by an abandonment.");
       if (!t.matchesStarted || !validMatchResult(match, result)) throw new Error("Invalid match result.");
       // shortcut: rebuild display stats from the replay; persist separately if cross-version match history is needed.
@@ -171,23 +171,14 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
       const swissComplete = updatedStandings.every(tm => tm.wins >= 3 || tm.losses >= 3);
       
       if (swissComplete) {
-        tx.update(roomRef, {
-          "tournament.matches": updatedMatches,
-          "tournament.standings": updatedStandings,
-          "tournament.stage": "swiss_complete",
-          "tournament.matchesStarted": false
-        });
+        tx.update(roomRef, { tournament: encodeTournament({ ...t, matches: updatedMatches, stage: "swiss_complete", matchesStarted: false }) });
       } else {
         const nextRound = t.swissRound + 1;
         const active = updatedStandings.filter(tm => tm.wins < 3 && tm.losses < 3);
         const newMatches = generateSwissPairings(active, updatedMatches, nextRound);
         
-        tx.update(roomRef, {
-          "tournament.matches": applyForfeits({ ...t, matches: [...updatedMatches, ...newMatches], standings: updatedStandings }).matches,
-          "tournament.standings": applyForfeits({ ...t, matches: [...updatedMatches, ...newMatches], standings: updatedStandings }).standings,
-          "tournament.swissRound": nextRound,
-          "tournament.matchesStarted": false
-        });
+        const next = applyForfeits({ ...t, matches: [...updatedMatches, ...newMatches], standings: updatedStandings });
+        tx.update(roomRef, { tournament: encodeTournament({ ...next, swissRound: nextRound, matchesStarted: false }) });
       }
     } else if (t.stage === "playoffs") {
       const playoffRounds = ['Quarterfinals', 'Semifinals', 'Final'];
@@ -210,11 +201,7 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
       const finalMatch = updatedMatches.find(m => m.round === 'Final');
 
       if (finalMatch && finalMatch.completed) {
-        tx.update(roomRef, {
-          "tournament.matches": updatedMatches,
-          "tournament.stage": "won",
-          "tournament.matchesStarted": false
-        });
+        tx.update(roomRef, { tournament: encodeTournament({ ...t, matches: updatedMatches, stage: "won", matchesStarted: false }) });
         return;
       }
 
@@ -229,7 +216,8 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
         sf[1].isPlayerMatch = sf[1].teamA.isPlayer || sf[1].teamB.isPlayer;
         sf[1].playerUids = [sf[1].teamA.uid, sf[1].teamB.uid].filter(Boolean);
         
-        tx.update(roomRef, { "tournament.matches": applyForfeits({ ...t, matches: [...updatedMatches, ...sf] }).matches, "tournament.matchesStarted": false });
+        const next = applyForfeits({ ...t, matches: [...updatedMatches, ...sf] });
+        tx.update(roomRef, { tournament: encodeTournament({ ...next, matchesStarted: false }) });
         return;
       }
       
@@ -239,11 +227,12 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
         fin.isPlayerMatch = fin.teamA.isPlayer || fin.teamB.isPlayer;
         fin.playerUids = [fin.teamA.uid, fin.teamB.uid].filter(Boolean);
         
-        tx.update(roomRef, { "tournament.matches": applyForfeits({ ...t, matches: [...updatedMatches, fin] }).matches, "tournament.matchesStarted": false });
+        const next = applyForfeits({ ...t, matches: [...updatedMatches, fin] });
+        tx.update(roomRef, { tournament: encodeTournament({ ...next, matchesStarted: false }) });
         return;
       }
 
-      tx.update(roomRef, { "tournament.matches": updatedMatches, "tournament.matchesStarted": false });
+      tx.update(roomRef, { tournament: encodeTournament({ ...t, matches: updatedMatches, matchesStarted: false }) });
     }
     });
   };
@@ -284,11 +273,8 @@ export function MultiplayerProvider({ children, roomId, viewResults = false }) {
       });
     }
     
-    tx.update(roomRef, {
-      "tournament.stage": "playoffs",
-      "tournament.matches": applyForfeits({ ...t, matches: [...t.matches, ...qfMatches] }).matches,
-      "tournament.matchesStarted": false
-    });
+    const next = applyForfeits({ ...t, matches: [...t.matches, ...qfMatches] });
+    tx.update(roomRef, { tournament: encodeTournament({ ...next, stage: "playoffs", matchesStarted: false }) });
     });
   };
 

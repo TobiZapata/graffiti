@@ -3,8 +3,9 @@ import { upgradeOrganization } from './upgradeOrganization.mjs';
 import { auth, db } from './firebase';
 import { collection, doc, FieldPath, getDoc, getDocFromServer, getDocs, limit, query, runTransaction, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { completedFinal, initializeSingleMatch, lobby, member, readyPlayers } from './roomLifecycle.mjs';
-import { decodeRoom, encodePlayers, PLAYBACK_SPEEDS, roomCapacity, SINGLE_MATCH_BEST_OF } from './roomStorage.mjs';
+import { decodeRoom, encodeMatch, encodeMember, encodePlayers, encodeTournament, PLAYBACK_SPEEDS, roomCapacity, SINGLE_MATCH_BEST_OF } from './roomStorage.mjs';
 import { compactMatchResult, validMatchResult } from './multiplayerResults.mjs';
+import { recordLocalAbandonment } from './localAbandonments.mjs';
 import { applyForfeits } from './roomForfeit.mjs';
 import { clearRoomSession, getPageSession, readRoomSession, rememberRoomSession, roomDeparture, roomSessionExpired } from './roomSession.mjs';
 import { initializeMultiplayerTournament } from './tournamentService';
@@ -73,7 +74,7 @@ export async function joinRoom(code, uid, name, organization) {
     lobby(room);
     if (room.players.length >= roomCapacity(room)) throw new Error('This room is full.');
     const player = newMember(uid, name, organization, false);
-    tx.update(ref, { players: encodePlayers([...room.players, player]) });
+    tx.update(ref, new FieldPath('players', uid), encodeMember(player));
     tx.set(sessionRef(uid), sessionData(uid, room.id, identity));
   });
   rememberRoomSession({ roomId: ref.id, ...identity });
@@ -111,7 +112,7 @@ export async function setRoomReady(code, uid, organization, ready) {
     const room = await readRoom(tx, ref);
     lobby(room); ownPage(room, uid);
     const player = room.players.find(p => p.uid === uid);
-    tx.update(ref, new FieldPath('players', uid), { ...player, organization: updated.organization, squad: updated.squad, teamName: updated.teamName, icon: updated.icon, participating: true, isReady: ready });
+    tx.update(ref, new FieldPath('players', uid), encodeMember({ ...player, organization: updated.organization, participating: true, isReady: ready }));
   });
 }
 
@@ -144,7 +145,7 @@ export async function startRoomMajor(code, uid) {
     const single = room.roomFormat === 'singleMatch';
     const tournament = single ? initializeSingleMatch(players, room.bestOf) : await initializeMultiplayerTournament(players);
     players.forEach(p => tx.set(lockRef(p.organization.id), { ownerUid: p.uid, roomId: room.id, tournamentId }));
-    tx.update(ref, { status: 'playing', generation: (room.generation || 0) + 1, tournament: { ...tournament, tournamentId, participantUids: players.map(p => p.uid), abandonedUids: [], matchesStarted: single } });
+    tx.update(ref, { status: 'playing', generation: (room.generation || 0) + 1, tournament: encodeTournament({ ...tournament, tournamentId, participantUids: players.map(p => p.uid), abandonedUids: [], matchesStarted: single }) });
   });
 }
 
@@ -161,8 +162,8 @@ export async function completeRoomSingleMatch(code, uid, tournamentId, result) {
     const forfeited = tournament.abandonedUids.length > 0;
     if (!forfeited && !validMatchResult(match, result)) throw new Error('Invalid match result.');
     const completed = forfeited ? applyForfeits(tournament).matches[0] : { ...match, completed: true, result: compactMatchResult(match, result) };
-    tx.update(ref, { 'tournament.stage': 'won', 'tournament.matches': [completed] });
-    return forfeited ? completed.result : result;
+    tx.update(ref, { 'tournament.stage': 'won', 'tournament.matches': [encodeMatch(completed)] });
+    return { ...(forfeited ? completed.result : result), teamA: match.teamA, teamB: match.teamB };
   });
 }
 
@@ -192,7 +193,7 @@ async function departRoom(code, uid, reason, expectedPageId) {
   const old = before.exists() ? decodeRoom(before.data()) : null;
   const preview = old?.schemaVersion === 3 ? roomDeparture(old, uid, reason) : null;
   const results = preview?.closed ? await getDocs(collection(ref, 'results')) : null;
-  await runTransaction(db, async tx => {
+  const abandonment = await runTransaction(db, async tx => {
     const snap = await tx.get(ref), session = await tx.get(sessionRef(uid));
     if (session.exists() && (session.data().roomId !== ref.id || expectedPageId && session.data().pageId !== expectedPageId)) return;
     if (!snap.exists()) { if (session.exists()) tx.delete(session.ref); return; }
@@ -203,16 +204,23 @@ async function departRoom(code, uid, reason, expectedPageId) {
     const lock = room.status === 'playing' && departure.target.participating ? await tx.get(lockRef(departure.target.organization.id)) : null;
     const closeSessions = departure.closed ? await Promise.all(room.players.filter(p => p.uid !== uid).map(p => tx.get(sessionRef(p.uid)))) : [];
     if (departure.closed && !preview?.closed) throw new Error('The room changed while closing. Try leaving again.');
-    if (departure.forfeit && room.roomFormat !== 'singleMatch') tx.set(doc(db, 'users', uid, 'abandonments', room.tournament.tournamentId), {
-      ownerUid: uid, organizationId: departure.target.organization.id, roomId: room.id,
-      tournamentId: room.tournament.tournamentId, reason, at: serverTimestamp(),
-    });
     if (lock && matchingLock(lock, room, uid)) tx.delete(lock.ref);
     if (session.exists()) tx.delete(session.ref);
     closeSessions.forEach(s => { if (s.exists() && s.data().roomId === ref.id) tx.delete(s.ref); });
     results?.docs.forEach(s => tx.delete(s.ref));
-    tx.update(ref, { ...departure.change, players: encodePlayers(departure.change.players) });
+    const { tournament, ...change } = departure.change;
+    tx.update(ref, { ...change, players: encodePlayers(change.players), ...(tournament && {
+      'tournament.abandonedUids': tournament.abandonedUids,
+      'tournament.stage': tournament.stage,
+    }) });
+    if (departure.forfeit && room.roomFormat !== 'singleMatch') {
+      return { organizationId: departure.target.organization.id, roomId: room.id,
+        tournamentId: room.tournament.tournamentId, reason };
+    }
   });
+  if (abandonment && auth.currentUser?.uid === uid) {
+    recordLocalAbandonment(typeof window !== 'undefined' ? window.localStorage : null, abandonment);
+  }
   // A result can commit before closure but after the first query; closed rooms reject new submissions.
   const closed = await getDoc(ref);
   if (closed.exists() && closed.data().status === 'closed') {

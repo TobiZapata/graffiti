@@ -4,7 +4,6 @@ service cloud.firestore {
     function signed() { return request.auth != null; }
     function roomPath(code) { return /databases/$(database)/documents/rooms/$(code); }
     function sessionPath(uid) { return /databases/$(database)/documents/roomSessions/$(uid); }
-    function eventPath(uid, major) { return /databases/$(database)/documents/users/$(uid)/abandonments/$(major); }
     function live(r, uid) { let c = get(sessionPath(uid)).data; return uid in r.players && !r.players[uid].left && c.uid == uid && c.roomId == r.id && c.pageId == r.players[uid].sessionId && !c.leaving && c.heartbeat > request.time - duration.value(180, 's'); }
     function claimed(r, uid) { let c = getAfter(sessionPath(uid)).data; return c.uid == uid && c.roomId == r.id && c.pageId == r.players[uid].sessionId && !c.leaving && c.heartbeat == request.time; }
     function expired(uid) { let c = get(sessionPath(uid)).data; return c.leaving || c.heartbeat <= request.time - duration.value(180, 's'); }
@@ -57,9 +56,15 @@ service cloud.firestore {
         o.mainAwperUid in ['0','1','2','3','4'] && o.iglUid in ['0','1','2','3','4'] && o.starUid in ['0','1','2','3','4'];
     }
     function member(p, uid, host) {
-      return p is map && p.keys().hasOnly(['uid','name','isHost','organization','participating','isReady','squad','teamName','icon','sessionId','left']) &&
+      return p is map && p.keys().hasOnly(['uid','name','isHost','organization','participating','isReady','sessionId','left']) &&
         p.uid == uid && p.sessionId is string && p.sessionId.size() > 0 && p.left == false && p.name is string && p.name.size() <= 100 && p.isHost == host && p.participating == true && p.isReady is bool &&
-        (!p.isReady || p.participating) && validOrganization(p.organization) && p.squad == p.organization.squad && p.teamName == p.organization.name && p.icon == p.organization.icon;
+        (!p.isReady || p.participating) && validOrganization(p.organization);
+    }
+    function memberChange(old, next, fields) {
+      let change = next.diff(old);
+      return change.affectedKeys().hasOnly(fields) ||
+        (change.addedKeys().hasOnly(fields) && change.changedKeys().hasOnly(fields) &&
+         change.removedKeys().hasOnly(fields.concat(['squad','teamName','icon'])));
     }
     function locked(r, uid) {
       let p = r.players[uid];
@@ -70,36 +75,35 @@ service cloud.firestore {
       let keys = old.players.keys();
       return keys.size() <= i || (keys[i] in next.tournament.participantUids && locked(next, keys[i]));
     }
-    function releasePlayer(players, ids, i) {
-      return ids.size() <= i || players[ids[i]].left || !existsAfter(lockPath(players[ids[i]].organization.id));
-    }
-    function resetPlayer(players, updated, keys, i) {
+    function resetPlayer(players, updated, keys, ids, i) {
       let uid = keys.size() > i ? keys[i] : '';
-      let p = uid == '' ? {} : players[uid];
+      let p = players.get(uid, {});
       let q = updated.get(uid, {});
-      return uid == '' || (p.left ? !(uid in updated) : (q.diff(p).affectedKeys().hasOnly(['participating','isReady']) && q.participating == true && q.isReady == false));
+      return uid == '' || (p.left ? !(uid in updated) :
+        q.participating == true && q.isReady == false && (!(uid in ids) || !existsAfter(lockPath(p.organization.id))) &&
+        (q.diff(p).affectedKeys().hasOnly(['participating','isReady']) || memberChange(p,q,['participating','isReady'])));
     }
     function validSimulation(t) {
       let s = t.get('simulation',null);
       return s == null || (s.keys().hasOnly(['engineVersion','playerDataVersion','bankVersion']) &&
         s.engineVersion in [2,3] && s.playerDataVersion == 'players-v2.0.0' && s.bankVersion in ['mirage-economy-v1','mirage-economy-v2']);
     }
-    function singleMatchTeam(r, team) {
-      let player = r.players[team.uid];
-      let org = player.organization;
-      return team.id == 'player_' + team.uid && team.organizationId == org.id && team.isPlayer == true && team.name == org.name && team.icon == org.icon &&
-        team.mainAwperUid == org.mainAwperUid && team.iglUid == org.iglUid && team.starUid == org.starUid &&
-        team.players.size() == 5 && team.players[0].name == org.squad[0].player.name && team.players[1].name == org.squad[1].player.name &&
-        team.players[2].name == org.squad[2].player.name && team.players[3].name == org.squad[3].player.name && team.players[4].name == org.squad[4].player.name;
+    function humanMatch(game) {
+      let ids = game.playerUids;
+      return ids is list && ids.size() == 2 && ids[0] != ids[1] &&
+        teamAId(game) == 'player_' + ids[0] && teamBId(game) == 'player_' + ids[1];
     }
     function startSingleMatch(old, next) {
       let t = next.tournament;
       let game = t.matches[0];
+      let ids = game.playerUids;
       return old.players.size() == 2 && t.participantUids.size() == 2 && t.stage == 'single_match' && t.matchesStarted == true &&
         t.matches.size() == 1 && game.id == 'single-match' && game.round == 'Single match' && game.bestOf == old.bestOf &&
-        game.completed == false && game.result == null && game.isPlayerMatch == true &&
-        game.teamA.uid != game.teamB.uid && game.teamA.uid in t.participantUids && game.teamB.uid in t.participantUids &&
-        game.playerUids == [game.teamA.uid,game.teamB.uid] && singleMatchTeam(old,game.teamA) && singleMatchTeam(old,game.teamB) &&
+        game.keys().hasOnly(['id','round','bestOf','teamAId','teamBId','playerUids','completed','result']) &&
+        game.completed == false && game.result == null && humanMatch(game) &&
+        ids.toSet() == t.participantUids.toSet() &&
+        t.standings == [{'id': game.teamAId, 'uid': ids[0], 'name': old.players[ids[0]].organization.name},
+          {'id': game.teamBId, 'uid': ids[1], 'name': old.players[ids[1]].organization.name}] &&
         startPlayer(old,next,0) && startPlayer(old,next,1);
     }
     function start(old, next) {
@@ -122,8 +126,7 @@ service cloud.firestore {
       return old.hostId == request.auth.uid && old.status == 'playing' && old.tournament.stage == 'won' &&
         next.diff(old).affectedKeys().hasOnly(['status','players','lastMajor']) && updated.keys().hasOnly(keys) &&
         last.keys().hasOnly(['tournamentId','winner']) && last.tournamentId == old.tournament.tournamentId &&
-        releasePlayer(players,ids,0) && releasePlayer(players,ids,1) && releasePlayer(players,ids,2) && releasePlayer(players,ids,3) && releasePlayer(players,ids,4) && releasePlayer(players,ids,5) && releasePlayer(players,ids,6) && releasePlayer(players,ids,7) &&
-        resetPlayer(players,updated,keys,0) && resetPlayer(players,updated,keys,1) && resetPlayer(players,updated,keys,2) && resetPlayer(players,updated,keys,3) && resetPlayer(players,updated,keys,4) && resetPlayer(players,updated,keys,5) && resetPlayer(players,updated,keys,6) && resetPlayer(players,updated,keys,7);
+        resetPlayer(players,updated,keys,ids,0) && resetPlayer(players,updated,keys,ids,1) && resetPlayer(players,updated,keys,ids,2) && resetPlayer(players,updated,keys,ids,3) && resetPlayer(players,updated,keys,ids,4) && resetPlayer(players,updated,keys,ids,5) && resetPlayer(players,updated,keys,ids,6) && resetPlayer(players,updated,keys,ids,7);
     }
     function returningSingleMatch(old, next) {
       let players = old.players;
@@ -134,8 +137,7 @@ service cloud.firestore {
       return request.auth.uid in ids && old.status == 'playing' && t.stage == 'won' &&
         next.diff(old).affectedKeys().hasOnly(['status','players','lastMajor']) && updated.keys().hasOnly(keys) &&
         next.lastMajor == { 'tournamentId': t.tournamentId, 'winner': t.matches[0].result.winner } &&
-        releasePlayer(players,ids,0) && releasePlayer(players,ids,1) &&
-        resetPlayer(players,updated,keys,0) && resetPlayer(players,updated,keys,1);
+        resetPlayer(players,updated,keys,ids,0) && resetPlayer(players,updated,keys,ids,1);
     }
     function returnActor(r) {
       return r.hostId == request.auth.uid || (singleMatch(r) && request.auth.uid in r.tournament.participantUids && live(r,request.auth.uid));
@@ -152,7 +154,7 @@ service cloud.firestore {
         (uid in old.players && uid in next.players && next.diff(old).affectedKeys().hasOnly(['players']) && changed.hasOnly([uid]) &&
           (next.players[uid].diff(old.players[uid]).affectedKeys().hasOnly(['participating','isReady']) ?
             (next.players[uid].isReady is bool && next.players[uid].participating == true) :
-            (next.players[uid].diff(old.players[uid]).affectedKeys().hasOnly(['organization','squad','teamName','icon','participating','isReady']) && member(next.players[uid],uid,uid == old.hostId))))
+            (memberChange(old.players[uid],next.players[uid],['organization','participating','isReady']) && member(next.players[uid],uid,uid == old.hostId))))
       );
     }
     function departedPlayer(old, next, target, i) {
@@ -160,8 +162,8 @@ service cloud.firestore {
       let uid = keys.size() > i ? keys[i] : '';
       return keys.size() <= i || (uid == target ?
         (old.status == 'lobby' && target != old.hostId ? !(uid in next.players) :
-         (next.players[uid].diff(old.players[uid]).affectedKeys().hasOnly(['left','isReady','isHost']) && next.players[uid].left == true && next.players[uid].isReady == false && next.players[uid].isHost == (old.status == 'lobby' && uid == old.hostId))) :
-        (uid in next.players && next.players[uid].diff(old.players[uid]).affectedKeys().hasOnly(['isHost']) && next.players[uid].isHost == (uid == next.hostId)));
+         (memberChange(old.players[uid],next.players[uid],['left','isReady','isHost']) && next.players[uid].left == true && next.players[uid].isReady == false && next.players[uid].isHost == (old.status == 'lobby' && uid == old.hostId))) :
+        (uid in next.players && memberChange(old.players[uid],next.players[uid],['isHost']) && next.players[uid].isHost == (uid == next.hostId)));
     }
     function leftAt(r, i) { let keys = r.players.keys(); return keys.size() <= i || r.players[keys[i]].left; }
     function departure(old, next) {
@@ -181,34 +183,33 @@ service cloud.firestore {
           (old.status == 'playing' && next.players.size() == old.players.size() &&
            (next.status == 'closed' ? next.closedReason == 'empty' && (old.tournament.stage == 'won' ? next.tournament.stage == 'won' : next.tournament.stage == 'cancelled') && leftAt(next,0) && leftAt(next,1) && leftAt(next,2) && leftAt(next,3) && leftAt(next,4) && leftAt(next,5) && leftAt(next,6) && leftAt(next,7) : next.status == 'playing' && next.hostId in next.players && !next.players[next.hostId].left) &&
            (uid == old.hostId || next.hostId == old.hostId) && next.tournament.diff(old.tournament).affectedKeys().hasOnly(['abandonedUids','stage']) && (next.status == 'closed' || next.tournament.stage == old.tournament.stage) && next.tournament.tournamentId == old.tournament.tournamentId && next.tournament.participantUids == old.tournament.participantUids &&
-           (forfeiting ? ((!existsAfter(lockPath(old.players[uid].organization.id)) || getAfter(lockPath(old.players[uid].organization.id)).data.roomId != old.id || getAfter(lockPath(old.players[uid].organization.id)).data.tournamentId != old.tournament.tournamentId) && next.tournament.get('abandonedUids',[]).toSet() == old.tournament.get('abandonedUids',[]).toSet().union([uid].toSet()) &&
-             (singleMatch(old) || getAfter(eventPath(uid,old.tournament.tournamentId)).data == { 'ownerUid': uid, 'organizationId': old.players[uid].organization.id, 'roomId': old.id, 'tournamentId': old.tournament.tournamentId, 'reason': d.reason, 'at': request.time })) :
+           (forfeiting ? ((!existsAfter(lockPath(old.players[uid].organization.id)) || getAfter(lockPath(old.players[uid].organization.id)).data.roomId != old.id || getAfter(lockPath(old.players[uid].organization.id)).data.tournamentId != old.tournament.tournamentId) && next.tournament.get('abandonedUids',[]).toSet() == old.tournament.get('abandonedUids',[]).toSet().union([uid].toSet())) :
              next.tournament.get('abandonedUids',[]) == old.tournament.get('abandonedUids',[]))));
     }
-    function validMap(m, game) {
+    function validMap(m, aId, bId) {
       let a = m.scoreA;
       let b = m.scoreB;
       return m.keys().hasOnly(['map','scoreA','scoreB','winnerId']) &&
         m.map.matches('^de_(mirage|dust2|nuke|anubis|cache|inferno|ancient)$') && a is int && b is int && a >= 0 && b >= 0 &&
-        (a > b ? m.winnerId == game.teamA.id : b > a && m.winnerId == game.teamB.id);
+        (a > b ? m.winnerId == aId : b > a && m.winnerId == bId);
     }
-    function wins(maps, id) {
-      let count = maps.size();
-      let winners = [maps[0].winnerId, count > 1 ? maps[1].winnerId : '', count > 2 ? maps[2].winnerId : '',
-        count > 3 ? maps[3].winnerId : '', count > 4 ? maps[4].winnerId : ''];
-      return (id == '' ? count : 5) - winners.removeAll([id]).size();
-    }
+    function teamAId(game) { return 'teamAId' in game ? game.teamAId : game.teamA.id; }
+    function teamBId(game) { return 'teamBId' in game ? game.teamBId : game.teamB.id; }
     function bestOf(game) {
-      return game.round == 'Final' ? 5 : (game.round in ['Quarterfinals','Semifinals'] || game.teamA.get('wins',0) == 2 || game.teamA.get('losses',0) == 2 || game.teamB.get('wins',0) == 2 || game.teamB.get('losses',0) == 2 ? 3 : 1);
+      return 'bestOf' in game ? game.bestOf :
+        (game.round == 'Final' ? 5 : (game.round in ['Quarterfinals','Semifinals'] ||
+          game.teamA.get('wins',0) == 2 || game.teamA.get('losses',0) == 2 || game.teamB.get('wins',0) == 2 || game.teamB.get('losses',0) == 2 ? 3 : 1));
     }
-    function validSeries(result, game, n) {
+    function validSeries(result, aId, n, maps, count) {
       let needed = n == 5 ? 3 : (n == 3 ? 2 : 1);
-      let a = wins(result.maps, game.teamA.id);
-      let b = result.maps.size() - a;
-      let last = result.maps[result.maps.size() - 1].winnerId;
-      return result.maps.size() <= n &&
-        (last == game.teamA.id ? a == needed && b < needed : b == needed && a < needed) &&
-        (n == 1 ? (result.scoreA == result.maps[0].scoreA && result.scoreB == result.maps[0].scoreB) : (result.scoreA == a && result.scoreB == b));
+      let winners = [maps[0].winnerId, count > 1 ? maps[1].winnerId : null, count > 2 ? maps[2].winnerId : null,
+        count > 3 ? maps[3].winnerId : null, count > 4 ? maps[4].winnerId : null];
+      let a = 5 - winners.removeAll([aId]).size();
+      let b = count - a;
+      let last = maps[count - 1].winnerId;
+      return last == result.winner &&
+        (last == aId ? a == needed && b < needed : b == needed && a < needed) &&
+        (n == 1 ? (result.scoreA == maps[0].scoreA && result.scoreB == maps[0].scoreB) : (result.scoreA == a && result.scoreB == b));
     }
     // Numeric comparisons also reject other types, keeping BO5 writes within the evaluation budget.
     function validRatings(result) {
@@ -219,14 +220,14 @@ service cloud.firestore {
     }
     function validResult(result, game, n) {
       let maps = result.maps;
-      return result.keys().hasOnly(['teamA','teamB','scoreA','scoreB','winner','maps','playerRatings']) && validRatings(result) &&
-        result.teamA == game.teamA && result.teamB == game.teamB &&
-        maps is list && maps.size() >= 1 && maps.size() <= 5 && validMap(maps[0],game) &&
-        (maps.size() < 2 || validMap(maps[1],game)) && (maps.size() < 3 || validMap(maps[2],game)) &&
-        (maps.size() < 4 || validMap(maps[3],game)) && (maps.size() < 5 || validMap(maps[4],game)) &&
-        validSeries(result,game,n) && result.scoreA is int && result.scoreB is int && result.scoreA >= 0 && result.scoreB >= 0 &&
-        ((result.scoreA > result.scoreB && result.winner == game.teamA.id) ||
-         (result.scoreB > result.scoreA && result.winner == game.teamB.id));
+      let aId = teamAId(game);
+      let bId = teamBId(game);
+      let count = maps.size();
+      return validBestOf(n) && result.keys().hasOnly(['scoreA','scoreB','winner','maps','playerRatings']) && validRatings(result) &&
+        maps is list && count >= 1 && count <= n && validMap(maps[0],aId,bId) &&
+        (count < 2 || validMap(maps[1],aId,bId)) && (count < 3 || validMap(maps[2],aId,bId)) &&
+        (count < 4 || validMap(maps[3],aId,bId)) && (count < 5 || validMap(maps[4],aId,bId)) &&
+        validSeries(result,aId,n,maps,count) && result.scoreA is int && result.scoreB is int;
     }
     function decider(actions, m) {
       let map = m.map;
@@ -236,8 +237,8 @@ service cloud.firestore {
     function validSingleMap(m, teamA, teamB) {
       let a = m.scoreA;
       let b = m.scoreB;
-      return a is int && b is int && a >= 0 && b >= 0 && a != b &&
-        m == { 'map': m.map, 'scoreA': a, 'scoreB': b, 'winnerId': a > b ? teamA : teamB };
+      return m.size() == 4 && a is int && b is int &&
+        (a > b ? b >= 0 && m.winnerId == teamA : b > a && a >= 0 && m.winnerId == teamB);
     }
     function validSingleResult(r, game, result) {
       let id = r.tournament.tournamentId + '~' + game.id;
@@ -246,12 +247,11 @@ service cloud.firestore {
       let actions = veto.actions;
       let maps = result.maps;
       let n = game.bestOf;
-      let a = game.teamA.id;
-      let b = game.teamB.id;
+      let a = teamAId(game);
+      let b = teamBId(game);
       let count = maps.size();
       return actions.size() == 6 && veto.bestOf == n && maps is list && count >= 1 && count <= n &&
-        result.keys().hasOnly(['teamA','teamB','scoreA','scoreB','winner','maps']) &&
-        result.teamA == game.teamA && result.teamB == game.teamB &&
+        result.keys().hasOnly(['scoreA','scoreB','winner','maps','playerRatings']) && validRatings(result) &&
         validSingleMap(maps[0],a,b) &&
         (n == 1 ? decider(actions,maps[0]) :
           maps[0].map == actions[2].map && maps[1].map == actions[3].map && validSingleMap(maps[1],a,b) &&
@@ -259,13 +259,19 @@ service cloud.firestore {
             maps[2].map == actions[4].map && validSingleMap(maps[2],a,b) &&
             (count < 4 || (maps[3].map == actions[5].map && validSingleMap(maps[3],a,b))) &&
             (count < 5 || (decider(actions,maps[4]) && validSingleMap(maps[4],a,b))))) &&
-        validSeries(result,game,n) && result.scoreA is int && result.scoreB is int && result.winner == maps[count - 1].winnerId;
+        validSeries(result,a,n,maps,count) && result.scoreA is int && result.scoreB is int;
     }
     function singleForfeit(game, result, abandoned) {
-      let aWon = abandoned[0] == game.teamB.uid;
+      let aWon = 'player_' + abandoned[0] == teamBId(game);
       let score = game.bestOf == 1 ? 13 : (game.bestOf == 3 ? 2 : 3);
-      return result == { 'teamA': game.teamA, 'teamB': game.teamB, 'winner': aWon ? game.teamA.id : game.teamB.id,
+      return result == { 'winner': aWon ? teamAId(game) : teamBId(game),
         'scoreA': aWon ? score : 0, 'scoreB': aWon ? 0 : score, 'forfeit': true, 'forfeitUids': abandoned, 'maps': [] };
+    }
+    function sameSingleGame(old, next) {
+      return 'teamAId' in old ? next.diff(old).affectedKeys().hasOnly(['completed','result']) :
+        next.keys().hasOnly(['id','round','bestOf','teamAId','teamBId','playerUids','completed','result']) &&
+        next.id == old.id && next.round == old.round && next.bestOf == old.bestOf && next.playerUids == old.playerUids &&
+        next.teamAId == teamAId(old) && next.teamBId == teamBId(old);
     }
     function finishSingleMatch(old, next) {
       let t = old.tournament;
@@ -275,7 +281,7 @@ service cloud.firestore {
       let abandoned = t.get('abandonedUids',[]);
       return next.diff(old).affectedKeys().hasOnly(['tournament']) && t.stage == 'single_match' && updated.stage == 'won' &&
         updated.diff(t).affectedKeys().hasOnly(['stage','matches']) && updated.matches.size() == 1 && !game.completed &&
-        completed.diff(game).affectedKeys().hasOnly(['completed','result']) && completed.completed == true &&
+        sameSingleGame(game,completed) && completed.completed == true &&
         request.auth.uid in game.playerUids && !(request.auth.uid in abandoned) &&
         (abandoned.size() == 0 ? validSingleResult(old,game,completed.result) :
           abandoned.size() == 1 && abandoned[0] in game.playerUids && singleForfeit(game,completed.result,abandoned));
@@ -333,8 +339,7 @@ service cloud.firestore {
             d.keys().hasOnly(['tournamentId','matchId','matchIndex','veto','turnDeadlineMs']) && d.tournamentId == t.tournamentId &&
             d.matchId is string && d.matchId.size() <= 200 && vetoId == d.tournamentId + '~' + d.matchId &&
             d.matchIndex is int && d.matchIndex >= 0 && d.matchIndex < t.matches.size() && m.id == d.matchId && !m.completed &&
-            m.playerUids is list && m.playerUids.size() == 2 && m.playerUids.toSet().size() == 2 &&
-            m.teamA.uid in m.playerUids && m.teamB.uid in m.playerUids && m.playerUids.toSet().difference(t.participantUids.toSet()).size() == 0 &&
+            humanMatch(m) && m.playerUids.toSet().difference(t.participantUids.toSet()).size() == 0 &&
             !m.playerUids.toSet().hasAny(t.get('abandonedUids',[])) && request.auth.uid in m.playerUids &&
             !exists(/databases/$(database)/documents/rooms/$(code)/results/$(vetoId)) &&
             d.veto is map && d.veto.keys().hasOnly(['version','bestOf','firstTeam','actions']) && d.veto.version == 1 &&
@@ -358,7 +363,7 @@ service cloud.firestore {
             action.keys().hasOnly(['team','action','map']) && action.team == side && action.action == expected &&
             action.map.matches('^de_(mirage|dust2|nuke|anubis|cache|inferno|ancient)$') &&
             unused(actions,action.map,0) && unused(actions,action.map,1) && unused(actions,action.map,2) && unused(actions,action.map,3) && unused(actions,action.map,4) &&
-            (request.auth.uid == (side == 'A' ? m.teamA.uid : m.teamB.uid) || request.time.toMillis() >= resource.data.turnDeadlineMs);
+            ('player_' + request.auth.uid == (side == 'A' ? teamAId(m) : teamBId(m)) || request.time.toMillis() >= resource.data.turnDeadlineMs);
         }
         allow read: if signed() && request.auth.uid in room().players && !room().players[request.auth.uid].left;
         allow create: if signed() && canWrite(room(),request.resource.data) && request.resource.data.veto.actions.size() == 0;
@@ -393,11 +398,6 @@ service cloud.firestore {
     }
     match /users/{uid}/abandonments/{majorId} {
       allow read: if signed() && request.auth.uid == uid;
-      allow create: if signed() && request.resource.data.keys().hasOnly(['ownerUid','organizationId','roomId','tournamentId','reason','at']) && request.resource.data.keys().hasAll(['ownerUid','organizationId','roomId','tournamentId','reason','at']) &&
-        request.resource.data.ownerUid == uid && request.resource.data.tournamentId == majorId && request.resource.data.at == request.time && request.resource.data.reason in ['navigation','reload','closed','timeout'] &&
-        get(roomPath(request.resource.data.roomId)).data.status == 'playing' && !singleMatch(get(roomPath(request.resource.data.roomId)).data) && get(roomPath(request.resource.data.roomId)).data.tournament.stage != 'won' && get(roomPath(request.resource.data.roomId)).data.tournament.tournamentId == majorId &&
-        uid in get(roomPath(request.resource.data.roomId)).data.tournament.participantUids && !get(roomPath(request.resource.data.roomId)).data.players[uid].left && request.resource.data.organizationId == get(roomPath(request.resource.data.roomId)).data.players[uid].organization.id &&
-        (request.auth.uid == uid || expired(uid)) && getAfter(roomPath(request.resource.data.roomId)).data.lastDeparture == { 'uid': uid, 'reason': request.resource.data.reason } && (getAfter(roomPath(request.resource.data.roomId)).data.status == 'closed' || getAfter(roomPath(request.resource.data.roomId)).data.players[uid].left);
     }
     match /organizationSessions/{orgId} {
       allow get: if signed();

@@ -2,7 +2,7 @@ import { validMapPlayerStats } from './matchSummary.mjs';
 import { validMapVeto, vetoStatus } from './mapVeto.mjs';
 
 export function replayBestOf(match) {
-  if (match.round === 'Single match' && [1, 3, 5].includes(match.bestOf)) return match.bestOf;
+  if ([1, 3, 5].includes(match.bestOf)) return match.bestOf;
   if (match.round === 'Final') return 5;
   if (['Quarterfinals', 'Semifinals'].includes(match.round)) return 3;
   return [match.teamA, match.teamB].some(team => team.wins === 2 || team.losses === 2) ? 3 : 1;
